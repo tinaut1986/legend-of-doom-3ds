@@ -122,7 +122,7 @@ criteria). IDs are stable; never renumber.
   *Done when:* the owner installs a CIA built from `release/v0.1.0` next to
   upstream's app, it uses its own data folder and shows `0.1.0-dev...` (upstream 1.0);
   a first beta tag publishes a release whose CIA the console's updater sees.
-- [ ] **P0.2** Issues enabled on `tinaut1986/legend-of-doom-3ds`.
+- [x] **P0.2** Issues enabled on `tinaut1986/legend-of-doom-3ds`.
   *Spec:* the fork has issues disabled (GitHub's default for forks). The owner
   enables them in Settings, or asks Claude to (`gh repo edit --enable-issues`).
   *Done when:* playtest bugs can be filed there.
@@ -230,6 +230,8 @@ _Empty until P0.3._
   upstream's folder (profiles unused, patches validated by hunk size). The updater's
   "Experimental" channel is called "Beta" and follows GitHub pre-releases. Releases
   publish the CIA (+ debug symbols, manifest, checksums, QR), not the 3DSX/SD zip: the
-  updater installs CIAs only. The HOME-menu name stays "Legend of Doom 3DS" (owner can
-  ask for another one); the SMDH long description carries the version.
+  updater installs CIAs only. The HOME-menu name is "Legend of Doom 3DS*" (owner,
+  2026-10-12: same name for now, with a mark to tell it from upstream's app); the
+  SMDH long description carries the version.
+- **2026-10-12** P0.2: issues enabled on the fork (`gh repo edit --enable-issues`, owner's go).
 - **2026-10-12** Release-notes marker `<!-- lod-notes -->` (TMC uses `tmc-notes`).

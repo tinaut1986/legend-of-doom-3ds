@@ -452,7 +452,7 @@ if [[ ! -x "${SMDHTOOL}" ]]; then SMDHTOOL="$(command -v smdhtool)"; fi
 SMDH="${GAME_BUILD}/legend-of-doom-3ds.smdh"
 THREEDSX="${DIST}/${ARTIFACT_STEM}.3dsx"
 "${SMDHTOOL}" --create \
-  "Legend of Doom 3DS" \
+  "Legend of Doom 3DS*" \
   "Legend of Doom for Nintendo 3DS v${VERSION_LABEL}" \
   "tinaut1986 / Esteban PDN / DeTwelve Games" \
   "${ROOT}/platform/3ds/assets/icon-48.png" "${SMDH}"

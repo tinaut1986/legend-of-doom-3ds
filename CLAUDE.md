@@ -99,7 +99,8 @@ Minor = milestone, patch = fix round. Ask before a minor bump; never infer one.
   Nothing to bump by hand. `LOD3DS_VERSION` overrides it (the release workflow does).
 - The upstream version this fork is based on is `platform/3ds/upstream_version.txt`,
   shown next to ours (developer overlay, boot log, build manifest, dumps).
-- This fork installs as **its own application**: title ID `0x5A2D1`, product code
+- This fork installs as **its own application**, named "Legend of Doom 3DS*" on the
+  HOME menu (the `*` tells it from upstream's), title ID `0x5A2D1`, product code
   `CTR-P-LDOT` (`platform/3ds/cia/legend-of-doom-3ds.rsf`; upstream is `0x5A2D0`), data
   folder `sdmc:/3ds/Legend of Doom 3DS/`. Both live in
   `src/common/platform/3ds/app_paths_3ds.h` (`LOD3DS_APP_DIR`, `LOD3DS_TITLE_ID`, which
