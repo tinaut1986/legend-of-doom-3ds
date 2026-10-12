@@ -5140,6 +5140,8 @@ bool I_3DSSaveScreenShots(const char *topPath, const char *bottomPath)
 	return ok;
 }
 
+bool M_SaveDefaults(const char *filename);
+
 namespace
 {
 // The console and its log only: a notify line would print over the game.
@@ -5165,7 +5167,9 @@ void I_3DSServiceConsoleLink()
 	if (FtpServer_TakeRelaunch())
 	{
 		// SITE INSTALL put a new build in place: jump into it, then close as on HOME -> close.
-		// A normal exit, so a setting changed just before (FTP SERVER itself) is kept.
+		// Save the config first: once the jump is under way APT closes the app before the
+		// engine's final save, and FTP SERVER has to be on in the new build.
+		M_SaveDefaults(nullptr);
 		ConsoleLinkLog("relaunching into the build just installed");
 		if (!CiaInstall_JumpToSelf()) ConsoleLinkLog("the jump into the new build was refused");
 		throw CExitEvent(0);

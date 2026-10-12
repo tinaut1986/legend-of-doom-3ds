@@ -269,4 +269,5 @@ _Empty until P0.3._
   pushed as SDL events and sticks overridden in the joystick poll, instead of OR-ing HID
   masks, because input reaches GZDoom through SDL; no save states (GZDoom saves through
   `SITE CONSOLE save/load`), and CONSOLE/CVAR added; the relaunch after `SITE INSTALL`
-  exits normally (config saved) so FTP SERVER stays on.
+  saves the config itself before the APT jump: once the jump is under way the app is
+  closed before the engine's final save (seen on the console: FTP SERVER came back off).
