@@ -148,7 +148,7 @@ Specs are written when the phase starts, from `../zelda-tmc-3ds` P1 (same IDs or
   `ftp_credentials_3ds.h`) behind OPTIONS -> DEVELOPER -> FTP SERVER (archived cvar
   `lod3ds_ftp_server`, debug builds), retrying while there is no Wi-Fi; `SITE INSTALL`
   installs a CIA of this title over the running game and jumps into it, with a warning
-  strip on the top screen; the socket service shared with the updater (`net_3ds.c`);
+  toast on the touch screen; the socket service shared with the updater (`net_3ds.c`);
   stable builds only an install-only server when `dev-ftp.txt` exists;
   `./build_3ds.sh --install`.
   *Done when:* on the New 3DS, FileZilla/curl list and fetch the data folder while the

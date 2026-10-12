@@ -12,8 +12,8 @@
 // game and relaunches into the new build. With curl:
 //   curl -u USER:PASS -T game.cia "ftp://IP:5000/3ds/Legend%20of%20Doom%203DS/update/dev.cia"
 //        -Q "-SITE INSTALL /3ds/Legend of Doom 3DS/update/dev.cia"   (the "-": after the upload)
-// (platform/3ds/tools/build_3ds.py --install does both). The top screen says so meanwhile
-// (FtpServer_Notice): an install never happens without a warning.
+// (platform/3ds/tools/build_3ds.py --install does both). A toast on the touch screen says so
+// meanwhile (FtpServer_Notice): an install never happens without a warning.
 //
 // Other SITE commands are the remote control, debug_link_3ds.h.
 #ifdef __cplusplus

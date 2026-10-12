@@ -147,6 +147,8 @@ uint64_t OverlayLastDrawMilliseconds;
 uint64_t OverlayNotificationUntilMilliseconds;
 bool OverlayAudioReady;
 char OverlayNotification[48];
+// Changes whenever a toast appears or goes, so the static bottom presentations redraw for it.
+uint32_t OverlayNotificationSerial;
 bool DiagnosticProgressActive;
 EDiagnosticDumpMode DiagnosticProgressMode = EDiagnosticDumpMode::None;
 uint64_t DiagnosticProgressValue;
@@ -1808,6 +1810,28 @@ void SetOverlayNotification(const char *message, uint64_t durationMilliseconds =
 	std::snprintf(OverlayNotification, sizeof(OverlayNotification), "%s",
 		message != nullptr ? message : "");
 	OverlayNotificationUntilMilliseconds = osGetTime() + durationMilliseconds;
+	++OverlayNotificationSerial;
+}
+
+void ExpireOverlayNotification(uint64_t now)
+{
+	if (OverlayNotification[0] != '\0' && now >= OverlayNotificationUntilMilliseconds)
+	{
+		OverlayNotification[0] = '\0';
+		++OverlayNotificationSerial;
+	}
+}
+
+// The toast: a bar near the bottom of the touch screen, drawn last over whatever
+// presentation is there (gameplay, menus, title, developer overlay).
+void DrawBottomToast(unsigned char *framebuffer)
+{
+	if (OverlayNotification[0] == '\0') return;
+	const int width = std::min(304, LoadingTextWidth(OverlayNotification, 1) + 24);
+	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
+	OverlayRect(framebuffer, x, 210, width, 21, OverlayInk);
+	OverlayFrame(framebuffer, x, 210, width, 21, 2, OverlayBlue);
+	OverlayCenteredText(framebuffer, x, width, 217, OverlayNotification, 1, OverlayIvory);
 }
 
 void DrawDeveloperOverlay(unsigned char *framebuffer)
@@ -2726,17 +2750,6 @@ void ComposeNativeSaveLoadTop(unsigned char *pixels, const unsigned char *menuSo
 			savegameManager.SaveCommentString.GetChars(), OverlayIvory);
 }
 
-// While the FTP server receives an installer or installs it, a strip across the top screen
-// says so: an install over the running game never happens without a warning.
-void ComposeFtpNotice(unsigned char *pixels, int pitchBytes, int width, int height)
-{
-	const char *notice = FtpServer_Notice();
-	if (notice == nullptr) return;
-	NativeTopRect(pixels, pitchBytes, width, height, 0, 0, width, 13, OverlayBlue, 235u);
-	NativeTopText(pixels, pitchBytes, width, height,
-		(width - LoadingTextWidth(notice, 1)) / 2, 3, notice, OverlayIvory);
-}
-
 void ComposeNativeMenuFps(unsigned char *pixels, int pitchBytes, int width, int height)
 {
 	if (!vid_fps) return;
@@ -2775,7 +2788,6 @@ void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int 
 			pitchBytes, width, height, brightness);
 	}
 	ComposeNativeMenuFps(pixels, pitchBytes, width, height);
-	ComposeFtpNotice(pixels, pitchBytes, width, height);
 }
 
 EBottomPresentation DesiredBottomPresentation()
@@ -2797,6 +2809,13 @@ EBottomPresentation DesiredBottomPresentation()
 void DrawBottomOverlay(bool force)
 {
 	const uint64_t now = osGetTime();
+	ExpireOverlayNotification(now);
+	static uint32_t drawnToast = 0;
+	if (drawnToast != OverlayNotificationSerial)
+	{
+		drawnToast = OverlayNotificationSerial;
+		force = true;
+	}
 	const EBottomPresentation desired = DesiredBottomPresentation();
 	if (!force && BottomPresentation == desired &&
 		now - OverlayLastDrawMilliseconds < OverlayRefreshMilliseconds) return;
@@ -2829,6 +2848,7 @@ void DrawBottomOverlay(bool force)
 	{
 		BottomPresentation = EBottomPresentation::DeveloperOverlay;
 		DrawDeveloperOverlay(framebuffer);
+		DrawBottomToast(framebuffer);
 		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
 		gfxScreenSwapBuffers(GFX_BOTTOM, false);
 		return;
@@ -2863,6 +2883,7 @@ void DrawBottomOverlay(bool force)
 			OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight,
 				OverlayParchment);
 		}
+		DrawBottomToast(framebuffer);
 		BottomPresentation = target;
 		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
 		gfxScreenSwapBuffers(GFX_BOTTOM, false);
@@ -2870,11 +2891,8 @@ void DrawBottomOverlay(bool force)
 	}
 
 	BottomPresentation = EBottomPresentation::Gameplay;
-	if (OverlayNotification[0] != '\0' && now >= OverlayNotificationUntilMilliseconds)
-	{
-		OverlayNotification[0] = '\0';
-	}
 	DrawBottomGameplay(framebuffer);
+	DrawBottomToast(framebuffer);
 
 	I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
 	gfxScreenSwapBuffers(GFX_BOTTOM, false);
@@ -4384,6 +4402,8 @@ void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 	{
 		DrawNativeMenuBottomFrame(bottom, menuPixels, basePixels,
 			pitchBytes, width, height);
+		ExpireOverlayNotification(osGetTime());
+		DrawBottomToast(bottom);
 		I_3DSCleanDataCache(bottom, BottomScreenWidth * BottomScreenHeight * 4u);
 		gfxScreenSwapBuffers(GFX_BOTTOM, false);
 		BottomPresentation = EBottomPresentation::NativeMenu;
@@ -4410,10 +4430,11 @@ void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 	int width, int height)
 {
-	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0) return;
-	// With a menu open, ComposeNativeMenuTop draws it over the restored canvas.
-	if (menuactive == MENU_Off) ComposeFtpNotice(pixels, pitchBytes, width, height);
-	if (gamestate != GS_LEVEL || menuactive != MENU_Off) return;
+	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0 ||
+		gamestate != GS_LEVEL || menuactive != MENU_Off)
+	{
+		return;
+	}
 
 	auto putPixel = [&](int x, int y, FOverlayColor color, unsigned alpha = 255u)
 	{
@@ -5131,6 +5152,16 @@ void ConsoleLinkLog(const char *line)
 void I_3DSServiceConsoleLink()
 {
 	FtpServer_Tick(ConsoleLinkLog);
+	// While an installer arrives or installs, a toast on the touch screen says so: an install
+	// over the running game never happens without a warning.
+	static const char *shownNotice = nullptr;
+	const char *notice = FtpServer_Notice();
+	if (notice != shownNotice)
+	{
+		if (notice != nullptr) SetOverlayNotification(notice, 10u * 60u * 1000u);
+		else SetOverlayNotification(nullptr, 0);
+		shownNotice = notice;
+	}
 	if (FtpServer_TakeRelaunch())
 	{
 		// SITE INSTALL put a new build in place: jump into it, then close as on HOME -> close.
