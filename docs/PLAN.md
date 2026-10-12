@@ -23,7 +23,9 @@ change (what goes where: the table in `CLAUDE.md`).
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.1.0`, being tagged as the first beta `v0.1.0`. `main` is upstream's v1.0.
+**Release line:** `release/v0.1.1` (on origin). Published: **`v0.1.0`** (2026-10-12, **beta**,
+not on `main`): GitHub release with the CIA, QR, debug symbols, manifest and checksums, built by
+`build-release.yml` on its first run. `main` is still upstream's v1.0: nothing stable published. `main` is upstream's v1.0.
 
 **Branches:**
 
@@ -238,4 +240,7 @@ _Empty until P0.3._
   installs as "Legend of Doom 3DS*" next to upstream's app, creates its own folder,
   shows the version and the BETA channel. P0.1 stays open until the updater sees the
   first published beta.
+- **2026-10-12** First beta `v0.1.0` tagged on `release/v0.1.0` (merge `d715fc0`) and
+  published by the release workflow; the release branch renamed to `release/v0.1.1`.
+  P0.1 is done once the console's updater (BETA channel) lists `v0.1.0`.
 - **2026-10-12** Release-notes marker `<!-- lod-notes -->` (TMC uses `tmc-notes`).
