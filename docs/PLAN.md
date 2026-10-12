@@ -23,14 +23,13 @@ change (what goes where: the table in `CLAUDE.md`).
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.1.0` (on origin, nothing published). `main` is upstream's v1.0.
+**Release line:** `release/v0.1.0`, being tagged as the first beta `v0.1.0`. `main` is upstream's v1.0.
 
 **Branches:**
 
 | Branch | What | State |
 |---|---|---|
-| `chore/fork-setup` (cut from `release/v0.1.0`) | the workflow (`CLAUDE.md`, this plan, `docs/release-notes/`; local git config: upstream push `DISABLED`, `gh repo set-default`), then P0.1: version from git, title ID `0x5A2D1` and folder `sdmc:/3ds/Legend of Doom 3DS/`, updater on this repository with beta/dev versions and the `lod-notes` block, `build-release.yml`, `build-3ds.yml` on `release/**`, `./build_3ds.sh` | P0.1 written; contract tests and updater manifest test pass (the updater I/O harness needs libcurl headers, not on this machine); `hardware-hybrid` builds locally: CIA title ID `0x0004000005A2D100`, `CTR-P-LDOT`, SD zip and binary use `sdmc:/3ds/Legend of Doom 3DS/`, updater on `tinaut1986/legend-of-doom-3ds`; the release workflow has not run yet; not on the console yet (owner: install next to upstream's app, check the folder, the version in the developer overlay, the updater's BETA channel) |
-| `docs/release-notes-v0.1.0` (cut from `release/v0.1.0`) | notes for the first beta `v0.1.0` | draft shown to the owner; merge with `chore/fork-setup`, then tag |
+| _(none open)_ | `chore/fork-setup` (workflow + P0.1) and `docs/release-notes-v0.1.0` merged into `release/v0.1.0` 2026-10-12: the owner installed the dev CIA on the New 3DS next to upstream's app, own folder, version and BETA channel as specified | |
 
 **Priority** (2026-10-12): P0.1 → P0.2 → P1 debug tools and console link → P0.3
 baseline → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D and P4 Old 3DS
@@ -235,4 +234,8 @@ _Empty until P0.3._
   2026-10-12: same name for now, with a mark to tell it from upstream's app); the
   SMDH long description carries the version.
 - **2026-10-12** P0.2: issues enabled on the fork (`gh repo edit --enable-issues`, owner's go).
+- **2026-10-12** Owner checked the P0.1 dev CIA on the New 3DS (192.168.1.141, ftpd):
+  installs as "Legend of Doom 3DS*" next to upstream's app, creates its own folder,
+  shows the version and the BETA channel. P0.1 stays open until the updater sees the
+  first published beta.
 - **2026-10-12** Release-notes marker `<!-- lod-notes -->` (TMC uses `tmc-notes`).
