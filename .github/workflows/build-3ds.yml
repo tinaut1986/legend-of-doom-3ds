@@ -1,8 +1,9 @@
 name: Build Nintendo 3DS packages
 
+# Compile check only; publishing is build-release.yml (CLAUDE.md, "Releases").
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
   workflow_dispatch:
 
@@ -62,8 +63,8 @@ jobs:
           set -euo pipefail
           MANIFEST="build-3ds/dist/BUILD-MANIFEST.txt"
           ARTIFACT_STEM="$(sed -n 's/^artifact_stem=//p' "$MANIFEST")"
-          VERSION="$(tr -d '\r\n' < platform/3ds/version.txt)"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          VERSION="$(sh platform/3ds/tools/version.sh)"
           git -C "$GITHUB_WORKSPACE" diff --check
           test -z "$(git -C "$GITHUB_WORKSPACE" status --porcelain --untracked-files=all)"
           ! git -C "$GITHUB_WORKSPACE" ls-files | \
@@ -82,17 +83,17 @@ jobs:
           test -f "build-3ds/dist/SHA256SUMS.txt"
           (cd build-3ds/dist && sha256sum -c SHA256SUMS.txt)
           unzip -l "build-3ds/dist/${ARTIFACT_STEM}-sd.zip" | \
-            grep -F '3ds/legend-of-doom/data/freedoom2.wad'
+            grep -F '3ds/Legend of Doom 3DS/data/freedoom2.wad'
           unzip -l "build-3ds/dist/${ARTIFACT_STEM}-sd.zip" | \
-            grep -F '3ds/legend-of-doom/data/LegendOfDoom.pk3'
+            grep -F '3ds/Legend of Doom 3DS/data/LegendOfDoom.pk3'
           unzip -l "build-3ds/dist/${ARTIFACT_STEM}-sd.zip" | \
-            grep -F '3ds/legend-of-doom/THIRD-PARTY-LICENSES.md'
+            grep -F '3ds/Legend of Doom 3DS/THIRD-PARTY-LICENSES.md'
           unzip -l "build-3ds/dist/${ARTIFACT_STEM}-sd.zip" | \
-            grep -F '3ds/legend-of-doom/licenses/OpenAL-Soft-COPYING.txt'
+            grep -F '3ds/Legend of Doom 3DS/licenses/OpenAL-Soft-COPYING.txt'
           unzip -l "build-3ds/dist/${ARTIFACT_STEM}-sd.zip" | \
-            grep -F '3ds/legend-of-doom/licenses/minimp3-LICENSE.txt'
+            grep -F '3ds/Legend of Doom 3DS/licenses/minimp3-LICENSE.txt'
           unzip -l "build-3ds/dist/${ARTIFACT_STEM}-sd.zip" | \
-            grep -F '3ds/legend-of-doom/licenses/ZMusic/'
+            grep -F '3ds/Legend of Doom 3DS/licenses/ZMusic/'
           unzip -l "build-3ds/dist/${ARTIFACT_STEM}-debug-symbols.zip" | \
             grep -F 'BUILD-MANIFEST.txt'
 

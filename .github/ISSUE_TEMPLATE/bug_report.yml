@@ -61,7 +61,7 @@ body:
     id: attachments
     attributes:
       label: Diagnostic files
-      description: Press L + R + A while the issue is visible and attach the complete quick diagnostic folder from sdmc:/3ds/legend-of-doom/dumps/. For updater errors, also include sdmc:/3ds/legend-of-doom/update.log. Review full memory dumps before sharing them; do not attach ROMs or commercial IWADs.
+      description: Press L + R + A while the issue is visible and attach the complete quick diagnostic folder from sdmc:/3ds/Legend of Doom 3DS/dumps/. For updater errors, also include sdmc:/3ds/Legend of Doom 3DS/update.log. Review full memory dumps before sharing them; do not attach ROMs or commercial IWADs.
 
   - type: textarea
     id: notes

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Run the updater's macOS host harnesses with a native Jansson prefix."""
+"""Run the updater's host harnesses (macOS or Linux) with a native Jansson prefix."""
 import argparse
 import pathlib
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -23,12 +24,14 @@ with tempfile.TemporaryDirectory(prefix='lod-updater-test-') as temporary:
         str(prefix / 'lib/libjansson.a'), '-o', str(manifest)], check=True)
     subprocess.run([str(manifest)], cwd=work, check=True)
     host = work / 'updater-test'
-    version = (root / 'platform/3ds/version.txt').read_text().strip()
+    version = subprocess.run(['sh', str(root / 'platform/3ds/tools/version.sh')], check=True,
+        capture_output=True, text=True).stdout.strip()
+    dead_strip = '-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections'
     subprocess.run(common + [f'-DLOD3DS_PORT_VERSION="{version}"', '-Wno-deprecated-declarations',
         '-fsanitize=address,undefined', '-ffunction-sections', '-fdata-sections', '-I' + str(tests / 'update_host'),
         str(tests / 'updater_host_test.c'), str(source / 'update_manifest.c'),
-        str(prefix / 'lib/libjansson.a'), '-lcurl', '-Wl,-dead_strip', '-o', str(host)], check=True)
-    (work / 'sdmc:/3ds/legend-of-doom/update').mkdir(parents=True)
+        str(prefix / 'lib/libjansson.a'), '-lcurl', dead_strip, '-o', str(host)], check=True)
+    (work / 'sdmc:/3ds/Legend of Doom 3DS/update').mkdir(parents=True)
     (work / 'romfs:').mkdir()
     shutil.copyfile(root / 'platform/3ds/romfs/update-ca.pem', work / 'romfs:/update-ca.pem')
     subprocess.run([str(host)] + (['--live-check'] if args.live_check else []), cwd=work, check=True)

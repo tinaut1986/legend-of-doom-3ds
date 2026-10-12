@@ -58,7 +58,7 @@ bool DrawUpdateMenu(unsigned char *framebuffer, const unsigned char *menu,
             ">", 1.28f, OverlayRed);
         return true;
     }
-    text(48, "INSTALLED " LOD3DS_PORT_VERSION, 1.28f, OverlayIvory);
+    text(48, "INSTALLED " LOD3DS_PORT_VERSION_LABEL, 1.28f, OverlayIvory);
     char latest[72];
     std::snprintf(latest, sizeof(latest), "LATEST %s", status.version[0] ? status.version : "--");
     text(68, latest, 1.28f, OverlayIvory);
@@ -76,7 +76,7 @@ bool DrawUpdateMenu(unsigned char *framebuffer, const unsigned char *menu,
     }
     NativeMenuCustomOption = true;
     auto descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
-    const char *labels[] = { status.prerelease ? "CHANNEL: EXPERIMENTAL" : "CHANNEL: STABLE",
+    const char *labels[] = { status.prerelease ? "CHANNEL: BETA" : "CHANNEL: STABLE",
         "CHECK FOR UPDATES", "INSTALL UPDATE", "BACK" };
     for (int row=0; row<4; ++row)
     {

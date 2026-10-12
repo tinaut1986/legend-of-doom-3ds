@@ -1301,9 +1301,13 @@ if( CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS" )
 	target_compile_definitions( zdoom PRIVATE
 		NOVAGL_GZDOOM_COMPAT=1
 		NO_RENDER_BUFFER=1
-		LOD3DS_BUILD_PROFILE_NAME="${LOD3DS_BUILD_PROFILE}"
-		LOD3DS_BUILD_ID="${LOD3DS_BUILD_ID}"
-		LOD3DS_PORT_VERSION="${LOD3DS_PORT_VERSION}" )
+		LOD3DS_BUILD_PROFILE_NAME="${LOD3DS_BUILD_PROFILE}" )
+	# Version, channel and build ID live in a generated header (lod3ds_version.h)
+	# rather than in compile definitions, so changing them rebuilds only its users.
+	if( NOT LOD3DS_GENERATED_DIR OR NOT EXISTS "${LOD3DS_GENERATED_DIR}/lod3ds_version.h" )
+		message( FATAL_ERROR "LOD3DS_GENERATED_DIR must hold lod3ds_version.h (platform/3ds/build.sh writes it)" )
+	endif()
+	target_include_directories( zdoom PRIVATE "${LOD3DS_GENERATED_DIR}" )
 	if( LOD3DS_HARDWARE_DIAGNOSTIC )
 		target_compile_definitions( zdoom PRIVATE LOD3DS_HARDWARE_DIAGNOSTIC=1 )
 	endif()
