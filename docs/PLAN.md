@@ -30,6 +30,7 @@ boxes below. History: `git log` and the decisions log.
 | Branch | What | State |
 |---|---|---|
 | `chore/fork-setup` (cut from `release/v0.1.0`) | the workflow (`CLAUDE.md`, this plan, `docs/release-notes/`; local git config: upstream push `DISABLED`, `gh repo set-default`), then P0.1: version from git, title ID `0x5A2D1` and folder `sdmc:/3ds/Legend of Doom 3DS/`, updater on this repository with beta/dev versions and the `lod-notes` block, `build-release.yml`, `build-3ds.yml` on `release/**`, `./build_3ds.sh` | P0.1 written; contract tests and updater manifest test pass (the updater I/O harness needs libcurl headers, not on this machine); `hardware-hybrid` builds locally: CIA title ID `0x0004000005A2D100`, `CTR-P-LDOT`, SD zip and binary use `sdmc:/3ds/Legend of Doom 3DS/`, updater on `tinaut1986/legend-of-doom-3ds`; the release workflow has not run yet; not on the console yet (owner: install next to upstream's app, check the folder, the version in the developer overlay, the updater's BETA channel) |
+| `docs/release-notes-v0.1.0` (cut from `release/v0.1.0`) | notes for the first beta `v0.1.0` | draft shown to the owner; merge with `chore/fork-setup`, then tag |
 
 **Priority** (2026-10-12): P0.1 → P0.2 → P1 debug tools and console link → P0.3
 baseline → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D and P4 Old 3DS
