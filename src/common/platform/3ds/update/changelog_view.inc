@@ -126,7 +126,7 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
     centered(10, "CHANGELOG", OverlayRed);
     UpdateStatus status;
     Updater_GetStatus(&status);
-    const char *version = onlineNotes && status.version[0] ? status.version : LOD3DS_PORT_VERSION;
+    const char *version = onlineNotes && status.version[0] ? status.version : LOD3DS_PORT_VERSION_LABEL;
     centered(29, version, OverlayIvory);
     for (unsigned i = first + page*rows; i < count && i < first+(page+1)*rows; ++i)
         DrawUpdateTopText(pixels, pitch, width, height, font, 16,

@@ -29,7 +29,7 @@ boxes below. History: `git log` and the decisions log.
 
 | Branch | What | State |
 |---|---|---|
-| `chore/fork-setup` (cut from `release/v0.1.0`) | the workflow (`CLAUDE.md`, this plan, `docs/release-notes/`; local git config: upstream push `DISABLED`, `gh repo set-default`), then P0.1 | workflow committed; P0.1 in progress |
+| `chore/fork-setup` (cut from `release/v0.1.0`) | the workflow (`CLAUDE.md`, this plan, `docs/release-notes/`; local git config: upstream push `DISABLED`, `gh repo set-default`), then P0.1: version from git, title ID `0x5A2D1` and folder `sdmc:/3ds/Legend of Doom 3DS/`, updater on this repository with beta/dev versions and the `lod-notes` block, `build-release.yml`, `build-3ds.yml` on `release/**`, `./build_3ds.sh` | P0.1 written; contract tests and updater manifest test pass (the updater I/O harness needs libcurl headers, not on this machine); `hardware-hybrid` builds locally: CIA title ID `0x0004000005A2D100`, `CTR-P-LDOT`, SD zip and binary use `sdmc:/3ds/Legend of Doom 3DS/`, updater on `tinaut1986/legend-of-doom-3ds`; the release workflow has not run yet; not on the console yet (owner: install next to upstream's app, check the folder, the version in the developer overlay, the updater's BETA channel) |
 
 **Priority** (2026-10-12): P0.1 → P0.2 → P1 debug tools and console link → P0.3
 baseline → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D and P4 Old 3DS
@@ -222,4 +222,14 @@ _Empty until P0.3._
 - **2026-10-12** Owner: the New 3DS target of 60 fps holds with 3D on too. App identity
   for P0.1: title ID `0x5A2D1` (upstream `0x5A2D0`), data folder
   `sdmc:/3ds/Legend of Doom 3DS/` (upstream `sdmc:/3ds/legend-of-doom/`).
+- **2026-10-12** P0.1 choices: version, channel, debug switch and build ID go into a
+  generated `lod3ds_version.h` (only `diagnostics_3ds.cpp`, `updater.c`, `i_main.cpp`
+  include it) instead of compile definitions on the whole `zdoom` target; upstream's
+  build ID (a hash of the source tree) was one, so every edit rebuilt the engine. The
+  SD folder and title ID live in `app_paths_3ds.h`. The NovaGL diagnostic patches keep
+  upstream's folder (profiles unused, patches validated by hunk size). The updater's
+  "Experimental" channel is called "Beta" and follows GitHub pre-releases. Releases
+  publish the CIA (+ debug symbols, manifest, checksums, QR), not the 3DSX/SD zip: the
+  updater installs CIAs only. The HOME-menu name stays "Legend of Doom 3DS" (owner can
+  ask for another one); the SMDH long description carries the version.
 - **2026-10-12** Release-notes marker `<!-- lod-notes -->` (TMC uses `tmc-notes`).

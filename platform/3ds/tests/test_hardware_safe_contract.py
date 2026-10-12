@@ -27,23 +27,26 @@ class HardwareSafeContractTests(unittest.TestCase):
         self.assertIn("grep -qx 'profile=hardware-safe'", workflow)
 
     def test_current_version_is_embedded_and_visible_on_the_bottom_screen(self):
-        version = (ROOT / "platform/3ds/version.txt").read_text(
+        # Our version comes from git (tools/version.sh); the upstream port's
+        # version this fork is based on stays in upstream_version.txt.
+        upstream = (ROOT / "platform/3ds/upstream_version.txt").read_text(
             encoding="utf-8"
         ).strip()
         build = (ROOT / "platform/3ds/build.sh").read_text(encoding="utf-8")
-        root_cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
         src_cmake = (ROOT / "src/CMakeLists.txt").read_text(encoding="utf-8")
         diagnostics = (
             ROOT / "src/common/platform/3ds/diagnostics_3ds.cpp"
         ).read_text(encoding="utf-8")
 
-        self.assertRegex(version, r"^\d+\.\d+(?:-E[1-9]\d*)?$")
-        self.assertIn('-DLOD3DS_PORT_VERSION="${VERSION}"', build)
+        self.assertRegex(upstream, r"^\d+\.\d+(?:-E[1-9]\d*)?$")
+        self.assertIn('VERSION="$(sh "${ROOT}/platform/3ds/tools/version.sh")"', build)
+        self.assertIn('#define LOD3DS_PORT_VERSION "${VERSION}"', build)
         self.assertIn("printf 'port_version=%s\\n' \"${VERSION}\"", build)
-        self.assertIn('set( LOD3DS_PORT_VERSION "dev" CACHE STRING', root_cmake)
-        self.assertIn('LOD3DS_PORT_VERSION="${LOD3DS_PORT_VERSION}"', src_cmake)
-        self.assertNotIn('"V" LOD3DS_PORT_VERSION, 2', diagnostics)
-        self.assertIn('"port_version=%s\\n", LOD3DS_PORT_VERSION', diagnostics)
+        self.assertIn('-DLOD3DS_GENERATED_DIR="${GENERATED_DIR}"', build)
+        self.assertIn('target_include_directories( zdoom PRIVATE "${LOD3DS_GENERATED_DIR}" )', src_cmake)
+        self.assertIn('#include "lod3ds_version.h"', diagnostics)
+        self.assertIn('"port_version=%s\\n", LOD3DS_PORT_VERSION_LABEL', diagnostics)
+        self.assertIn('"upstream_version=%s\\n", LOD3DS_UPSTREAM_VERSION', diagnostics)
 
     def test_sdl_patch_keeps_upstream_cpu_writable_scanout(self):
         patch = (

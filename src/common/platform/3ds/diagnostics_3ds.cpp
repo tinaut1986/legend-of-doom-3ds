@@ -1,6 +1,8 @@
 #include "diagnostics_3ds.h"
 #include "cache_3ds.h"
 #include "update/updater.h"
+#include "app_paths_3ds.h"
+#include "lod3ds_version.h"
 
 #include <3ds.h>
 #include <citro3d.h>
@@ -70,23 +72,20 @@ extern double LastFrameMilliseconds;
 #define LOD3DS_BUILD_PROFILE_NAME "release"
 #endif
 
-#ifndef LOD3DS_PORT_VERSION
-#define LOD3DS_PORT_VERSION "dev"
-#endif
 
 namespace
 {
-constexpr const char *AppDirectory = "sdmc:/3ds/legend-of-doom";
-constexpr const char *DumpDirectory = "sdmc:/3ds/legend-of-doom/dumps";
-constexpr const char *BootLogPath = "sdmc:/3ds/legend-of-doom/boot.log";
-constexpr const char *StartupLogPath = "sdmc:/3ds/legend-of-doom/startup.log";
-constexpr const char *FatalLogPath = "sdmc:/3ds/legend-of-doom/fatal.log";
-constexpr const char *ConfigPath = "sdmc:/3ds/legend-of-doom/legend-of-doom.ini";
-constexpr const char *TelemetryPath = "sdmc:/3ds/legend-of-doom/frame-telemetry.csv";
-constexpr const char *BuildManifestPath = "sdmc:/3ds/legend-of-doom/BUILD-MANIFEST.txt";
+constexpr const char *AppDirectory = LOD3DS_APP_DIR;
+constexpr const char *DumpDirectory = LOD3DS_APP_DIR "/dumps";
+constexpr const char *BootLogPath = LOD3DS_APP_DIR "/boot.log";
+constexpr const char *StartupLogPath = LOD3DS_APP_DIR "/startup.log";
+constexpr const char *FatalLogPath = LOD3DS_APP_DIR "/fatal.log";
+constexpr const char *ConfigPath = LOD3DS_APP_DIR "/legend-of-doom.ini";
+constexpr const char *TelemetryPath = LOD3DS_APP_DIR "/frame-telemetry.csv";
+constexpr const char *BuildManifestPath = LOD3DS_APP_DIR "/BUILD-MANIFEST.txt";
 constexpr const char *RomfsBuildManifestPath = "romfs:/BUILD-MANIFEST.txt";
-constexpr const char *NovaLitePath = "sdmc:/3ds/legend-of-doom/nova-lite.csv";
-constexpr const char *NovaGLLogPath = "sdmc:/3ds/legend-of-doom/novagl.log";
+constexpr const char *NovaLitePath = LOD3DS_APP_DIR "/nova-lite.csv";
+constexpr const char *NovaGLLogPath = LOD3DS_APP_DIR "/novagl.log";
 constexpr unsigned TelemetryFramesPerSegment = 720;
 
 constexpr uint32_t ShoulderButtonMask = (1u << 8) | (1u << 9); // R + L
@@ -1809,13 +1808,18 @@ void SetOverlayNotification(const char *message, uint64_t durationMilliseconds =
 void DrawDeveloperOverlay(unsigned char *framebuffer)
 {
 	OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight, OverlayInk);
-	OverlayText(framebuffer, 8, 7, "LEGEND OF DOOM", 1, OverlayIvory);
+	// Two header rows: name and build ID, then our version (a dev version can
+	// take ~25 characters) and the upstream port's version it is based on.
+	OverlayText(framebuffer, 8, 4, "LEGEND OF DOOM", 1, OverlayIvory);
 	char build[16] = {};
 	std::snprintf(build, sizeof(build), "%.12s", LOD3DS_BUILD_ID);
-	OverlayText(framebuffer, 188, 7, build, 1, OverlayIvory);
-	char version[16] = {};
-	std::snprintf(version, sizeof(version), "V%s", LOD3DS_PORT_VERSION);
-	OverlayText(framebuffer, 278, 7, version, 1, OverlayIvory);
+	OverlayText(framebuffer, 240, 4, build, 1, OverlayIvory);
+	char version[40] = {};
+	std::snprintf(version, sizeof(version), "V%s", LOD3DS_PORT_VERSION_LABEL);
+	OverlayText(framebuffer, 8, 17, version, 1, OverlayIvory);
+	char upstream[24] = {};
+	std::snprintf(upstream, sizeof(upstream), "UPSTREAM %s", LOD3DS_UPSTREAM_VERSION);
+	OverlayText(framebuffer, 312 - LoadingTextWidth(upstream, 1), 17, upstream, 1, OverlayIvory);
 	OverlayRect(framebuffer, 0, 29, BottomScreenWidth, 2, OverlayBlue);
 
 	const double frameMilliseconds = std::clamp(LastFrameMilliseconds, 0.0, 999.9);
@@ -4136,16 +4140,13 @@ void WriteDiagnosticDump(EDiagnosticDumpMode mode)
 	std::fprintf(manifest,
 		"execution=main thread, one-second arm delay, LCDs copied to RAM before progress UI, "
 		"screenshots persisted after progress UI\n");
-	std::fprintf(manifest, "port_version=%s\n", LOD3DS_PORT_VERSION);
+	std::fprintf(manifest, "port_version=%s\n", LOD3DS_PORT_VERSION_LABEL);
+	std::fprintf(manifest, "upstream_version=%s\n", LOD3DS_UPSTREAM_VERSION);
 	std::fprintf(manifest, "engine_version=%s\n", GetVersionString());
 	std::fprintf(manifest, "engine_git_hash=%s\n", GetGitHash());
 	std::fprintf(manifest, "engine_git_time=%s\n", GetGitTime());
 	std::fprintf(manifest, "compiler=%s\n", __VERSION__);
-#ifdef LOD3DS_BUILD_ID
 	std::fprintf(manifest, "build_id=%s\n", LOD3DS_BUILD_ID);
-#else
-	std::fprintf(manifest, "build_id=unavailable\n");
-#endif
 	std::fprintf(manifest, "sky_fallback.calls=%u\n",
 		SkyFallbackCalls.load(std::memory_order_relaxed));
 	std::fprintf(manifest, "sky_fallback.filled_pixels=%u\n",

@@ -5,7 +5,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#define UPDATE_REPOSITORY "EstebanPdN/legend-of-doom-3ds"
+#define UPDATE_REPOSITORY "tinaut1986/legend-of-doom-3ds"
 #define UPDATE_MAX_FILE (128u * 1024u * 1024u)
 typedef struct UpdateRelease {
   char version[48];

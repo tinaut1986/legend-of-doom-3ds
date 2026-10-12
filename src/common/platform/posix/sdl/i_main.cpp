@@ -52,18 +52,13 @@
 #include "common/platform/3ds/diagnostics_3ds.h"
 #include "common/platform/3ds/lifecycle_3ds.h"
 #include "common/platform/3ds/memory_3ds.h"
-
-#ifndef LOD3DS_BUILD_ID
-#define LOD3DS_BUILD_ID "untracked"
-#endif
+#include "common/platform/3ds/app_paths_3ds.h"
+#include "lod3ds_version.h"
 
 #ifndef LOD3DS_BUILD_PROFILE_NAME
 #define LOD3DS_BUILD_PROFILE_NAME "release"
 #endif
 
-#ifndef LOD3DS_PORT_VERSION
-#define LOD3DS_PORT_VERSION "dev"
-#endif
 
 extern "C"
 {
@@ -126,8 +121,8 @@ void I_DetectOS()
 {
 #ifdef __3DS__
 	Printf("OS: Nintendo 3DS\n");
-	Printf("[lod3ds] version=%s build_id=%s profile=%s\n",
-		LOD3DS_PORT_VERSION, LOD3DS_BUILD_ID, LOD3DS_BUILD_PROFILE_NAME);
+	Printf("[lod3ds] version=%s upstream=%s build_id=%s profile=%s\n",
+		LOD3DS_PORT_VERSION_LABEL, LOD3DS_UPSTREAM_VERSION, LOD3DS_BUILD_ID, LOD3DS_BUILD_PROFILE_NAME);
 	Printf("[lod3ds] memory app_free=%lu linear_free=%lu bytes\n",
 		static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION)),
 		static_cast<unsigned long>(linearSpaceFree()));
@@ -247,15 +242,15 @@ int main (int argc, char **argv)
 
 #ifdef __3DS__
 	const bool homebrewLaunch = envIsHomebrew();
-	static const char *const SdDataDirectory = "sdmc:/3ds/legend-of-doom/data/";
+	static const char *const SdDataDirectory = LOD3DS_APP_DIR "/data/";
 	static const char *const RomFsDataDirectory = "romfs:/data/";
-	static const char *const SdIWad = "sdmc:/3ds/legend-of-doom/data/freedoom2.wad";
+	static const char *const SdIWad = LOD3DS_APP_DIR "/data/freedoom2.wad";
 	static const char *const RomFsIWad = "romfs:/data/freedoom2.wad";
-	static const char *const SdMod = "sdmc:/3ds/legend-of-doom/data/LegendOfDoom.pk3";
+	static const char *const SdMod = LOD3DS_APP_DIR "/data/LegendOfDoom.pk3";
 	static const char *const RomFsMod = "romfs:/data/LegendOfDoom.pk3";
-	static const char *const SdBase = "sdmc:/3ds/legend-of-doom/data/gzdoom.pk3";
+	static const char *const SdBase = LOD3DS_APP_DIR "/data/gzdoom.pk3";
 	static const char *const RomFsBase = "romfs:/data/gzdoom.pk3";
-	static const char *const SdSupport = "sdmc:/3ds/legend-of-doom/data/game_support.pk3";
+	static const char *const SdSupport = LOD3DS_APP_DIR "/data/game_support.pk3";
 	static const char *const RomFsSupport = "romfs:/data/game_support.pk3";
 	const char *const DataDirectory = homebrewLaunch ? SdDataDirectory : RomFsDataDirectory;
 	const char *const IWadPath = homebrewLaunch ? SdIWad : RomFsIWad;
@@ -289,7 +284,7 @@ int main (int argc, char **argv)
 #ifdef LOD3DS_HARDWARE_DIAGNOSTIC
 	// Capture NovaGL's bounded first-draw diagnostics without requiring a
 	// debugger or spamming Azahar's UI. Release builds compile the probes out.
-	if (freopen("sdmc:/3ds/legend-of-doom/novagl.log", "w", stdout) != nullptr)
+	if (freopen(LOD3DS_APP_DIR "/novagl.log", "w", stdout) != nullptr)
 	{
 		setvbuf(stdout, nullptr, _IOLBF, 0);
 	}
@@ -499,7 +494,7 @@ int main (int argc, char **argv)
 	Args->AppendArg("+vid_fps");
 	Args->AppendArg("1");
 	Args->AppendArg("+logfile");
-	Args->AppendArg("sdmc:/3ds/legend-of-doom/boot.log");
+	Args->AppendArg(LOD3DS_APP_DIR "/boot.log");
 	// Exercise the actual world renderer in the same run. The prior title-only
 	// diagnostic could prove startup but could not distinguish a missing 2D
 	// title texture from a broken 3D scene.

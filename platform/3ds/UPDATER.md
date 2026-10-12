@@ -10,8 +10,8 @@ notes use the dimmed TITLEPIC artwork, independently of the idle lore page or
 paused scene, and wrap to the measured font width. The lower information and
 actions are centered between the fixed Update heading and Back button.
 
-Opening Update checks GitHub. The selected stable/experimental channel persists
-under `sdmc:/3ds/legend-of-doom/update/channel.txt`. A selects, B returns or
+Opening Update checks GitHub. The selected stable/beta channel persists
+under `sdmc:/3ds/Legend of Doom 3DS/update/channel.txt`. A selects, B returns or
 cancels a transfer, and the bottom screen supports touch. L/R pages through the changelog without leaving the update controls. Installation requires an explicit Yes; No is selected
 by default. Installation closes the game, so save progress first.
 
@@ -21,33 +21,41 @@ AM to overwrite the installed title. It never deletes that title first. HOME,
 sleep and menu cancellation are disabled during installation. Temporary
 downloads are removed after completion/failure. Saves and configuration are
 outside the CIA and are preserved. Errors are recorded in
-`sdmc:/3ds/legend-of-doom/update.log`.
+`sdmc:/3ds/Legend of Doom 3DS/update.log`.
 
 The 3DSX build displays `INSTALL THE CIA TO UPDATE`: replacing only its executable
 would leave its external engine/game data stale.
 
 ## Release compatibility
 
-The source is `EstebanPdN/legend-of-doom-3ds`, via GitHub's public releases API.
-Drafts are ignored. The highest numeric version in the selected channel is
-validated; an invalid newest asset is an error, not a fallback to an older build.
-Supported tags are `v1.0`, `v1.0.1` and `v1.0-E1` (the leading v is optional).
-Stable versions sort after experiments with the same base version. Equal or
-older versions cannot be installed.
+The source is `tinaut1986/legend-of-doom-3ds` (`UPDATE_REPOSITORY`), via GitHub's
+public releases API; this fork never reads EstebanPdN's releases. Drafts are
+ignored. Stable is GitHub's normal releases, Beta its pre-releases (tags on a
+`release/*` branch not yet merged into `main`; see `CLAUDE.md`, "Releases"). The
+highest version in the selected channel is validated; an invalid newest asset is an
+error, not a fallback to an older build.
 
-The CIA asset must have GitHub's SHA-256 digest and one of these names:
+Versions are this fork's `X.Y.Z` (tags `vX.Y.Z`). The installed build may also be
+`X.Y.Z-dev.N[.M]+hash` (a build off a release branch) or a beta (the channel is
+baked in, `LOD3DS_PORT_IS_BETA`); both sort below the plain `X.Y.Z`. A beta-channel
+tag is compared as `X.Y.Z-beta`, so a beta never offers its own page while the
+stable release of its number is newer. Upstream's `vX.Y` and `vX.Y-En` forms still
+parse. Equal or older versions cannot be installed. Betas and dev builds start on
+the Beta channel; stable builds on Stable.
 
-- `legend-of-doom-3ds-v1.0.cia`
-- `legend-of-doom-3ds-v1.0-hardware-hybrid-0123456789ab.cia`
-
-The version must match its tag; the latter suffix is a 12-digit hex build ID.
-The download URL must belong to that exact repository, tag and asset. Multiple
-matching CIA assets are rejected as ambiguous. The updater reads up to 100
-releases, limits metadata to 2 MiB and CIA files to 128 MiB.
+The CIA asset must have GitHub's SHA-256 digest and be named
+`legend-of-doom-3ds-vX.Y.Z.cia` (the release workflow publishes that name). The
+download URL must belong to that exact repository, tag and asset; the CIA's title
+ID must be this fork's `0x0004000005A2D100` (`LOD3DS_TITLE_ID`), never upstream's.
+The handheld changelog shows the release body's `<!-- lod-notes -->` block (from
+`docs/release-notes/<tag>.md`), or the `## Changelog` commit list when it is
+missing. The updater reads up to 100 releases, limits metadata to 2 MiB and CIA
+files to 128 MiB.
 
 ## Local verification
 
-Build the native Jansson 2.14 source with CMake, then run on macOS:
+Build the native Jansson 2.14 source with CMake, then run (macOS or Linux; the
+updater harness also needs the native libcurl headers):
 
 ```sh
 python3 platform/3ds/tests/run-update-tests.py --jansson-prefix /path/to/native/jansson --live-check
@@ -65,22 +73,18 @@ next to that executable before running the check.
 
 On a New 3DS, test Update from title and pause, both channels, B/Start/touch/L/R,
 no Wi-Fi, cancellation, and returning to gameplay. A channel without a public release displays
-`NO STABLE RELEASE YET` / `NO EXPERIMENTAL RELEASE`.
+`NO STABLE RELEASE YET` / `NO BETA RELEASE`.
 Installing a newer release must still be checked on hardware once a suitable
 release exists. Creating this build does not publish anything.
 
-The first local updater build used version 0.47. Install v0.8-E3 manually with
-FBI/QR: that older updater orders 0.47 above 0.8 and cannot migrate itself to
-this numbering. The 0.8-E series compares subsequent experiments numerically.
+Upstream's history (0.47, v0.8-E3, v1.0) describes EstebanPdN's app; this fork
+starts at 0.1.0 with its own title ID and folder, so it never updates or is updated
+by the upstream app.
 
-Version 1.0 is a stable release. Select Stable in v0.8-E3 to receive it; the
-experimental channel only lists experimental releases.
-
-The rebuilt v1.0 initializes the SSL service used by the 3DS mbedTLS entropy
+The updater initializes the SSL service used by the 3DS mbedTLS entropy
 callback, declares its CIA access/dependency, and closes it after curl cleanup.
 Network work runs one priority step above its caller (bounded at 0x18) so the
 Core 0 renderer cannot starve the TLS handshake. Connection setup allows 30
 seconds and release metadata allows 90 seconds. TLS verification remains on.
 Setup failures and curl errors are distinguished on screen, with details in
-update.log. Install the rebuilt v1.0 CIA through FBI to repair an existing copy;
-replacing a GitHub asset cannot repair the updater already on the console.
+update.log.

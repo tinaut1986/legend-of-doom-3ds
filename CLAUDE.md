@@ -62,7 +62,9 @@ Other local checkouts: `../zelda-tmc-3ds`, `../sm-3ds` and `../mzm`, the referen
   be enabled in the repository settings first; see PLAN P0.2).
 - Taking upstream changes: `git fetch upstream`, merge `upstream/main` into a topic
   branch cut from the active release branch, resolve, and bump
-  `platform/3ds/upstream_version.txt` (P0.1) to the upstream version merged. Never
+  `platform/3ds/upstream_version.txt` to the upstream version merged. Upstream still
+  writes to `sdmc:/3ds/legend-of-doom/` and checks title ID `0x5A2D0`: keep our
+  `app_paths_3ds.h` values in whatever it adds. Never
   rebase our history onto theirs.
 
 ### Branches
@@ -88,36 +90,42 @@ Other local checkouts: `../zelda-tmc-3ds`, `../sm-3ds` and `../mzm`, the referen
 Our own numbering, independent of upstream's: `vX.Y.Z`, starting at `v0.1.0`.
 Minor = milestone, patch = fix round. Ask before a minor bump; never infer one.
 
-- Upstream's version is a plain number in `platform/3ds/version.txt` (`1.0`), and its
-  tags have two components (`v0.31`, `v1.0`, `v1.1`) or an experiment suffix
-  (`v0.8-E3`). Those tags are in this repository too. **Only three-component tags
-  are ours**; never create another kind.
-- P0.1 replaces `version.txt` with a version derived from git, as in
-  `../zelda-tmc-3ds` (`platform/3ds/tools/version.sh`): an exact `vX.Y.Z` tag gives
-  `X.Y.Z`; anything on (or cut from) `release/vX.Y.Z` gives
+- Upstream's tags have two components (`v0.31`, `v1.0`, `v1.1`) or an experiment
+  suffix (`v0.8-E3`). Those tags are in this repository too. **Only three-component
+  tags are ours**; never create another kind.
+- The version is derived from git by `platform/3ds/tools/version.sh`: an exact
+  `vX.Y.Z` tag gives `X.Y.Z`; anything on (or cut from) `release/vX.Y.Z` gives
   `X.Y.Z-dev.<commits since main>[.<commits since the release branch>]+<hash>`.
-  Upstream's base moves to `platform/3ds/upstream_version.txt` and is shown next to ours.
-- This fork will install as **its own application** (P0.1): its own title ID
-  (upstream is `0x5A2D0`, `platform/3ds/cia/legend-of-doom-3ds.rsf`; the updater checks
-  it in `src/common/platform/3ds/update/updater.c`), name and data folder, so it never
-  touches the upstream app's `sdmc:/3ds/legend-of-doom/` and both can be installed
-  side by side.
+  Nothing to bump by hand. `LOD3DS_VERSION` overrides it (the release workflow does).
+- The upstream version this fork is based on is `platform/3ds/upstream_version.txt`,
+  shown next to ours (developer overlay, boot log, build manifest, dumps).
+- This fork installs as **its own application**: title ID `0x5A2D1`, product code
+  `CTR-P-LDOT` (`platform/3ds/cia/legend-of-doom-3ds.rsf`; upstream is `0x5A2D0`), data
+  folder `sdmc:/3ds/Legend of Doom 3DS/`. Both live in
+  `src/common/platform/3ds/app_paths_3ds.h` (`LOD3DS_APP_DIR`, `LOD3DS_TITLE_ID`, which
+  the updater checks); never hard-code the folder again. It never touches the upstream
+  app's `sdmc:/3ds/legend-of-doom/`, so both can be installed side by side. Only the
+  NovaGL diagnostic patches (`platform/3ds/patches/novagl-hardware-*.patch`, unused by
+  the shipped profiles) still name the upstream folder.
 
 ### Releases (installer on GitHub)
 
-Until P0.1 lands there is no release workflow: `.github/workflows/build-3ds.yml` only
-builds the `hardware-safe` profile on pushes to `main` and on PRs, and uploads
-artifacts. The target, as in `../zelda-tmc-3ds`:
-
-`.github/workflows/build-release.yml` builds the CIA on any `vX.Y.Z` tag push (and on
-manual dispatch) and publishes a GitHub Release with it and a QR code. The channel
-depends on whether `main` can reach the tagged commit:
+`.github/workflows/build-release.yml` builds the `hardware-hybrid` CIA on any `vX.Y.Z`
+tag push (and on manual dispatch) and publishes a GitHub Release with it
+(`legend-of-doom-3ds-vX.Y.Z.cia`, the only name the updater accepts), a QR code, the
+debug symbols, the build manifest and checksums. No 3DSX or SD zip: the updater
+installs CIAs only (the build still makes them locally). The channel depends on whether
+`main` can reach the tagged commit:
 
 | Built from | Channel |
 |---|---|
 | Tag on an unmerged `release/*` branch | `Beta` (pre-release) |
 | Tag on `main`, or on a commit merged into `main` | `Release` |
 | Manual dispatch on any branch | `Beta` |
+
+`.github/workflows/build-3ds.yml` (upstream's) only builds the `hardware-safe` profile
+and checks the packages, for pull requests and pushes to `main` and `release/**`; it
+publishes nothing.
 
 **First, for either path:** write `docs/release-notes/<tag>.md` on a topic branch, show it
 to the owner and merge it into the release branch **before** the tag exists. Do it unprompted
@@ -159,11 +167,12 @@ A **stable** release lists everything since the previous *stable* tag, betas inc
 
 ### The channel is baked into the binary
 
-The release workflow passes the channel (`beta` or `release`) to the build, which
-writes it into a generated header next to the version, so the updater knows whether
-the installed build is a beta: an installed beta is older than the stable release of
-its own number, and is never offered its own pre-release page. The exact names land
-with P0.1; document them here then.
+The workflow passes `LOD3DS_CHANNEL=beta|release` to `platform/3ds/build.sh` (local
+builds are `dev`). The generated `lod3ds_version.h` then carries `LOD3DS_PORT_IS_BETA`
+and `LOD3DS_PORT_VERSION_LABEL` ("X.Y.Z BETA"); `LOD3DS_PORT_VERSION` stays the plain
+number (user-agent, comparisons). The updater treats an installed beta as older than
+the stable release of its own number, and never offers a beta its own pre-release page.
+Betas and dev builds carry `LOD3DS_DEBUG_TOOLS=1`, stable releases `0`.
 
 ### After tagging
 
@@ -199,19 +208,46 @@ and `bannertool` are taken from `PATH`/`LOD3DS_TOOLS_ROOT` or downloaded pinned.
 
 ```sh
 export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM
-./platform/3ds/build.sh hardware-hybrid    # the renderer upstream's v1.0 ships
-./platform/3ds/build.sh                    # hardware-safe, the CPU-only recovery profile (CI)
-./platform/3ds/test-patches.sh && git diff --check   # what CI checks before building
-python3 platform/3ds/tests/run-update-tests.py ...   # updater host tests (UPDATER.md)
+./build_3ds.sh                                  # interactive menu (hardware-hybrid, debug)
+./build_3ds.sh --no-ftp                         # build only
+./build_3ds.sh --ftp 192.168.1.50               # build + upload to /cias/ on the console
+./build_3ds.sh --mode prod --no-ftp             # no debug tools, as a stable release
+./platform/3ds/build.sh hardware-hybrid         # the bare build, the profile releases ship
+./platform/3ds/build.sh                         # hardware-safe, the CPU-only recovery profile (CI)
+./platform/3ds/test-patches.sh && git diff --check          # what CI checks before building
+python3 -m unittest discover -s platform/3ds/tests -p 'test_*.py'   # contract tests
+python3 platform/3ds/tests/run-update-tests.py --jansson-prefix DIR # updater host tests (UPDATER.md)
 ```
 
-Outputs go to `build-3ds/dist/`: `.3dsx`, `.cia`, `-sd.zip`, `-debug-symbols.zip`,
-`BUILD-MANIFEST.txt`, `SHA256SUMS.txt`. The profiles are described in
-`platform/3ds/README.md`; `release` is a legacy NovaGL experiment despite its name.
+Outputs go to `build-3ds/dist/`: `legend-of-doom-3ds-v<VERSION>-<profile>-<build id>`
+`.3dsx`, `.cia`, `-sd.zip`, `-debug-symbols.zip`, plus `BUILD-MANIFEST.txt` and
+`SHA256SUMS.txt`. The profiles are described in `platform/3ds/README.md`; `release` is a
+legacy NovaGL experiment despite its name. The build ID is a hash of the source tree;
+it, the version and the channel live in the generated
+`build-3ds/game/generated/lod3ds_version.h`, so a new commit rebuilds only the few files
+that include it. `./build_3ds.sh` (`platform/3ds/tools/build_3ds.py`, from
+`../zelda-tmc-3ds`) can scan the LAN for the console's FTP server (port 5000) and upload
+the CIA as `cias/legend-of-doom-3ds-<version>.cia`; the last IP is kept in `.3ds_ftp_ip`
+(gitignored).
+
+On the owner's Linux machine (GCC 15, no `libsdl2-dev`, no sudo) the host tools that
+`build.sh` compiles first (ZMusic, GZDoom's `re2c`/`lemon`/`zipdir`) need two extras that
+CI's container does not: `CXXFLAGS="-include cstdint"` (GCC 15 is stricter than the
+pinned ZMusic) and `SDL2DIR=$HOME/.local/sdl2-host` (a static host SDL2 built from the
+2.32.10 source; rebuild it there if missing). Only the first configure reads them;
+delete `build-3ds/host-zmusic` / `build-3ds/host-gzdoom` to redo it.
+
+```sh
+SDL2DIR=$HOME/.local/sdl2-host CXXFLAGS="-include cstdint" ./platform/3ds/build.sh hardware-hybrid
+```
+
+The contract tests (`platform/3ds/tests/test_*.py`) assert strings in the source: when
+one fails after a deliberate change, update the test in the same commit.
 
 Diagnostics already in upstream (all builds): **L+R+A** quick capture, **L+R+X** full
-capture with memory, **L+R+Y** delete captures, into `sdmc:/3ds/legend-of-doom/dumps/`
-(`src/common/platform/3ds/diagnostics_3ds.cpp`); updater log in `update.log`.
+capture with memory, **L+R+Y** delete captures, into `sdmc:/3ds/Legend of Doom 3DS/dumps/`
+(`src/common/platform/3ds/diagnostics_3ds.cpp`); updater log in `update.log`. The
+developer overlay (OPTIONS) shows our version, the upstream one and the build ID.
 
 Test on hardware whenever performance is involved; Azahar is fine for logic but says
 nothing about real timings. Upstream supports only the New 3DS family; this fork's

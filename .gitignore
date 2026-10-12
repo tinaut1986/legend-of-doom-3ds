@@ -37,3 +37,6 @@ __pycache__/
 *.bnr
 *.icn
 SHA256SUMS.txt
+
+# Build assistant: the last console IP used for FTP uploads.
+/.3ds_ftp_ip

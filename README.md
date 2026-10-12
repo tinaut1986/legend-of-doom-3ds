@@ -2,8 +2,17 @@
 
 <img width="1672" height="941" alt="Legend of Doom 3DS" src="https://github.com/user-attachments/assets/a84919c8-ce45-4549-b2d3-89fdf45f2999" />
 
-[![Latest release](https://img.shields.io/github/v/release/EstebanPdN/legend-of-doom-3ds?label=latest%20release)](https://github.com/EstebanPdN/legend-of-doom-3ds/releases/latest)
-[![Build Nintendo 3DS packages](https://github.com/EstebanPdN/legend-of-doom-3ds/actions/workflows/build-3ds.yml/badge.svg)](https://github.com/EstebanPdN/legend-of-doom-3ds/actions/workflows/build-3ds.yml)
+[![Latest release](https://img.shields.io/github/v/release/tinaut1986/legend-of-doom-3ds?include_prereleases&label=latest%20release)](https://github.com/tinaut1986/legend-of-doom-3ds/releases)
+[![Build Nintendo 3DS packages](https://github.com/tinaut1986/legend-of-doom-3ds/actions/workflows/build-3ds.yml/badge.svg)](https://github.com/tinaut1986/legend-of-doom-3ds/actions/workflows/build-3ds.yml)
+
+> **This is tinaut1986's fork** of [EstebanPdN's port](https://github.com/EstebanPdN/legend-of-doom-3ds).
+> Its goal is the New 3DS and the Old 3DS/2DS, with stereoscopic 3D, at 60 fps on the
+> New 3DS (plan: [docs/PLAN.md](docs/PLAN.md)). It has its own versions (`v0.1.0` onwards),
+> releases on [this repository](https://github.com/tinaut1986/legend-of-doom-3ds/releases)
+> and installs as its own app next to the original one: title ID `0x5A2D1`, files in
+> `sdmc:/3ds/Legend of Doom 3DS/`. Report bugs of this fork
+> [here](https://github.com/tinaut1986/legend-of-doom-3ds/issues). The sections below still
+> describe the upstream v1.0 release where they link to it.
 
 Nintendo 3DS port of [Legend of Doom](https://github.com/emawind84/legend-of-doom), the first-person GZDoom conversion of the original *The Legend of Zelda* created by DeTwelve Games.
 
@@ -95,17 +104,17 @@ For 3DSX, download the complete matching ZIP and replace the executable and data
 
 ## Bug reports and community
 
-[Open a bug report](https://github.com/EstebanPdN/legend-of-doom-3ds/issues/new?template=bug_report.yml) with your version, console model, installation type and steps to reproduce the problem.
+For this fork, [open a bug report here](https://github.com/tinaut1986/legend-of-doom-3ds/issues/new?template=bug_report.yml) with your version, console model, installation type and steps to reproduce the problem.
 
 While the issue is visible, press **L + R + A** and attach the complete quick diagnostic folder from:
 
 ```text
-sdmc:/3ds/legend-of-doom/dumps/
+sdmc:/3ds/Legend of Doom 3DS/dumps/
 ```
 
-For updater errors, also attach `sdmc:/3ds/legend-of-doom/update.log`.
+For updater errors, also attach `sdmc:/3ds/Legend of Doom 3DS/update.log`. (The upstream app uses `sdmc:/3ds/legend-of-doom/` instead.)
 
-Join [Esteban's Forge on Discord](https://discord.gg/zy8BqH5ss) for updates, support and other Nintendo 3DS homebrew projects.
+For the original port, join [Esteban's Forge on Discord](https://discord.gg/zy8BqH5ss) for updates, support and other Nintendo 3DS homebrew projects.
 
 ## Building from source
 
