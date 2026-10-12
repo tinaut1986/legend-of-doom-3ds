@@ -475,10 +475,14 @@ if( CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS" )
 	list( REMOVE_ITEM PLAT_SDL_SOURCES common/platform/posix/sdl/st_start.cpp )
 	list( APPEND PLAT_SDL_SOURCES
 		common/platform/3ds/cache_3ds.cpp
+		common/platform/3ds/cia_install_3ds.c
+		common/platform/3ds/debug_link_3ds.cpp
 		common/platform/3ds/diagnostics_3ds.cpp
+		common/platform/3ds/ftp_server_3ds.c
 		common/platform/3ds/i_input_3ds.cpp
 		common/platform/3ds/lifecycle_3ds.cpp
 		common/platform/3ds/memory.cpp
+		common/platform/3ds/net_3ds.c
 		common/platform/3ds/update/updater.c
 		common/platform/3ds/update/update_manifest.c
 		common/platform/3ds/st_start.cpp )

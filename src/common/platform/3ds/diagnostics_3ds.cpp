@@ -2,6 +2,8 @@
 #include "cache_3ds.h"
 #include "update/updater.h"
 #include "app_paths_3ds.h"
+#include "cia_install_3ds.h"
+#include "ftp_server_3ds.h"
 #include "lod3ds_version.h"
 
 #include <3ds.h>
@@ -65,6 +67,9 @@ EXTERN_CVAR(Bool, crosshairon)
 
 CVAR(Bool, lod3ds_select_overlay, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 CVAR(Bool, lod3ds_map_collisions, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+// OPTIONS -> DEVELOPER -> FTP SERVER (debug builds): the in-game FTP server and remote control
+// (ftp_server_3ds.h, debug_link_3ds.h). Archived, so it comes back after a relaunch.
+CVAR(Bool, lod3ds_ftp_server, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 extern uint64_t LastCount;
 extern double LastFrameMilliseconds;
 
@@ -1868,8 +1873,23 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 		OverlayGreen);
 	OverlayText(framebuffer, 146, 145, isNew3DS ? "NEW 3DS 804MHZ" : "OLD 3DS",
 		1, OverlayIvory);
-	OverlayCenteredText(framebuffer, 8, 304, 158,
-		"QUICK DUMP EXCLUDES 136 MB MEMORY IMAGE", 1, OverlayIvory);
+	if (FtpServer_Running() || lod3ds_ftp_server)
+	{
+		char address[40] = {};
+		char ftp[64] = {};
+		bool connected = false;
+		FtpServer_Address(address, sizeof(address));
+		FtpServer_Stats(nullptr, nullptr, &connected);
+		std::snprintf(ftp, sizeof(ftp), "FTP %s%s%s", address,
+			FtpServer_InstallOnly() ? " INSTALL ONLY" : "", connected ? " LINKED" : "");
+		OverlayCenteredText(framebuffer, 8, 304, 158, ftp, 1,
+			FtpServer_Running() ? OverlayGreen : OverlayIvory);
+	}
+	else
+	{
+		OverlayCenteredText(framebuffer, 8, 304, 158,
+			"QUICK DUMP EXCLUDES 136 MB MEMORY IMAGE", 1, OverlayIvory);
+	}
 
 	struct FButton { int X; const char *Title; const char *Chord; };
 	static constexpr FButton Buttons[] = {
@@ -2706,6 +2726,17 @@ void ComposeNativeSaveLoadTop(unsigned char *pixels, const unsigned char *menuSo
 			savegameManager.SaveCommentString.GetChars(), OverlayIvory);
 }
 
+// While the FTP server receives an installer or installs it, a strip across the top screen
+// says so: an install over the running game never happens without a warning.
+void ComposeFtpNotice(unsigned char *pixels, int pitchBytes, int width, int height)
+{
+	const char *notice = FtpServer_Notice();
+	if (notice == nullptr) return;
+	NativeTopRect(pixels, pitchBytes, width, height, 0, 0, width, 13, OverlayBlue, 235u);
+	NativeTopText(pixels, pitchBytes, width, height,
+		(width - LoadingTextWidth(notice, 1)) / 2, 3, notice, OverlayIvory);
+}
+
 void ComposeNativeMenuFps(unsigned char *pixels, int pitchBytes, int width, int height)
 {
 	if (!vid_fps) return;
@@ -2744,6 +2775,7 @@ void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int 
 			pitchBytes, width, height, brightness);
 	}
 	ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+	ComposeFtpNotice(pixels, pitchBytes, width, height);
 }
 
 EBottomPresentation DesiredBottomPresentation()
@@ -4378,11 +4410,10 @@ void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 	int width, int height)
 {
-	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0 ||
-		gamestate != GS_LEVEL || menuactive != MENU_Off)
-	{
-		return;
-	}
+	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0) return;
+	// With a menu open, ComposeNativeMenuTop draws it over the restored canvas.
+	if (menuactive == MENU_Off) ComposeFtpNotice(pixels, pitchBytes, width, height);
+	if (gamestate != GS_LEVEL || menuactive != MENU_Off) return;
 
 	auto putPixel = [&](int x, int y, FOverlayColor color, unsigned alpha = 255u)
 	{
@@ -5066,4 +5097,79 @@ int I_3DSUpdateAction(int action)
 void I_3DSServiceUpdater()
 {
     if (Updater_ShouldClose() && !Updater_Busy()) I_3DSQuitWithoutSaving();
+}
+
+bool I_3DSSaveScreenShots(const char *topPath, const char *bottomPath)
+{
+	bool ok = true;
+	const struct { gfxScreen_t Screen; const char *Path; } shots[] = {
+		{ GFX_TOP, topPath }, { GFX_BOTTOM, bottomPath } };
+	for (const auto &shot : shots)
+	{
+		// The SD card's rename does not replace a file: drop the previous shot first.
+		std::remove(shot.Path);
+		FScreenSnapshot snapshot;
+		if (!CaptureScreenSnapshot(shot.Screen, snapshot) ||
+			!WriteFramebufferBmp(shot.Path, snapshot.Pixels, snapshot.Width,
+				snapshot.Height, snapshot.Format))
+		{
+			ok = false;
+		}
+	}
+	return ok;
+}
+
+namespace
+{
+// The console and its log only: a notify line would print over the game.
+void ConsoleLinkLog(const char *line)
+{
+	Printf(PRINT_LOG, "%s\n", line);
+}
+}
+
+void I_3DSServiceConsoleLink()
+{
+	FtpServer_Tick(ConsoleLinkLog);
+	if (FtpServer_TakeRelaunch())
+	{
+		// SITE INSTALL put a new build in place: jump into it, then close as on HOME -> close.
+		// A normal exit, so a setting changed just before (FTP SERVER itself) is kept.
+		ConsoleLinkLog("relaunching into the build just installed");
+		if (!CiaInstall_JumpToSelf()) ConsoleLinkLog("the jump into the new build was refused");
+		throw CExitEvent(0);
+	}
+#if LOD3DS_DEBUG_TOOLS
+	// On when the game last ran (or a start found no Wi-Fi): try again every ~2 s (input polls
+	// run at 35 Hz) until it serves or the option goes off.
+	static unsigned retry = 0;
+	if (lod3ds_ftp_server)
+	{
+		if (!FtpServer_Running() && (retry == 0 || ++retry >= 70) &&
+			(retry == 0 || osGetWifiStrength() > 0))
+		{
+			retry = 1;
+			FtpServer_Start();
+		}
+	}
+	else
+	{
+		retry = 0;
+		if (FtpServer_Running()) FtpServer_Stop();
+	}
+#else
+	// Stable builds: the install-only server, for the owner, when dev-ftp.txt is in the data
+	// folder (created over FTP while a debug build was installed). Checked once.
+	static bool checked = false;
+	if (!checked)
+	{
+		checked = true;
+		if (access(LOD3DS_APP_DIR "/dev-ftp.txt", F_OK) == 0) FtpServer_StartInstallOnly();
+	}
+#endif
+}
+
+void I_3DSStopConsoleLink()
+{
+	if (FtpServer_Running()) FtpServer_Stop();
 }

@@ -31,7 +31,7 @@ not on `main`): GitHub release with the CIA, QR, debug symbols, manifest and che
 
 | Branch | What | State |
 |---|---|---|
-| _(none open)_ | `chore/fork-setup` (workflow + P0.1) and `docs/release-notes-v0.1.0` merged into `release/v0.1.0` 2026-10-12: the owner installed the dev CIA on the New 3DS next to upstream's app, own folder, version and BETA channel as specified | |
+| `feat/console-link` | P1.4 + P1.5: in-game FTP server, install over FTP with relaunch, remote control (`lod-link.py`), from `../mzm` | Checked on the New 3DS 2026-10-13: FTP, `--install` + relaunch with the server back on, `state`, `press`, `stick`, `shot`, `cvar`. Not yet: `touch`, `console map`, updater with the server on |
 
 **Priority** (2026-10-12): P0.1 → P0.2 → P1 debug tools and console link → P0.3
 baseline → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D and P4 Old 3DS
@@ -144,8 +144,25 @@ Specs are written when the phase starts, from `../zelda-tmc-3ds` P1 (same IDs or
 - [ ] **P1.2** SD log (rotating, buffered/direct, settings and periodic perf lines).
 - [ ] **P1.3** Perf recorder (CSV per frame) + `tools/perf-csv/analyze.py`.
 - [ ] **P1.4** FTP server in the game; install a CIA over FTP and relaunch.
+  *Spec:* `../mzm`'s server (one client, passive, SD root, login in
+  `ftp_credentials_3ds.h`) behind OPTIONS -> DEVELOPER -> FTP SERVER (archived cvar
+  `lod3ds_ftp_server`, debug builds), retrying while there is no Wi-Fi; `SITE INSTALL`
+  installs a CIA of this title over the running game and jumps into it, with a warning
+  strip on the top screen; the socket service shared with the updater (`net_3ds.c`);
+  stable builds only an install-only server when `dev-ftp.txt` exists;
+  `./build_3ds.sh --install`.
+  *Done when:* on the New 3DS, FileZilla/curl list and fetch the data folder while the
+  game runs, and `./build_3ds.sh --install` replaces the running build, which comes back
+  with the server on; the updater still checks for updates with the server on.
 - [ ] **P1.5** Remote link (keys, touch, screenshot, state, memory by symbol) for
   Claude; `CLAUDE.md` "The console in the loop" written when it lands.
+  *Spec:* `SITE` commands of `debug_link_3ds.h`: KEYS, STICK (Circle Pad / C-Stick),
+  TOUCH, SHOT, DUMP, STATE (tic, game state, menu and item, map, player, fps), CONSOLE
+  (GZDoom console command), CVAR, PEEK/POKE; buttons and taps reach the game as SDL
+  events, sticks through the joystick poll; client `platform/3ds/tools/lod-link.py`.
+  *Done when:* from the PC, `lod-link.py` opens the menu and walks it with `press`,
+  moves the player with `stick`, warps with `console map`, and `shot` returns both
+  screens as they look on the console.
 
 ## Phase 2: GPU world renderer, 60 fps on New 3DS
 
@@ -244,3 +261,12 @@ _Empty until P0.3._
   published by the release workflow; the release branch renamed to `release/v0.1.1`.
   P0.1 is done once the console's updater (BETA channel) lists `v0.1.0`.
 - **2026-10-12** Release-notes marker `<!-- lod-notes -->` (TMC uses `tmc-notes`).
+- **2026-10-13** Owner moved P1.4/P1.5 (console link) ahead of the menu/HUD look work,
+  so later UI work can be checked from the PC. Ported from `../mzm` (its server has the
+  login and the install-only mode). Differences: the FTP thread runs one priority step
+  *above* the game thread on core 0, as the updater's worker does (GZDoom's main thread
+  stays runnable between frames and starved lower threads); remote buttons and taps are
+  pushed as SDL events and sticks overridden in the joystick poll, instead of OR-ing HID
+  masks, because input reaches GZDoom through SDL; no save states (GZDoom saves through
+  `SITE CONSOLE save/load`), and CONSOLE/CVAR added; the relaunch after `SITE INSTALL`
+  exits normally (config saved) so FTP SERVER stays on.

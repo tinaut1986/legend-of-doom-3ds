@@ -42,7 +42,7 @@ issues or specs.
 | Path | Origin | Notes |
 |---|---|---|
 | `src/`, `libraries/`, `wadsrc*/`, `tools/`, `specs/`, `fm_banks/`, `soundfont/` | GZDoom 4.7.1 (`LOD3DS_GZDOOM_BASE_REV` in `platform/3ds/dependencies.sh`) | The engine. Edited in place where the port needs it, guarded for 3DS. |
-| `src/common/platform/3ds/` | EstebanPdN, now ours | The 3DS platform layer: input, lifecycle, diagnostics (L+R+A/X/Y), bottom screen, the SoftPoly → PICA200 presenter, and the CIA updater (`update/`). |
+| `src/common/platform/3ds/` | EstebanPdN, now ours | The 3DS platform layer: input, lifecycle, diagnostics (L+R+A/X/Y), bottom screen, the SoftPoly → PICA200 presenter, the CIA updater (`update/`), and the console link (`ftp_server_3ds`, `debug_link_3ds`, `cia_install_3ds`, `net_3ds`, from `../mzm`). |
 | `platform/3ds/` | EstebanPdN, now ours | Build (`build.sh` and its profiles), pinned dependencies (`dependencies.sh`), patches for the fetched libraries (`patches/`), CIA metadata (`cia/`), assets, romfs, host tests (`tests/`) and scripts (`tools/`). |
 | Fetched at build time | SDL2, ZMusic, minimp3, OpenAL Soft/NDSP, NovaGL, Legend of Doom (`emawind84/legend-of-doom`), Freedoom | Pinned by revision/checksum in `dependencies.sh`. Change them through a patch in `platform/3ds/patches/`, never in the fetched checkout. |
 
@@ -212,6 +212,7 @@ export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM
 ./build_3ds.sh                                  # interactive menu (hardware-hybrid, debug)
 ./build_3ds.sh --no-ftp                         # build only
 ./build_3ds.sh --ftp 192.168.1.50               # build + upload to /cias/ on the console
+./build_3ds.sh --install 192.168.1.50           # build + install over the running game + relaunch
 ./build_3ds.sh --mode prod --no-ftp             # no debug tools, as a stable release
 ./platform/3ds/build.sh hardware-hybrid         # the bare build, the profile releases ship
 ./platform/3ds/build.sh                         # hardware-safe, the CPU-only recovery profile (CI)
@@ -257,6 +258,31 @@ and a 2DS to test on.
 
 ## The console in the loop (for Claude)
 
-Not available yet. PLAN Phase 1 brings `../zelda-tmc-3ds`'s FTP server, install over
-FTP with relaunch, and the remote link (`tools/tmc-link/`) to this port; document them
-here when they land. Until then the owner installs builds and sends back dumps.
+A debug build (`LOD3DS_DEBUG_TOOLS=1`) running on the owner's console can be reached from
+this machine (same LAN, the IP the build assistant saved in `.3ds_ftp_ip`) once
+**OPTIONS -> DEVELOPER -> FTP SERVER** is on; it comes back by itself after a relaunch.
+Nothing needs FBI or closing the game:
+
+```sh
+./build_3ds.sh --install <ip>                   # build, upload, install over the running game, relaunch
+curl -u lod3ds:NXv7Of1lx5kmlidg "ftp://<ip>:5000/3ds/Legend%20of%20Doom%203DS/"   # list / fetch files
+platform/3ds/tools/lod-link.py wait && platform/3ds/tools/lod-link.py run SCRIPT  # drive the game
+```
+
+**The FTP login** (debug builds and the install-only server below): user `lod3ds`, password
+`NXv7Of1lx5kmlidg`, defined in `src/common/platform/3ds/ftp_credentials_3ds.h` (the tools read
+it from there; keep both in step). The password is in the repository and the binary: it keeps
+an accidental client out, it is not a secret.
+
+**Stable builds** have no FTP unless `dev-ftp.txt` exists in `/3ds/Legend of Doom 3DS/` (the
+owner creates it once, over FTP, while a debug build is installed): then they start an
+install-only server (only `update/`, no remote control), enough for `--install`. Players never
+see it; do not put it in the release notes.
+
+`platform/3ds/tools/lod-link.py` presses buttons, holds the sticks, taps, takes screenshots of
+both screens, runs GZDoom console commands (`map`, `give`, `save`, `load`...), reads and sets
+cvars and reads state and memory (`platform/3ds/README.md`, "Console link"; `--help`). Say
+before driving the game or installing while the owner is playing: an install loses unsaved
+progress. If the connection is refused, ask for the address the developer overlay shows (DEVELOPER ->
+OVERLAY WITH SELECT on, then SELECT in a level: STATUS box); do not scan the network without need. The first build with the server
+arrives the old way (FBI / ftpd).

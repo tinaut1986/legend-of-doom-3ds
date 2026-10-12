@@ -6,11 +6,14 @@ and ../mzm). Runs non-interactively from flags, or shows an arrow-key menu when
 started from a terminal with no flags. It drives platform/3ds/build.sh with the
 published profile (hardware-hybrid) unless told otherwise; the upload goes to
 cias/legend-of-doom-3ds-<VERSION>.cia on the console's FTP server (ftpd or FBI);
-install it from there with FBI.
+install it from there with FBI. --install instead sends it to the game's own FTP
+server (debug builds: OPTIONS -> DEVELOPER -> FTP SERVER), which installs it over
+the running game and relaunches into it.
 """
 
 import argparse
 import datetime
+import ftplib
 import os
 import re
 import shutil
@@ -37,6 +40,8 @@ DIST_DIR = os.path.join(BUILD_ROOT, "dist")
 MANIFEST = os.path.join(DIST_DIR, "BUILD-MANIFEST.txt")
 PROFILES = ["hardware-hybrid", "hardware-safe", "release", "hardware-candidate", "hardware-diagnostic"]
 TITLE = "Legend of Doom 3DS - build assistant"
+CREDENTIALS_H = os.path.join(ROOT, "src", "common", "platform", "3ds", "ftp_credentials_3ds.h")
+APP_PATHS_H = os.path.join(ROOT, "src", "common", "platform", "3ds", "app_paths_3ds.h")
 
 RESET = "\033[0m"
 BOLD = "\033[1m"
@@ -259,6 +264,48 @@ def report_artifact(cia, send_ftp, ftp_host, ftp_port, remote_name):
         print(f"  {BOLD}Sent to:{RESET}   ftp://{ftp_host}:{ftp_port}/cias/{remote_name}")
 
 
+def ftp_login():
+    """(user, password) of the game's own FTP server (src/common/platform/3ds/ftp_credentials_3ds.h)."""
+    with open(CREDENTIALS_H, "r", encoding="utf-8") as f:
+        text = f.read()
+    return tuple(re.search(r'#define FTP_%s "([^"]*)"' % k, text).group(1) for k in ("USER", "PASS"))
+
+
+def install_sd_path():
+    """Where --install leaves the CIA on the SD card: <data folder>/update/dev.cia."""
+    with open(APP_PATHS_H, "r", encoding="utf-8") as f:
+        folder = re.search(r'#define LOD3DS_APP_SD_PATH "([^"]*)"', f.read()).group(1)
+    return folder + "/update", folder + "/update/dev.cia"
+
+
+def install_into_running_game(cia, host, port):
+    """Uploads the CIA to the game's own FTP server and sends SITE INSTALL: the game installs it
+    over itself and relaunches into it. Returns 0 on success."""
+    folder, path = install_sd_path()
+    try:
+        ftp = ftplib.FTP()
+        ftp.connect(host, port, timeout=30)
+        ftp.login(*ftp_login())
+        try:
+            ftp.mkd(folder)
+        except ftplib.error_perm:
+            pass  # already there
+        with open(cia, "rb") as f:
+            ftp.storbinary("STOR " + path, f, blocksize=64 * 1024)
+        ftp.sock.settimeout(300)  # the install itself takes a while
+        reply = ftp.sendcmd("SITE INSTALL " + path)
+        print(f"      {DIM}{reply}{RESET}")
+        try:
+            ftp.close()
+        except OSError:
+            pass
+        return 0
+    except (OSError, EOFError, ftplib.Error) as e:
+        print(f"\n{BOLD}{RED}✗ Install over the running game failed: {e}{RESET}")
+        print(f"{DIM}Is a debug build running with OPTIONS -> DEVELOPER -> FTP SERVER on?{RESET}")
+        return 1
+
+
 def run_step(cmd, env, verbose, what):
     """Run one build step. Returns (returncode, captured output)."""
     if verbose:
@@ -277,7 +324,7 @@ def run_step(cmd, env, verbose, what):
 
 
 def run_build(debug=True, send_ftp=False, ftp_host="", ftp_port=5000, clean=False, dry_run=False, jobs=None,
-              verbose=False, profile="hardware-hybrid"):
+              verbose=False, profile="hardware-hybrid", install=False):
     jobs = jobs or os.cpu_count() or 4
 
     print(f"\n{BOLD}{CYAN}=================================================={RESET}")
@@ -286,7 +333,8 @@ def run_build(debug=True, send_ftp=False, ftp_host="", ftp_port=5000, clean=Fals
     print(f"  {BOLD}Mode:{RESET}   " + (f"{GREEN}debug (LOD3DS_DEBUG_TOOLS=1){RESET}" if debug else "production (LOD3DS_DEBUG_TOOLS=0)"))
     print(f"  {BOLD}Profile:{RESET} {profile}")
     print(f"  {BOLD}Clean:{RESET}  {'yes (build-3ds/game removed)' if clean else 'no (incremental)'}")
-    print(f"  {BOLD}FTP:{RESET}    " + (f"{YELLOW}yes ➔ {ftp_host}:{ftp_port}{RESET}" if send_ftp else "no (local CIA only)"))
+    print(f"  {BOLD}FTP:{RESET}    " + (f"{YELLOW}install over the running game ➔ {ftp_host}:{ftp_port}{RESET}" if install
+                                      else f"{YELLOW}yes ➔ {ftp_host}:{ftp_port}{RESET}" if send_ftp else "no (local CIA only)"))
     print(f"  {BOLD}Jobs:{RESET}   {jobs}")
     print(f"  {BOLD}Output:{RESET} {'verbose' if verbose else 'errors only (-v for everything)'}")
     print(f"{BOLD}{CYAN}=================================================={RESET}\n")
@@ -303,7 +351,7 @@ def run_build(debug=True, send_ftp=False, ftp_host="", ftp_port=5000, clean=Fals
     if clean:
         steps.append(("Cleaning (build-3ds/game)", ["rm", "-rf", GAME_DIR]))
     steps.append(("Building the CIA", ["bash", BUILD_SH, profile]))
-    if send_ftp:
+    if send_ftp and not install:
         # The CIA's path is only known once the build has written its manifest.
         steps.append((f"Sending to {ftp_host}:{ftp_port}", ["curl", "--ftp-create-dirs", "-T", cia_path,
                       f"ftp://{ftp_host}:{ftp_port}/cias/{remote_name}"]))
@@ -319,10 +367,21 @@ def run_build(debug=True, send_ftp=False, ftp_host="", ftp_port=5000, clean=Fals
         if rc != 0:
             return rc
 
+    if install:
+        print(f"{BOLD}{CYAN}[{len(steps) + 1}/{len(steps) + 1}]{RESET} Installing over the running game at {ftp_host}:{ftp_port}...")
+        if dry_run:
+            print(f"      {DIM}STOR {install_sd_path()[1]} + SITE INSTALL{RESET}")
+        elif install_into_running_game(cia_path(), ftp_host, ftp_port) != 0:
+            return 1
+
     if dry_run:
         print(f"\n{GREEN}[dry run] nothing was executed.{RESET}")
         return 0
 
+    if install:
+        print(f"\n{BOLD}{GREEN}✓ Built, installed on {ftp_host} and relaunching.{RESET}")
+        report_artifact(cia_path(), False, ftp_host, ftp_port, remote_name)
+        return 0
     if send_ftp:
         print(f"\n{BOLD}{GREEN}✓ Built and uploaded to {ftp_host}:{ftp_port}.{RESET}")
     else:
@@ -438,6 +497,7 @@ def main():
   ./build_3ds.sh --ftp                    # upload to the last IP used
   ./build_3ds.sh --ftp 192.168.1.55:5000 --clean
   ./build_3ds.sh --mode prod --no-ftp     # what a release build is (no debug tools)
+  ./build_3ds.sh --install 192.168.1.55   # build, install over the running game, relaunch
 """)
     parser.add_argument("-m", "--mode", choices=["debug", "test", "prod", "production", "release"],
                         help="debug/test = DEBUG_TOOLS=1 (default), prod/production/release = DEBUG_TOOLS=0.")
@@ -447,6 +507,9 @@ def main():
                         help="Upload the CIA to the console's FTP server (default: last IP used).")
     parser.add_argument("--ip", metavar="IP", help="Console IP for the FTP upload.")
     parser.add_argument("-p", "--port", type=int, default=5000, help="FTP port (default 5000).")
+    parser.add_argument("--install", nargs="?", const="true", default=None, metavar="IP[:PORT]",
+                        help="Install over the running game through its own FTP server (debug builds, "
+                             "OPTIONS -> DEVELOPER -> FTP SERVER) and relaunch it (default: last IP used).")
     parser.add_argument("--no-ftp", action="store_true", help="Build only, no menu.")
     parser.add_argument("-c", "--clean", action="store_true", help="Delete build-3ds/game first.")
     parser.add_argument("-j", "--jobs", type=int, default=None, help="Parallel build jobs.")
@@ -456,8 +519,8 @@ def main():
     args = parser.parse_args()
 
     interactive = args.interactive or (
-        args.mode is None and args.ftp is None and args.ip is None and not args.no_ftp and not args.clean
-        and sys.stdin.isatty())
+        args.mode is None and args.ftp is None and args.ip is None and args.install is None and not args.no_ftp
+        and not args.clean and sys.stdin.isatty())
     debug = args.mode in (None, "debug", "test")
 
     if interactive:
@@ -468,6 +531,8 @@ def main():
         ])
         debug = mode_idx == 0
         ftp_idx = interactive_select("Send the CIA to the 3DS over FTP?", [
+            ("Install over the running game",
+             "Debug build already running with OPTIONS -> DEVELOPER -> FTP SERVER on: installs and relaunches."),
             ("Yes, find the 3DS on the network",
              "Scans the local network for FTP servers (ftpd / FBI) and lets you pick one."),
             ("Yes, enter the 3DS IP by hand",
@@ -475,9 +540,10 @@ def main():
             ("No, only build the CIA", "Leaves it in build-3ds/dist/"),
         ])
         ftp_host, ftp_port = "", args.port
-        if ftp_idx == 0:
+        install = ftp_idx == 0
+        if ftp_idx in (0, 1):
             ftp_host, ftp_port = detect_ftp_host_interactive(args.port)
-        elif ftp_idx == 1:
+        elif ftp_idx == 2:
             ftp_host, ftp_port = prompt_ftp_host_manual(load_last_ip(), args.port)
 
         clean_idx = interactive_select("Clean build?", [
@@ -486,10 +552,15 @@ def main():
         ])
         return run_build(debug=debug, send_ftp=bool(ftp_host), ftp_host=ftp_host, ftp_port=ftp_port,
                          clean=clean_idx == 1, dry_run=args.dry_run, jobs=args.jobs, verbose=args.verbose,
-                         profile=args.profile)
+                         profile=args.profile, install=install and bool(ftp_host))
 
-    send_ftp = args.ftp is not None or args.ip is not None
-    ftp_host, ftp_port = parse_ftp_argument(args.ftp, explicit_ip=args.ip, default_port=args.port)
+    install = args.install is not None
+    if install and not debug:
+        print(f"{RED}--install needs a debug build: the game's FTP server is a debug tool.{RESET}")
+        return 1
+    send_ftp = args.ftp is not None or args.ip is not None or install
+    ftp_host, ftp_port = parse_ftp_argument(args.install if install else args.ftp, explicit_ip=args.ip,
+                                            default_port=args.port)
     if send_ftp and not ftp_host:
         ftp_host = load_last_ip()
         if ftp_host.endswith("."):
@@ -500,7 +571,8 @@ def main():
         save_last_ip(ftp_host)
 
     return run_build(debug=debug, send_ftp=send_ftp, ftp_host=ftp_host, ftp_port=ftp_port, clean=args.clean,
-                     dry_run=args.dry_run, jobs=args.jobs, verbose=args.verbose, profile=args.profile)
+                     dry_run=args.dry_run, jobs=args.jobs, verbose=args.verbose, profile=args.profile,
+                     install=install)
 
 
 if __name__ == "__main__":
