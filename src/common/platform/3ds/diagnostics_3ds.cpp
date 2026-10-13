@@ -30,6 +30,8 @@
 
 #include "gitinfo.h"
 #include "engineerrors.h"
+#include "filesystem.h"
+#include "gstrings.h"
 #include "c_dispatch.h"
 #include "c_cvars.h"
 #include "common/fonts/v_font.h"
@@ -2169,6 +2171,7 @@ bool DrawNativeSaveLoadBottomFrame(unsigned char *framebuffer,
 }
 
 #include "update/menu_view.inc"
+#include "native_menu_3ds.inc"
 
 void DrawNativeMenuBottomFrame(unsigned char *framebuffer,
 	const unsigned char *menuPixels, const unsigned char *basePixels,
@@ -2176,6 +2179,7 @@ void DrawNativeMenuBottomFrame(unsigned char *framebuffer,
 {
 	const unsigned brightness = NativeMenuCurrentBrightness();
 	OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight, OverlayInk);
+	NativeMenuDrawnHere = false;
 	NativeMenuTransformValid = false;
 	NativeMenuTouchRowCount = 0;
 	NativeMenuCustomList = false;
@@ -4379,6 +4383,71 @@ void WriteDiagnosticDump(EDiagnosticDumpMode mode)
 }
 }
 
+bool I_3DSNativeMenuOwnsFrame()
+{
+	return NativeMenuSupported();
+}
+
+bool I_3DSNativeMenuFrozen()
+{
+	if (!NativeMenuSupported())
+	{
+		if (!NativeMenuFrozenTop.empty()) ReleaseNativeMenuFreeze();
+		return false;
+	}
+	return !NativeMenuFrozenTop.empty();
+}
+
+void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, int height)
+{
+	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0) return;
+	const size_t bytes = static_cast<size_t>(pitchBytes) * static_cast<size_t>(height);
+	if (!NativeMenuFrozenTop.empty() && NativeMenuFrozenWidth == width &&
+		NativeMenuFrozenHeight == height && NativeMenuFrozenPitch == pitchBytes)
+	{
+		std::memcpy(pixels, NativeMenuFrozenTop.data(), bytes);
+	}
+	else
+	{
+		// The first frame of the menu: the game (or title) as it was, dimmed, kept for the
+		// frames that follow, which D_Display does not render (I_3DSNativeMenuFrozen).
+		const unsigned brightness = NativeMenuCurrentBrightness();
+		if (brightness != 255u)
+		{
+			for (int y = 0; y < height; ++y)
+			{
+				unsigned char *row = pixels + static_cast<size_t>(y) * pitchBytes;
+				for (int x = 0; x < width * 4; x += 4)
+				{
+					row[x + 0] = NativeMenuDimChannel(row[x + 0], brightness);
+					row[x + 1] = NativeMenuDimChannel(row[x + 1], brightness);
+					row[x + 2] = NativeMenuDimChannel(row[x + 2], brightness);
+				}
+			}
+		}
+		NativeMenuFrozenTop.assign(pixels, pixels + bytes);
+		NativeMenuFrozenWidth = width;
+		NativeMenuFrozenHeight = height;
+		NativeMenuFrozenPitch = pitchBytes;
+	}
+
+	u16 physicalWidth = 0;
+	u16 physicalHeight = 0;
+	unsigned char *bottom = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &physicalWidth, &physicalHeight);
+	if (bottom != nullptr && physicalWidth == BottomScreenHeight &&
+		physicalHeight == BottomScreenWidth && DrawNativeMenu(bottom))
+	{
+		ExpireOverlayNotification(osGetTime());
+		DrawBottomToast(bottom);
+		I_3DSCleanDataCache(bottom, BottomScreenWidth * BottomScreenHeight * 4u);
+		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		BottomPresentation = EBottomPresentation::NativeMenu;
+		OverlayLastDrawMilliseconds = osGetTime();
+	}
+	DrawNativeMenuTop(pixels, pitchBytes, width, height);
+	ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+}
+
 bool I_3DSNativeMenuVisible()
 {
 	return !DiagnosticProgressActive && menuactive != MENU_Off && CurrentMenu != nullptr;
@@ -4898,6 +4967,7 @@ bool I_3DSDiagnosticTouch(float x, float y)
         }
 
 		const int touchY = static_cast<int>(y * BottomScreenHeight);
+		if (NativeMenuTouch(static_cast<int>(x * BottomScreenWidth), touchY)) return true;
 		if (NativeMenuChoiceDialog)
 		{
 			const int touchX = static_cast<int>(x * BottomScreenWidth);

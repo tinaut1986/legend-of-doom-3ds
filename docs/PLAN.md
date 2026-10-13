@@ -31,7 +31,8 @@ not on `main`): GitHub release with the CIA, QR, debug symbols, manifest and che
 
 | Branch | What | State |
 |---|---|---|
-| _(none open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch`, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
+| `feat/native-menus` | U1: main, pause, skill, OPTIONS in tabs, save/load and yes/no dialogs drawn natively on the touch screen with the NES font; top screen frozen while a native menu is open | On the New 3DS 2026-10-13: pause menu 35 fps (tic-bound, ~5.5 ms of work; 9.4 before); owner tried tabs and touch, asked for half-cell sliders and native save/load (in the last build, being tried) |
+| _(earlier)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch`, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
 **Priority** (2026-10-13): P1 debug tools and console link → U1 menus → U2 2D and
 bottom screen on the GPU → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D
@@ -194,6 +195,14 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   other overlays at the LCD's native resolution whatever the render scale.
   *Done when:* recordings show the title's 70 ms and the bottom map's 34 ms gone, and the
   FPS counter is the same size in gameplay and menus.
+
+- [ ] **U3** Language option: English and Spanish (castellano), the interface only.
+  *Spec:* owner 2026-10-13: an option to pick the language, everything translated; for
+  now only what the port draws (menus, options, dialogs, toasts, hints, the bottom
+  screen, the updater), not the game's own text in the Legend of Doom pk3. Spanish
+  letters the NES font lacks (Á É Í Ó Ú Ñ Ü ¿ ¡) drawn in its 8x8 style.
+  *Done when:* the owner switches the language on the console and finds no English left
+  in the interface in Spanish (and none Spanish in English).
 
 ## Phase 2: GPU world renderer, 60 fps on New 3DS
 

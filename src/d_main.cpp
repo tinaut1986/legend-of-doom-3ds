@@ -1178,6 +1178,15 @@ void D_Display ()
 	R_UpdateSky(screen->FrameTime);
 	screen->BeginFrame();
 	twod->ClearClipRect();
+#ifdef __3DS__
+	// A native menu over a frozen top screen (PLAN U1): nothing to render, only present.
+	if (wipe == nullptr && I_3DSNativeMenuFrozen())
+	{
+		twod->Begin(screen->GetWidth(), screen->GetHeight());
+		End2DAndUpdate();
+		return;
+	}
+#endif
 	if ((gamestate == GS_LEVEL || gamestate == GS_TITLELEVEL) && gametic != 0)
 	{
 		// [ZZ] execute event hook that we just started the frame
@@ -1257,9 +1266,14 @@ void D_Display ()
 				D_PageDrawer();
 				C_DrawConsole ();
 				#ifdef __3DS__
-				if (I_3DSNativeMenuVisible()) screen->CaptureNativeMenuBase();
-				#endif
+				if (!I_3DSNativeMenuOwnsFrame())
+				{
+					if (I_3DSNativeMenuVisible()) screen->CaptureNativeMenuBase();
+					M_Drawer ();
+				}
+				#else
 				M_Drawer ();
+				#endif
 				End2DAndUpdate ();
 				return;
 				
@@ -1344,9 +1358,14 @@ void D_Display ()
 		// draw ZScript UI stuff
 		C_DrawConsole ();	// draw console
 		#ifdef __3DS__
-		if (I_3DSNativeMenuVisible()) screen->CaptureNativeMenuBase();
-		#endif
+		if (!I_3DSNativeMenuOwnsFrame())
+		{
+			if (I_3DSNativeMenuVisible()) screen->CaptureNativeMenuBase();
+			M_Drawer ();			// menu is drawn even on top of everything
+		}
+		#else
 		M_Drawer ();			// menu is drawn even on top of everything
+		#endif
 		if (!hud_toggled)
 			FStat::PrintStat (twod);
 		End2DAndUpdate ();

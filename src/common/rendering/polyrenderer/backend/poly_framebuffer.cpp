@@ -223,6 +223,14 @@ void PolyFrameBuffer::Update()
 			F3DSPerfScope perfRaster(E3DSPerfPart::RasterWait);
 			DrawerThreads::WaitForWorkers();
 		}
+		if (I_3DSNativeMenuOwnsFrame())
+		{
+			F3DSPerfScope perfCompose(E3DSPerfPart::Compose);
+			I_3DSPresentNativeMenu(static_cast<unsigned char *>(mCanvas->GetPixels()),
+				mCanvas->GetPitch() * pixelsize, w, h);
+			mNativeMenuBase.clear();
+		}
+		else
 		{
 			F3DSPerfScope perfCompose(E3DSPerfPart::Compose);
 			I_3DSComposeGameplayFrame(

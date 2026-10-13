@@ -222,7 +222,7 @@ index c7c6d33..9ddcbc3 100644
 +	Linespacing 16
 +
 +    TextItem "NEW GAME", "n", "PlayerclassMenu"
-+    TextItem "OPTIONS", "o", "LegendOptionsMenu", 0
++    TextItem "OPTIONS", "o", "LegendDisplayOptions", 0
 +    TextItem "LOAD GAME", "l", "LoadGameMenu", 0
 +    TextItem "SAVE GAME", "s", "SaveGameMenu", 0
 +    TextItem "UPDATE", "u", "LegendUpdateMenu", 0
@@ -237,7 +237,7 @@ index c7c6d33..9ddcbc3 100644
 +
 +    Resume "RESUME GAME", "r", "None"
 +    TextItem "NEW GAME", "n", "PlayerclassMenu"
-+    TextItem "OPTIONS", "o", "LegendOptionsMenu", 0
++    TextItem "OPTIONS", "o", "LegendDisplayOptions", 0
 +    TextItem "LOAD GAME", "l", "LoadGameMenu", 0
 +    TextItem "SAVE GAME", "s", "SaveGameMenu", 0
 +    TextItem "UPDATE", "u", "LegendUpdateMenu", 0
@@ -450,7 +450,7 @@ new file mode 100644
 index 0000000..5364849
 --- /dev/null
 +++ b/actors/LegendPauseMenu.zs
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,170 @@
 +class ListMenuItemResume : ListMenuItemTextItem
 +{
 +    override bool Activate()
@@ -470,6 +470,43 @@ index 0000000..5364849
 +    override int GetSplitLabelLeft() { return screen.GetWidth() * 24 / 100; }
 +    override int GetSplitValueLeft() { return screen.GetWidth() * 55 / 100; }
 +    override int GetSplitValueRight() { return screen.GetWidth() * 76 / 100; }
++
++    // OPTIONS is one screen with tabs (PLAN U1): L and R move between these four
++    // menus, which the 3DS draws on the touch screen with the tabs on top.
++    int TabIndex()
++    {
++        Name n = mDesc.mMenuName;
++        if (n == 'LegendDisplayOptions') return 0;
++        if (n == 'LegendSoundOptions') return 1;
++        if (n == 'LegendControllerOptions') return 2;
++        if (n == 'LegendDeveloperOptions') return 3;
++        return -1;
++    }
++
++    static Name TabMenu(int tab)
++    {
++        switch (tab)
++        {
++        case 0: return 'LegendDisplayOptions';
++        case 1: return 'LegendSoundOptions';
++        case 2: return 'LegendControllerOptions';
++        }
++        return 'LegendDeveloperOptions';
++    }
++
++    override bool MenuEvent(int mkey, bool fromcontroller)
++    {
++        int tab = TabIndex();
++        if (tab >= 0 && (mkey == MKEY_PageUp || mkey == MKEY_PageDown))
++        {
++            Name next = TabMenu((tab + (mkey == MKEY_PageUp ? 3 : 1)) % 4);
++            MenuSound("menu/change");
++            Close();
++            Menu.SetMenu(next);
++            return true;
++        }
++        return Super.MenuEvent(mkey, fromcontroller);
++    }
 +}
 +
 +class OptionMenuItemRenderScaleSlider : OptionMenuItemSlider
