@@ -1826,14 +1826,23 @@ void ExpireOverlayNotification(uint64_t now)
 
 // The toast: a bar near the bottom of the touch screen, drawn last over whatever
 // presentation is there (gameplay, menus, title, developer overlay).
+// The NES font and the interface's language, from native_menu_3ds.inc further down.
+void LoadNesFont();
+const char *Tr(const char *english);
+int NesTextWidth(const char *text, int scale);
+void NesText(unsigned char *framebuffer, int x, int y, const char *text, int scale,
+	FOverlayColor color);
+
 void DrawBottomToast(unsigned char *framebuffer)
 {
 	if (OverlayNotification[0] == '\0') return;
-	const int width = std::min(304, LoadingTextWidth(OverlayNotification, 1) + 24);
+	LoadNesFont();
+	const char *text = Tr(OverlayNotification);
+	const int width = std::min(304, NesTextWidth(text, 1) + 24);
 	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
 	OverlayRect(framebuffer, x, 210, width, 21, OverlayInk);
-	OverlayFrame(framebuffer, x, 210, width, 21, 2, OverlayBlue);
-	OverlayCenteredText(framebuffer, x, width, 217, OverlayNotification, 1, OverlayIvory);
+	OverlayFrame(framebuffer, x, 210, width, 21, 1, OverlayBlue);
+	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, 217, text, 1, OverlayIvory);
 }
 
 void DrawDeveloperOverlay(unsigned char *framebuffer)
@@ -2874,12 +2883,9 @@ void DrawBottomOverlay(bool force)
 					target == EBottomPresentation::MenuDimmed ? 71u : 255u);
 			if (target == EBottomPresentation::Menu && NewSmallFont != nullptr && (now / 600u) % 2u == 0u)
 			{
-				constexpr const char *Prompt = "PRESS START TO BEGIN";
-				constexpr float Scale = 1.28f;
-				const int x = (320 - std::lround(NativeFontTextWidth(NewSmallFont, Prompt) * Scale)) / 2;
-				const int y = (240 - std::lround(NewSmallFont->GetHeight() * Scale)) / 2;
-				DrawBottomScaledFontText(framebuffer, NewSmallFont, x, y,
-					Prompt, Scale, OverlayIvory);
+				LoadNesFont();
+				const char *prompt = Tr("PRESS START TO BEGIN");
+				NesText(framebuffer, (320 - NesTextWidth(prompt, 1)) / 2, 116, prompt, 1, OverlayIvory);
 			}
 		}
 		else
@@ -4383,6 +4389,21 @@ void WriteDiagnosticDump(EDiagnosticDumpMode mode)
 }
 }
 
+const char *I_3DSSystemLanguage()
+{
+	// The interface has English and Spanish (PLAN U3); any other system language is English.
+	static const char *code = nullptr;
+	if (code != nullptr) return code;
+	code = "en";
+	if (R_SUCCEEDED(cfguInit()))
+	{
+		u8 language = 0;
+		if (R_SUCCEEDED(CFGU_GetSystemLanguage(&language)) && language == CFG_LANGUAGE_ES) code = "es";
+		cfguExit();
+	}
+	return code;
+}
+
 bool I_3DSNativeMenuOwnsFrame()
 {
 	return NativeMenuSupported();
@@ -4946,6 +4967,8 @@ bool I_3DSDiagnosticTouch(float x, float y)
 	if (x < 0.0f || x > 1.0f || y < 0.0f || y > 1.0f) return false;
 	if (I_3DSNativeMenuVisible())
 	{
+		if (NativeMenuTouch(static_cast<int>(x * BottomScreenWidth),
+			static_cast<int>(y * BottomScreenHeight))) return true;
         if (CurrentMenu->IsKindOf("LegendUpdateMenu"))
         {
             if (Updater_Busy())
@@ -4967,7 +4990,6 @@ bool I_3DSDiagnosticTouch(float x, float y)
         }
 
 		const int touchY = static_cast<int>(y * BottomScreenHeight);
-		if (NativeMenuTouch(static_cast<int>(x * BottomScreenWidth), touchY)) return true;
 		if (NativeMenuChoiceDialog)
 		{
 			const int touchX = static_cast<int>(x * BottomScreenWidth);

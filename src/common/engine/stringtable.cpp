@@ -464,10 +464,18 @@ void FStringTable::InsertString(int lumpnum, int langid, FName label, const FStr
 //
 //==========================================================================
 
+#ifdef __3DS__
+const char *I_3DSSystemLanguage();
+#endif
+
 void FStringTable::UpdateLanguage(const char *language)
 {
 	if (language) activeLanguage = language;
 	else language = activeLanguage.GetChars();
+#ifdef __3DS__
+	// "auto" (OPTIONS -> VIDEO -> LANGUAGE: SYSTEM) is the console's own language.
+	if (!stricmp(language, "auto")) language = I_3DSSystemLanguage();
+#endif
 	size_t langlen = strlen(language);
 
 	int LanguageID = (langlen < 2 || langlen > 3) ?

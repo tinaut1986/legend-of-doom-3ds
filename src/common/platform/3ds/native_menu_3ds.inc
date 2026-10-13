@@ -10,9 +10,8 @@
 // game as it was when the menu opened, dimmed and frozen: the 3D view is not rendered again
 // while a native menu is open (I_3DSNativeMenuFrozen, D_Display).
 //
-// Save/load and yes/no message boxes are drawn here too (list and dialogs below, preview and
-// description on the top screen). Menus this does not know (update, controls, the keyboard)
-// keep the old route.
+// Save/load, yes/no message boxes, UPDATE and CONTROLS are drawn here too (save preview and
+// the changelog on the top screen). The text keyboard keeps the old route.
 
 constexpr FOverlayColor NesWhite{ 252, 252, 252 };
 constexpr FOverlayColor NesRed{ 216, 40, 0 };
@@ -31,21 +30,51 @@ void NativeTopRect(unsigned char *pixels, int pitchBytes, int width, int height,
 
 // ---- The NES font ----------------------------------------------------------------------
 
-// 8x8 cells, one byte per row, bit 7 the leftmost pixel.
+// 8x8 cells, one byte per row, bit 7 the leftmost pixel. Above: two more rows drawn over the
+// cell (3 and 2 pixel rows up) for the accents of Spanish capitals, which so keep the full
+// height of the other letters; the menus' line spacing has the room.
+struct FNesGlyph
+{
+	uint8_t Rows[8];
+	uint8_t Above[2];
+};
+
 struct FNesFont
 {
 	bool Loaded = false;
 	bool Valid = false;
-	uint8_t Rows[128][8] = {};
+	FNesGlyph Ascii[128] = {};
+	std::vector<std::pair<uint32_t, FNesGlyph>> Extra; // past ASCII: Spanish letters
 };
 FNesFont NesFont;
 
 // Shapes the NES font does not have (its '<', '>' and '%' are other symbols).
-const struct { char Character; uint8_t Rows[8]; } NesExtraGlyphs[] = {
+const struct { char Character; uint8_t Rows[8]; } NesExtraAscii[] = {
 	{ '<', { 0x0c, 0x18, 0x30, 0x60, 0x30, 0x18, 0x0c, 0x00 } },
 	{ '>', { 0x60, 0x30, 0x18, 0x0c, 0x18, 0x30, 0x60, 0x00 } },
 	{ '%', { 0xc6, 0xcc, 0x18, 0x30, 0x60, 0xcc, 0x8c, 0x00 } },
 };
+
+// Spanish capitals: a letter of the font with a mark above it, or a shape of their own.
+void AddSpanishGlyphs()
+{
+	static constexpr uint8_t Acute[2] = { 0x0c, 0x18 };
+	static constexpr uint8_t Tilde[2] = { 0x76, 0xdc };
+	static constexpr uint8_t Dieresis[2] = { 0x6c, 0x6c };
+	const struct { uint32_t Codepoint; char Base; const uint8_t *Mark; } marked[] = {
+		{ 0xC1, 'A', Acute }, { 0xC9, 'E', Acute }, { 0xCD, 'I', Acute }, { 0xD3, 'O', Acute },
+		{ 0xDA, 'U', Acute }, { 0xD1, 'N', Tilde }, { 0xDC, 'U', Dieresis },
+	};
+	for (const auto &glyph : marked)
+	{
+		FNesGlyph made = NesFont.Ascii[static_cast<int>(glyph.Base)];
+		made.Above[0] = glyph.Mark[0];
+		made.Above[1] = glyph.Mark[1];
+		NesFont.Extra.push_back({ glyph.Codepoint, made });
+	}
+	NesFont.Extra.push_back({ 0xBF, { { 0x10, 0x00, 0x10, 0x20, 0x40, 0x44, 0x38, 0x00 }, {} } }); // ¿
+	NesFont.Extra.push_back({ 0xA1, { { 0x30, 0x00, 0x30, 0x30, 0x30, 0x30, 0x30, 0x00 }, {} } }); // ¡
+}
 
 // FON2 (ZDoom's font lump): header, widths, palette, then each glyph ByteRun1-packed.
 void LoadNesFont()
@@ -102,32 +131,102 @@ void LoadNesFont()
 		for (int y = 0; y < std::min(height, 8); ++y)
 			for (int x = 0; x < std::min(width, 8); ++x)
 				if (pixels[static_cast<size_t>(y) * width + x] != 0)
-					NesFont.Rows[character][y] |= static_cast<uint8_t>(0x80u >> x);
+					NesFont.Ascii[character].Rows[y] |= static_cast<uint8_t>(0x80u >> x);
 	}
-	for (const auto &glyph : NesExtraGlyphs)
-		std::memcpy(NesFont.Rows[static_cast<int>(glyph.Character)], glyph.Rows, 8);
+	for (const auto &glyph : NesExtraAscii)
+		std::memcpy(NesFont.Ascii[static_cast<int>(glyph.Character)].Rows, glyph.Rows, 8);
+	AddSpanishGlyphs();
 	NesFont.Valid = true;
+}
+
+// The next character of UTF-8 `text` (the string table's encoding); advances `text`.
+uint32_t NextCodepoint(const char *&text)
+{
+	const auto *bytes = reinterpret_cast<const unsigned char *>(text);
+	uint32_t codepoint = bytes[0];
+	int extra = codepoint >= 0xF0 ? 3 : codepoint >= 0xE0 ? 2 : codepoint >= 0xC0 ? 1 : 0;
+	if (extra > 0) codepoint &= 0x3Fu >> extra;
+	++text;
+	for (; extra > 0 && (static_cast<unsigned char>(*text) & 0xC0) == 0x80; --extra, ++text)
+		codepoint = (codepoint << 6) | (static_cast<unsigned char>(*text) & 0x3F);
+	return codepoint;
+}
+
+// The font has capitals only: lower case, accents included, is drawn with them.
+const FNesGlyph *NesGlyph(uint32_t codepoint)
+{
+	if (codepoint >= 'a' && codepoint <= 'z') codepoint -= 32;
+	else if (codepoint >= 0xE0 && codepoint <= 0xFE && codepoint != 0xF7) codepoint -= 32;
+	if (codepoint < 128) return &NesFont.Ascii[codepoint];
+	for (const auto &extra : NesFont.Extra)
+		if (extra.first == codepoint) return &extra.second;
+	return nullptr;
 }
 
 int NesTextWidth(const char *text, int scale)
 {
-	return text == nullptr ? 0 : static_cast<int>(std::strlen(text)) * 8 * scale;
+	int characters = 0;
+	for (const char *c = text; c != nullptr && *c != '\0';)
+	{
+		NextCodepoint(c);
+		++characters;
+	}
+	return characters * 8 * scale;
+}
+
+// Calls plot(x, y, size) for every lit square of `text` drawn at x, y.
+template<class FPlot>
+void NesDraw(int x, int y, const char *text, int scale, FPlot &&plot)
+{
+	for (const char *c = text; c != nullptr && *c != '\0'; x += 8 * scale)
+	{
+		const FNesGlyph *glyph = NesGlyph(NextCodepoint(c));
+		if (glyph == nullptr) continue;
+		for (int row = 0; row < 8; ++row)
+			for (int column = 0; column < 8; ++column)
+				if (glyph->Rows[row] & (0x80u >> column))
+					plot(x + column * scale, y + row * scale, scale);
+		for (int row = 0; row < 2; ++row)
+			for (int column = 0; column < 8; ++column)
+				if (glyph->Above[row] & (0x80u >> column))
+					plot(x + column * scale, y + (row - 3) * scale, scale);
+	}
 }
 
 void NesText(unsigned char *framebuffer, int x, int y, const char *text, int scale,
 	FOverlayColor color)
 {
-	if (text == nullptr) return;
-	for (; *text != '\0'; ++text, x += 8 * scale)
+	NesDraw(x, y, text, scale, [&](int px, int py, int size)
 	{
-		int character = std::toupper(static_cast<unsigned char>(*text));
-		if (character < 0 || character >= 128) continue;
-		const uint8_t *rows = NesFont.Rows[character];
-		for (int row = 0; row < 8; ++row)
-			for (int column = 0; column < 8; ++column)
-				if (rows[row] & (0x80u >> column))
-					OverlayRect(framebuffer, x + column * scale, y + row * scale, scale, scale, color);
+		OverlayRect(framebuffer, px, py, size, size, color);
+	});
+}
+
+// ---- The interface's language (PLAN U3) ---------------------------------------------------
+
+// The port's own text in the player's language. The English text is also the key: LOD_ and its
+// letters and digits, words joined by '_' ("NO SAVED GAMES" is LOD_NO_SAVED_GAMES), looked up
+// in the string table (language.csv in the game patch). Missing keys show the English.
+const char *Tr(const char *english)
+{
+	if (english == nullptr || *english == '\0') return english;
+	char key[128] = "LOD_";
+	size_t length = 4;
+	bool gap = false;
+	for (const char *c = english; *c != '\0' && length + 2 < sizeof(key); ++c)
+	{
+		const unsigned char character = static_cast<unsigned char>(*c);
+		if (std::isalnum(character))
+		{
+			if (gap && length > 4) key[length++] = '_';
+			key[length++] = static_cast<char>(std::toupper(character));
+			gap = false;
+		}
+		else gap = true;
 	}
+	key[length] = '\0';
+	const char *text = GStrings.GetString(key, nullptr);
+	return text != nullptr ? text : english;
 }
 
 void NesCenteredText(unsigned char *framebuffer, int y, const char *text, int scale,
@@ -156,7 +255,7 @@ void NesBox(unsigned char *framebuffer, int x, int y, int width, int height, FOv
 void NesHint(unsigned char *framebuffer, const char *text)
 {
 	OverlayRect(framebuffer, 0, 228, BottomScreenWidth, 12, NesHintBar);
-	NesCenteredText(framebuffer, 230, text, 1, NesGray);
+	NesCenteredText(framebuffer, 230, Tr(text), 1, NesGray);
 }
 
 // ---- Touch zones -----------------------------------------------------------------------
@@ -170,6 +269,7 @@ enum class ENativeTouch : uint8_t
 	Tab,      // open another OPTIONS tab
 	Save,     // load/save list: select the save and press A
 	Choice,   // a dialog's choice (Item 0 or 1): set it and press A
+	Back,     // press B (cancel an update)
 };
 
 struct FNativeTouchZone
@@ -205,9 +305,10 @@ int OptionTabIndex(FName menu)
 	return -1;
 }
 
+// A menu label: a $STRING of the table, or English text the port translates itself (Tr).
 const char *Localized(const FString &text)
 {
-	return GStrings.localize(text.GetChars());
+	return text.IsNotEmpty() && text[0] == '$' ? GStrings.localize(text.GetChars()) : Tr(text.GetChars());
 }
 
 enum class ENativeRowKind : uint8_t { Header, Toggle, Choice, Slider, Submenu, Command };
@@ -246,7 +347,7 @@ bool DescribeOptionItem(DMenuItemBase *item, int index, FNativeRow &row)
 	if (item->IsKindOf("OptionMenuItemRenderScaleSlider"))
 	{
 		row.Kind = ENativeRowKind::Choice;
-		row.Label = "RENDER";
+		row.Label = Tr("RENDER");
 		row.Value.Format("%d%%", static_cast<int>(std::lround(CVarFloat(cvar) * 10.0f)));
 		return true;
 	}
@@ -254,8 +355,8 @@ bool DescribeOptionItem(DMenuItemBase *item, int index, FNativeRow &row)
 	{
 		static constexpr const char *Levels[] = { "LOW", "NORMAL", "HIGH" };
 		row.Kind = ENativeRowKind::Choice;
-		row.Label = "DISTANCE";
-		row.Value = Levels[std::clamp(static_cast<int>(std::lround(CVarFloat(cvar))), 0, 2)];
+		row.Label = Tr("DISTANCE");
+		row.Value = Tr(Levels[std::clamp(static_cast<int>(std::lround(CVarFloat(cvar))), 0, 2)]);
 		return true;
 	}
 	if (item->IsKindOf("OptionMenuSliderBase"))
@@ -271,27 +372,35 @@ bool DescribeOptionItem(DMenuItemBase *item, int index, FNativeRow &row)
 	{
 		const FName valuesName = item->NameVar(FName("mValues"));
 		FOptionValues **values = OptionValues.CheckKey(valuesName);
-		const float current = CVarFloat(cvar);
 		if (values == nullptr || *values == nullptr || (*values)->mValues.Size() == 0) return false;
 		const auto &pairs = (*values)->mValues;
 		unsigned best = 0;
-		for (unsigned i = 1; i < pairs.Size(); ++i)
-			if (std::fabs(pairs[i].Value - current) < std::fabs(pairs[best].Value - current)) best = i;
-		row.Value = Localized(pairs[best].Text);
-		row.Value.ToUpper();
-		const bool onOff = pairs.Size() == 2 && (row.Value.CompareNoCase("ON") == 0 ||
-			row.Value.CompareNoCase("OFF") == 0 || row.Value.CompareNoCase("YES") == 0 ||
-			row.Value.CompareNoCase("NO") == 0);
-		if (onOff)
+		if (pairs[0].TextValue.IsNotEmpty())
 		{
-			row.Kind = ENativeRowKind::Toggle;
-			row.Fraction = current != 0.0f ? 1.0f : 0.0f;
-			row.Value = current != 0.0f ? "ON" : "OFF";
+			// An OPTIONSTRING table: the cvar holds one of the texts (the language).
+			const FString current = cvar != nullptr ? cvar->GetGenericRep(CVAR_String).String : "";
+			for (unsigned i = 0; i < pairs.Size(); ++i)
+				if (pairs[i].TextValue.CompareNoCase(current) == 0) best = i;
 		}
 		else
 		{
-			row.Kind = ENativeRowKind::Choice;
+			const float current = CVarFloat(cvar);
+			for (unsigned i = 1; i < pairs.Size(); ++i)
+				if (std::fabs(pairs[i].Value - current) < std::fabs(pairs[best].Value - current)) best = i;
 		}
+		// On/off tables show as a switch, in any language.
+		if (valuesName == FName("OnOff") || valuesName == FName("YesNo") ||
+			valuesName == FName("NoYes") || valuesName == FName("OffOn"))
+		{
+			const bool on = pairs[best].Value != 0.0 ? valuesName != FName("OffOn") && valuesName != FName("NoYes")
+				: valuesName == FName("OffOn") || valuesName == FName("NoYes");
+			row.Kind = ENativeRowKind::Toggle;
+			row.Fraction = on ? 1.0f : 0.0f;
+			row.Value = Tr(on ? "ON" : "OFF");
+			return true;
+		}
+		row.Kind = ENativeRowKind::Choice;
+		row.Value = Localized(pairs[best].Text);
 		return true;
 	}
 	if (item->IsKindOf("OptionMenuItemCommand"))
@@ -359,6 +468,8 @@ bool NativeMenuSupported()
 		FString title;
 		return DescribeListMenu(descriptor, rows, title);
 	}
+	if (CurrentMenu->GetClass()->TypeName == FName("LegendUpdateMenu") ||
+		CurrentMenu->GetClass()->TypeName == FName("LegendControlsReferenceMenu")) return true;
 	if (CurrentMenu->GetClass()->TypeName == FName("LegendSplitOptionMenu"))
 	{
 		auto *descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
@@ -376,14 +487,14 @@ void DrawNativeListMenu(unsigned char *framebuffer, DListMenuDescriptor *descrip
 	TArray<FNativeRow> rows;
 	FString title;
 	DescribeListMenu(descriptor, rows, title);
-	if (descriptor->mMenuName == FName("LegendPauseMenu")) title = "PAUSED";
+	if (descriptor->mMenuName == FName("LegendPauseMenu")) title = Tr("PAUSED");
 
 	if (gamestate == GS_DEMOSCREEN) DrawMenuBottomScreen(framebuffer, 71u);
 
-	// x2 unless the longest label does not fit; then x1 with the same row pitch.
+	// x2 unless the longest label does not fit (15 characters, 240 pixels); then x1.
 	int widest = 0;
 	for (const auto &row : rows) widest = std::max(widest, NesTextWidth(row.Label.GetChars(), 2));
-	const int scale = widest <= 200 ? 2 : 1;
+	const int scale = widest <= 240 ? 2 : 1;
 	if (scale == 1) widest /= 2;
 	const int rowPitch = scale == 2 ? 25 : 20;
 	const int listHeight = static_cast<int>(rows.Size()) * rowPitch;
@@ -425,8 +536,8 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 		const bool active = tab == currentTab;
 		const int x = 8 + tab * 76;
 		NesBox(framebuffer, x, 6, 72, 16, active ? NesPanel : NesTabIdle, active ? NesBlue : NesGray);
-		NesText(framebuffer, x + (72 - NesTextWidth(OptionTabTitles[tab], 1)) / 2, 10,
-			OptionTabTitles[tab], 1, active ? NesGold : NesGray);
+		NesText(framebuffer, x + (72 - NesTextWidth(Tr(OptionTabTitles[tab]), 1)) / 2, 10,
+			Tr(OptionTabTitles[tab]), 1, active ? NesGold : NesGray);
 		AddNativeTouchZone(x, 0, x + 76, 28, ENativeTouch::Tab, tab);
 	}
 
@@ -577,13 +688,13 @@ void DrawNesDialog(unsigned char *framebuffer, const char *message, const char *
 void DrawNativeSaveLoadMenu(unsigned char *framebuffer)
 {
 	const bool saving = CurrentMenu->IsKindOf("SaveMenu");
-	NesCenteredText(framebuffer, 8, saving ? "SAVE GAME" : "LOAD GAME", 2, NesRed);
+	NesCenteredText(framebuffer, 8, Tr(saving ? "SAVE GAME" : "LOAD GAME"), 2, NesRed);
 
 	const int count = static_cast<int>(savegameManager.SavegameCount());
 	const int selected = CurrentMenu->IntVar(FName("Selected"));
 	if (count == 0)
 	{
-		NesCenteredText(framebuffer, 112, "NO SAVED GAMES", 1, NesGray);
+		NesCenteredText(framebuffer, 112, Tr("NO SAVED GAMES"), 1, NesGray);
 		NesHint(framebuffer, "B BACK");
 		return;
 	}
@@ -610,9 +721,9 @@ void DrawNativeSaveLoadMenu(unsigned char *framebuffer)
 	{
 		NativeTouchZoneCount = 0; // only the dialog takes taps
 		const int choice = CurrentMenu->IntVar(FName("NativeActionChoice"));
-		if (stage == 2) DrawNesDialog(framebuffer, "DELETE THIS SAVE?", "YES", "NO", choice);
-		else if (stage == 3) DrawNesDialog(framebuffer, "COULD NOT DELETE THE SAVE", "BACK", "BACK", choice);
-		else DrawNesDialog(framebuffer, "WHAT TO DO WITH THIS SAVE?", "LOAD", "DELETE", choice);
+		if (stage == 2) DrawNesDialog(framebuffer, Tr("DELETE THIS SAVE?"), Tr("YES"), Tr("NO"), choice);
+		else if (stage == 3) DrawNesDialog(framebuffer, Tr("COULD NOT DELETE THE SAVE"), Tr("BACK"), Tr("BACK"), choice);
+		else DrawNesDialog(framebuffer, Tr("WHAT TO DO WITH THIS SAVE?"), Tr("LOAD"), Tr("DELETE"), choice);
 		NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
 		return;
 	}
@@ -623,7 +734,7 @@ void DrawNativeMessageBox(unsigned char *framebuffer)
 {
 	FString message = CurrentMenu->StringVar(FName("NativeMessageText"));
 	message.ToUpper();
-	DrawNesDialog(framebuffer, message.GetChars(), "YES", "NO",
+	DrawNesDialog(framebuffer, message.GetChars(), Tr("YES"), Tr("NO"),
 		CurrentMenu->IntVar(FName("messageSelection")));
 	NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
 }
@@ -641,22 +752,17 @@ FNesPreviewCache NesPreview;
 void NesTopText(unsigned char *pixels, int pitchBytes, int width, int height, int x, int y,
 	const char *text, int scale, FOverlayColor color)
 {
-	if (text == nullptr) return;
-	for (; *text != '\0'; ++text, x += 8 * scale)
+	NesDraw(x, y, text, scale, [&](int px, int py, int size)
 	{
-		const int character = std::toupper(static_cast<unsigned char>(*text));
-		if (character < 0 || character >= 128) continue;
-		const uint8_t *rows = NesFont.Rows[character];
-		for (int row = 0; row < 8; ++row)
-			for (int column = 0; column < 8; ++column)
-				if (rows[row] & (0x80u >> column))
-					NativeTopRect(pixels, pitchBytes, width, height, x + column * scale,
-						y + row * scale, scale, scale, color, 255u);
-	}
+		NativeTopRect(pixels, pitchBytes, width, height, px, py, size, size, color, 255u);
+	});
 }
+
+bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int height);
 
 void DrawNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int height)
 {
+	if (DrawUpdateChangelogTop(pixels, pitchBytes, width, height)) return;
 	if (CurrentMenu == nullptr || !CurrentMenu->IsKindOf("LoadSaveMenu") || !NesFont.Valid) return;
 	const int count = static_cast<int>(savegameManager.SavegameCount());
 	const int selected = CurrentMenu->IntVar(FName("Selected"));
@@ -728,6 +834,95 @@ void DrawNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int hei
 	}
 }
 
+void DrawNativeControlsMenu(unsigned char *framebuffer)
+{
+	// The same list as LegendControlsReferenceMenu's ZScript Drawer (the game patch).
+	static constexpr const char *Inputs[] = {
+		"CIRCLE PAD", "C-STICK / TOUCH", "A", "R", "L", "X", "Y",
+		"DPAD LEFT / RIGHT", "ZL / ZR", "DPAD DOWN", "DPAD UP", "START", "SELECT" };
+	static constexpr const char *Actions[] = {
+		"MOVE / STRAFE", "LOOK", "USE / INTERACT", "ATTACK", "ALT ATTACK",
+		"SPRINT AT FULL LIFE", "JUMP", "CHANGE WEAPON", "CHANGE ITEM", "USE ITEM", "MAP",
+		"PAUSE", "MENU / OVERLAY" };
+	NesCenteredText(framebuffer, 8, Tr("CONTROLS"), 2, NesRed);
+	for (int row = 0; row < 13; ++row)
+	{
+		const int y = 32 + row * 15;
+		const char *input = Tr(Inputs[row]);
+		NesText(framebuffer, 152 - NesTextWidth(input, 1), y, input, 1, NesGold);
+		NesText(framebuffer, 168, y, Tr(Actions[row]), 1, NesWhite);
+	}
+	NesHint(framebuffer, "B BACK");
+}
+
+void DrawNativeUpdateMenu(unsigned char *framebuffer)
+{
+	UpdateStatus status;
+	Updater_GetStatus(&status);
+	NesCenteredText(framebuffer, 8, Tr("UPDATE"), 2, NesRed);
+
+	if (CurrentMenu->IntVar(FName("NativeUpdateConfirm")))
+	{
+		FString message;
+		message.Format("%s %s", Tr("INSTALL AND CLOSE?"), Tr("UNSAVED PROGRESS WILL BE LOST"));
+		DrawNesDialog(framebuffer, message.GetChars(), Tr("YES"), Tr("NO"),
+			CurrentMenu->IntVar(FName("NativeUpdateChoice")));
+		NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
+		return;
+	}
+
+	FString line;
+	line.Format("%s %s", Tr("INSTALLED"), LOD3DS_PORT_VERSION_LABEL);
+	NesCenteredText(framebuffer, 36, line.GetChars(), 1, NesWhite);
+	line.Format("%s %s", Tr("LATEST"), status.version[0] ? status.version : "--");
+	NesCenteredText(framebuffer, 50, line.GetChars(), 1, NesWhite);
+	int messageY = 72;
+	for (const auto &text : NesWrap(Tr(status.message[0] ? status.message : "CHECK FOR A NEW VERSION"), 36, 2))
+	{
+		NesCenteredText(framebuffer, messageY, text.GetChars(), 1, NesGold);
+		messageY += 12;
+	}
+
+	if (Updater_Busy())
+	{
+		OverlayRect(framebuffer, 28, 104, 264, 8, NesOff);
+		OverlayRect(framebuffer, 28, 104, 264 * std::min(status.progress, 100u) / 100, 8, NesRed);
+		if (status.state != UPDATE_CHECKING)
+		{
+			line.Format("%u%%", status.progress);
+			NesCenteredText(framebuffer, 120, line.GetChars(), 1, NesWhite);
+		}
+		if (status.state != UPDATE_INSTALLING)
+		{
+			NesBox(framebuffer, 112, 160, 96, 24, NesTabIdle, NesGray);
+			const char *cancel = Tr("CANCEL");
+			NesText(framebuffer, 112 + (96 - NesTextWidth(cancel, 1)) / 2, 168, cancel, 1, NesWhite);
+			AddNativeTouchZone(112, 160, 208, 184, ENativeTouch::Back, 0);
+			NesHint(framebuffer, "B CANCEL");
+		}
+		else
+		{
+			NesCenteredText(framebuffer, 168, Tr("PLEASE WAIT"), 1, NesWhite);
+		}
+		return;
+	}
+
+	auto *descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
+	const char *labels[] = { status.prerelease ? "CHANNEL: BETA" : "CHANNEL: STABLE",
+		"CHECK FOR UPDATES", "INSTALL UPDATE", "BACK" };
+	for (int row = 0; row < 4; ++row)
+	{
+		const int y = 108 + row * 25;
+		const bool selected = descriptor != nullptr && descriptor->mSelectedItem == row;
+		const bool disabled = row == 2 && status.state != UPDATE_AVAILABLE;
+		if (selected) NesBox(framebuffer, 40, y - 6, 240, 20, NesPanel, NesBlue);
+		NesCenteredText(framebuffer, y, Tr(labels[row]), 1,
+			disabled ? NesGray : selected ? NesGold : NesWhite);
+		AddNativeTouchZone(40, y - 6, 280, y + 14, ENativeTouch::Activate, row);
+	}
+	NesHint(framebuffer, "A SELECT   B BACK");
+}
+
 // Draws the open native menu on the bottom LCD. False when it is not one drawn here.
 bool DrawNativeMenu(unsigned char *framebuffer)
 {
@@ -736,7 +931,11 @@ bool DrawNativeMenu(unsigned char *framebuffer)
 	NativeMenuDrawnHere = false;
 	if (!NesFont.Valid || !NativeMenuSupported()) return false;
 	OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight, OverlayInk);
-	if (CurrentMenu->IsKindOf("LoadSaveMenu"))
+	if (CurrentMenu->GetClass()->TypeName == FName("LegendUpdateMenu"))
+		DrawNativeUpdateMenu(framebuffer);
+	else if (CurrentMenu->GetClass()->TypeName == FName("LegendControlsReferenceMenu"))
+		DrawNativeControlsMenu(framebuffer);
+	else if (CurrentMenu->IsKindOf("LoadSaveMenu"))
 		DrawNativeSaveLoadMenu(framebuffer);
 	else if (CurrentMenu->IsKindOf("MessageBoxMenu"))
 		DrawNativeMessageBox(framebuffer);
@@ -784,7 +983,14 @@ bool NativeMenuTouch(int x, int y)
 				CurrentMenu->IntVar(FName("messageSelection")) = zone.Item;
 			else if (CurrentMenu->IsKindOf("LoadMenu"))
 				CurrentMenu->IntVar(FName("NativeActionChoice")) = zone.Item;
+			else if (CurrentMenu->IsKindOf("LegendUpdateMenu"))
+				CurrentMenu->IntVar(FName("NativeUpdateChoice")) = zone.Item;
 			CurrentMenu->CallMenuEvent(MKEY_Enter, true);
+			return true;
+		}
+		if (zone.Action == ENativeTouch::Back)
+		{
+			CurrentMenu->CallMenuEvent(MKEY_Back, true);
 			return true;
 		}
 		if (zone.Action == ENativeTouch::Tab)
