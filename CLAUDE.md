@@ -290,5 +290,5 @@ both screens, runs GZDoom console commands (`map`, `give`, `save`, `load`...), r
 cvars and reads state and memory (`platform/3ds/README.md`, "Console link"; `--help`). Say
 before driving the game or installing while the owner is playing: an install loses unsaved
 progress. If the connection is refused, ask for the address the developer overlay shows (DEVELOPER ->
-OVERLAY WITH SELECT on, then SELECT in a level: STATUS box); do not scan the network without need. The first build with the server
+OVERLAY WITH SELECT on, then SELECT, in a level or on the title menus: STATUS box); do not scan the network without need. The first build with the server
 arrives the old way (FBI / ftpd).
