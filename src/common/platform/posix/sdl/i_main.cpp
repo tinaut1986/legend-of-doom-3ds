@@ -328,9 +328,25 @@ int main (int argc, char **argv)
 	#endif
 	Args->AppendArg("+vid_rendermode");
 	#ifdef LOD3DS_SAFE_SOFTWARE
+	#if LOD3DS_DEBUG_TOOLS
+	// P2.2 probe: hwrender-probe.txt in the data folder starts this one boot with GZDoom's
+	// hardware renderer on the poly backend, its draws dropped (the poly drawers crash on the
+	// 3DS), so `bench` can time its CPU side (docs/gpu-renderer-design.md). The marker is
+	// deleted first: a boot that hangs is not repeated.
+	static const char *const HwRenderProbe = LOD3DS_APP_DIR "/hwrender-probe.txt";
+	const bool hwRenderProbe = remove(HwRenderProbe) == 0;
+	if (hwRenderProbe)
+	{
+		extern bool I_3DSHwRenderProbeNoDraw;
+		I_3DSHwRenderProbeNoDraw = true;
+		I_3DSStartupLog("hwrender-probe");
+	}
+	Args->AppendArg(hwRenderProbe ? "4" : "1");
+	#else
 	// True-colour software writes the BGRA canvas consumed by the direct scanout
 	// path and avoids a separate per-frame palette conversion.
 	Args->AppendArg("1");
+	#endif
 	// Fix gameplay at 80% of the physical 400x240 LCD: 320x192 is roughly 30%
 	// more detailed in each axis than the previous 240x150 profile. Menus switch
 	// to the native canvas, but no touch control or frame cap changes the game.

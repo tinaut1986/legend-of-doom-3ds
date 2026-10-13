@@ -260,8 +260,36 @@ void HWDrawInfo::UnclipSubsector(subsector_t *sub)
 //
 //==========================================================================
 
+#ifdef __3DS__
+// P2.2 probe only (i_main.cpp): the swrenderer stops MAP01's exterior at its distance fog
+// (Map01DistanceFogEnd, r_opaque_pass.cpp); the probe culls the hardware renderer's BSP at the
+// same distance so their CPU costs compare. 0 = off.
+extern bool I_3DSHwRenderProbeNoDraw;
+extern double Map01DistanceFogEnd;
+static double ProbeCullSquared = 0;
+
+static bool ProbeBoxOutside(const float *bbox, const DVector3 &pos)
+{
+	const double dx = std::max({ bbox[BOXLEFT] - pos.X, 0.0, pos.X - bbox[BOXRIGHT] });
+	const double dy = std::max({ bbox[BOXBOTTOM] - pos.Y, 0.0, pos.Y - bbox[BOXTOP] });
+	return dx * dx + dy * dy > ProbeCullSquared;
+}
+
+static bool ProbeSegOutside(const seg_t *seg, const DVector3 &pos)
+{
+	const DVector2 start(seg->v1->fX(), seg->v1->fY()), end(seg->v2->fX(), seg->v2->fY());
+	const DVector2 delta = end - start, view(pos.X, pos.Y);
+	const double length = delta.LengthSquared();
+	const double t = length > 0 ? clamp(((view - start) | delta) / length, 0.0, 1.0) : 0.0;
+	return (start + delta * t - view).LengthSquared() > ProbeCullSquared;
+}
+#endif
+
 void HWDrawInfo::AddLine (seg_t *seg, bool portalclip)
 {
+#ifdef __3DS__
+	if (ProbeCullSquared > 0 && ProbeSegOutside(seg, Viewpoint.Pos)) return;
+#endif
 #ifdef _DEBUG
 	if (seg->linedef && seg->linedef->Index() == 38)
 	{
@@ -422,6 +450,9 @@ void HWDrawInfo::RenderPolyBSPNode (void *node)
 		side ^= 1;
 
 		// It is not necessary to use the slower precise version here
+#ifdef __3DS__
+		if (ProbeCullSquared > 0 && ProbeBoxOutside(bsp->bbox[side], Viewpoint.Pos)) return;
+#endif
 		if (!mClipper->CheckBox(bsp->bbox[side]))
 		{
 			return;
@@ -875,6 +906,8 @@ void HWDrawInfo::RenderBSP(void *node, bool drawpsprites)
 	// Do not instantiate the desktop queue on 3DS: besides avoiding its unsafe
 	// shared-state contract, this removes a 50,000-entry (roughly 600 KiB) pool.
 	multithread = false;
+	ProbeCullSquared = I_3DSHwRenderProbeNoDraw && Level->MapName.CompareNoCase("MAP01") == 0 ?
+		Map01DistanceFogEnd * Map01DistanceFogEnd : 0;
 	RenderBSPNode(node);
 	Bsp.Unclock();
 	#else
