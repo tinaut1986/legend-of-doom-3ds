@@ -5811,14 +5811,24 @@ void I_3DSServiceConsoleLink()
 		else SetOverlayNotification(nullptr, 0);
 		shownNotice = notice;
 	}
+	// SITE INSTALL put a new build in place: relaunch into it, but not at once. Jumping right
+	// after the install had the system load the title a second time while the new build ran,
+	// and the loader crashed out of memory (3 installs in 4); 10 s later, none did in 4, nor
+	// any of 6 jumps with no install before them (issue #1). The toast stays up meanwhile.
+	static u64 relaunchAt = 0;
 	if (FtpServer_TakeRelaunch())
 	{
-		// SITE INSTALL put a new build in place: jump into it, then close as on HOME -> close.
-		// Save the config first: once the jump is under way APT closes the app before the
-		// engine's final save, and FTP SERVER has to be on in the new build.
+		relaunchAt = osGetTime() + 10000u;
+		ConsoleLinkLog("new build installed: relaunching in 10 s");
+	}
+	if (relaunchAt != 0 && osGetTime() >= relaunchAt)
+	{
+		// Quit through the normal exit path and let libctru start the new build once the process
+		// exits. Save the config first, in case the teardown hangs: FTP SERVER has to be on in
+		// the new build.
 		M_SaveDefaults(nullptr);
 		ConsoleLinkLog("relaunching into the build just installed");
-		if (!CiaInstall_JumpToSelf()) ConsoleLinkLog("the jump into the new build was refused");
+		CiaInstall_RelaunchOnExit();
 		throw CExitEvent(0);
 	}
 #if LOD3DS_DEBUG_TOOLS

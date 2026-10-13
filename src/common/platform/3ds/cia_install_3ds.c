@@ -77,12 +77,9 @@ done:
   return ok;
 }
 
-bool CiaInstall_JumpToSelf(void) {
-  u64 title = 0;
-  FS_MediaType media = MEDIATYPE_SD;
-  u8 param[0x300] = { 0 };
-  u8 hmac[0x20] = { 0 };
-  if (!RunningTitle(&title, &media)) return false;
-  if (R_FAILED(APT_PrepareToDoApplicationJump(0, title, media))) return false;
-  return R_SUCCEEDED(APT_DoApplicationJump(param, sizeof(param), hmac));
+void CiaInstall_RelaunchOnExit(void) {
+  // libctru's aptExit() jumps once the process exits, after the engine's whole teardown. Jumping
+  // here (APT_PrepareToDoApplicationJump + APT_DoApplicationJump) and then exiting had the system
+  // loader fault on a second load of the title while the new build already ran (issue #1).
+  aptSetChainloaderToSelf();
 }
