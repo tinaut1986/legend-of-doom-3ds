@@ -173,13 +173,7 @@ enum class EBottomPresentation : unsigned
 EBottomPresentation BottomPresentation = EBottomPresentation::Unknown;
 bool MenuStoryPage;
 
-enum class EBottomGameplayTab : unsigned
-{
-	Map,
-	Items,
-};
 
-EBottomGameplayTab BottomGameplayTab = EBottomGameplayTab::Map;
 bool BottomMapZoomedOut;
 bool DeveloperOverlayVisible;
 bool NativeMenuTransformValid;
@@ -1816,69 +1810,163 @@ bool BottomSelectItem(unsigned index)
 	return true;
 }
 
-void DrawBottomItems(unsigned char *framebuffer, AActor *owner, AActor *readyWeapon)
+// The gameplay bottom screen, laid out like the NES Zelda's pause screen (owner, 2026-10-13):
+// on black, INVENTORY with the B item's box and every item in one frame; below, the map with
+// its own zoom button, the rupee, key and bomb counters and -LIFE- with the hearts. No tabs;
+// a touch outside the items and the buttons moves the camera. Debug builds add GOD and ALL.
+// The NES font and the interface's language, from native_menu_3ds.inc further down.
+const char *Tr(const char *english);
+int NesTextWidth(const char *text, int scale);
+void NesText(unsigned char *framebuffer, int x, int y, const char *text, int scale,
+	FOverlayColor color);
+void NesBox(unsigned char *framebuffer, int x, int y, int width, int height, FOverlayColor fill,
+	FOverlayColor border);
+
+namespace BottomLayout
+{
+// The NES palette's colours (as native_menu_3ds.inc's).
+constexpr FOverlayColor Black{ 0, 0, 0 };
+constexpr FOverlayColor White{ 252, 252, 252 };
+constexpr FOverlayColor Red{ 216, 40, 0 };
+constexpr FOverlayColor Blue{ 0, 88, 248 };
+constexpr FOverlayColor Gray{ 116, 116, 116 };
+constexpr FOverlayColor Green{ 0, 168, 0 };
+constexpr FOverlayColor Idle{ 20, 20, 20 };
+
+constexpr int TitleY = 6;
+constexpr int BBoxX = 14, BBoxY = 22, BBoxWidth = 60, BBoxHeight = 50;
+constexpr int GridX = 86, GridY = 20, CellWidth = 28, CellHeight = 36, Columns = 8;
+constexpr int MapFrameX = 10, MapFrameY = 108, MapFrameWidth = 184, MapFrameHeight = 128;
+constexpr int MapX = 12, MapY = 110, MapWidth = 180, MapHeight = 106;
+constexpr int ZoomX = 12, ZoomY = 218, ZoomWidth = 180, ZoomHeight = 16;
+constexpr int SideX = 204, SideWidth = 108;
+constexpr int CounterY = 112, CounterStep = 18;
+constexpr int LifeY = 172, HeartsY = 186, HeartWidth = 11, HeartHeight = 12, HeartStep = 13;
+constexpr int GodX = 232, AllX = 274, CheatY = 2, CheatWidth = 38, CheatHeight = 13;
+constexpr double MapUnitsNear = 12.0, MapUnitsFar = 32.0;
+
+bool Inside(float x, float y, int left, int top, int width, int height)
+{
+	return x >= left && x < left + width && y >= top && y < top + height;
+}
+}
+
+bool BottomGodMode()
+{
+	return players[consoleplayer].mo != nullptr && (players[consoleplayer].cheats & CF_GODMODE);
+}
+
+#if LOD3DS_DEBUG_TOOLS
+// ALL (debug builds): every item of the game, the counters full and sixteen hearts. Through
+// the console's give, so that it goes as the game's own cheats do; the heart containers raise
+// the maximum only when touched in the world (DoPickupSpecial), so that is set here.
+void BottomGiveEverything()
+{
+	static const char *const Items[] = {
+		"ZeldaSwordWood", "ZeldaSwordSilver", "ZeldaSwordMaster", "Boomerang", "BoomerangBlue",
+		"Bow", "ZeldaSilverArrow", "ZeldaBomb", "CandleBlue", "CandleRed", "ZeldaWhistle",
+		"ZeldaWand", "ZeldaPotion", "ZeldaLetter", "ZeldaMeat", "ZeldaLadder", "ZeldaRaft",
+		"ZeldaBook", "ZeldaRingBlue", "ZeldaRingRed", "ZeldaPowerBracelet", "ZeldaLionKey",
+	};
+	for (const char *item : Items) AddCommandString(FStringf("give %s", item).GetChars());
+	AddCommandString("give ZeldaRupee 999");
+	AddCommandString("give ZeldaKey 99");
+	AddCommandString("give BombAmmo 20");
+	AddCommandString("give PotAmmo 2");
+	AActor *owner = players[consoleplayer].mo;
+	if (owner != nullptr)
+	{
+		constexpr int MaximumHealth = 16 * 8;
+		owner->IntVar(FName("MaxHealth")) = MaximumHealth;
+		owner->IntVar(FName("MugShotMaxHealth")) = MaximumHealth;
+		owner->health = players[consoleplayer].health = MaximumHealth;
+	}
+}
+#endif
+
+// The item the B box shows: the selected inventory item, else the ready weapon unless it is
+// the sword (the A button's).
+int BottomBItem(AActor *owner, AActor *readyWeapon)
 {
 	const auto &items = BottomItems();
+	AActor *selected = owner != nullptr ? owner->PointerVar<AActor>(NAME_InvSel) : nullptr;
+	for (unsigned index = 0; index < items.size(); ++index)
+		if (BottomInventoryMatches(selected, items[index])) return static_cast<int>(index);
+	for (unsigned index = 1; index < items.size(); ++index)
+		if (BottomReadyWeaponMatches(readyWeapon, items[index])) return static_cast<int>(index);
+	return -1;
+}
+
+void DrawBottomCheatButton(unsigned char *framebuffer, int x, const char *label, bool on)
+{
+	using namespace BottomLayout;
+	NesBox(framebuffer, x, CheatY, CheatWidth, CheatHeight, on ? Green : Idle, Blue);
+	NesText(framebuffer, x + (CheatWidth - NesTextWidth(label, 1)) / 2, CheatY + 3, label, 1,
+		on ? White : Gray);
+}
+
+void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *readyWeapon)
+{
+	using namespace BottomLayout;
+	const auto &items = BottomItems();
+	NesText(framebuffer, BBoxX, TitleY, Tr("INVENTORY"), 1, Red);
+
+	// The B box: the item the B button uses.
+	OverlayFrame(framebuffer, BBoxX, BBoxY, BBoxWidth, BBoxHeight, 2, Blue);
+	const int bItem = BottomBItem(owner, readyWeapon);
+	if (bItem >= 0)
+	{
+		const FEmbeddedBottomImage &image = *items[bItem].Image;
+		DrawEmbeddedBottomImage(framebuffer,
+			BBoxX + (BBoxWidth - static_cast<int>(image.Width)) / 2,
+			BBoxY + (BBoxHeight - static_cast<int>(image.Height)) / 2, image);
+	}
+	NesText(framebuffer, BBoxX + (BBoxWidth - NesTextWidth("-B-", 1)) / 2,
+		BBoxY + BBoxHeight + 4, "-B-", 1, White);
+
+	// Every item, in one frame; the selected one outlined.
+	const int rows = static_cast<int>((items.size() + Columns - 1) / Columns);
+	OverlayFrame(framebuffer, GridX - 3, GridY - 3, Columns * CellWidth + 6,
+		rows * CellHeight + 6, 2, Blue);
 	AActor *selectedInventory = owner != nullptr ?
 		owner->PointerVar<AActor>(NAME_InvSel) : nullptr;
-
-	constexpr int GridX = 34;
-	constexpr int GridY = 38;
-	constexpr int CellWidth = 49;
-	constexpr int CellHeight = 41;
 	for (unsigned index = 0; index < items.size(); ++index)
 	{
 		const FBottomItem &item = items[index];
-		const int cellX = GridX + static_cast<int>(index % 4u) * CellWidth;
-		const int cellY = GridY + static_cast<int>(index / 4u) * CellHeight;
-		const bool available = BottomHasAnyInventory(owner, item.Inventory1,
-			item.Inventory2, item.Inventory3);
-		const bool selected = available && (BottomReadyWeaponMatches(readyWeapon, item) ||
-			BottomInventoryMatches(selectedInventory, item));
-		if (available)
+		if (!BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3))
+			continue;
+		const int cellX = GridX + static_cast<int>(index % Columns) * CellWidth;
+		const int cellY = GridY + static_cast<int>(index / Columns) * CellHeight;
+		if (BottomReadyWeaponMatches(readyWeapon, item) ||
+			BottomInventoryMatches(selectedInventory, item))
 		{
-			if (selected)
-			{
-				DrawBottomRoundedRectOutline(framebuffer, cellX + 3, cellY,
-					37, 35, 5, 2, OverlayIvory);
-			}
-			DrawEmbeddedBottomImage(framebuffer,
-				cellX + (42 - static_cast<int>(item.Image->Width)) / 2,
-				cellY + (35 - static_cast<int>(item.Image->Height)) / 2,
-				*item.Image);
+			DrawBottomRoundedRectOutline(framebuffer, cellX + 1, cellY + 1,
+				CellWidth - 2, CellHeight - 2, 4, 1, White);
 		}
+		DrawEmbeddedBottomImage(framebuffer,
+			cellX + (CellWidth - static_cast<int>(item.Image->Width)) / 2,
+			cellY + (CellHeight - static_cast<int>(item.Image->Height)) / 2, *item.Image);
 	}
+#if LOD3DS_DEBUG_TOOLS
+	DrawBottomCheatButton(framebuffer, GodX, Tr("GOD"), BottomGodMode());
+	DrawBottomCheatButton(framebuffer, AllX, Tr("ALL"), false);
+#endif
 }
 
-void DrawBottomHeartsAndCounters(unsigned char *framebuffer, AActor *owner)
+// -LIFE-: up to sixteen hearts, eight a row, each full, three quarters, half, a quarter or
+// empty (eight health points a heart).
+void DrawBottomHearts(unsigned char *framebuffer, AActor *owner)
 {
+	using namespace BottomLayout;
 	static constexpr FEmbeddedBottomImage HeartEmpty = BOTTOM_IMAGE(BottomHeartEmpty);
 	static constexpr FEmbeddedBottomImage HeartQuarter = BOTTOM_IMAGE(BottomHeartQuarter);
 	static constexpr FEmbeddedBottomImage HeartHalf = BOTTOM_IMAGE(BottomHeartHalf);
 	static constexpr FEmbeddedBottomImage HeartThreeQuarter = BOTTOM_IMAGE(BottomHeartThreeQuarter);
 	static constexpr FEmbeddedBottomImage HeartFull = BOTTOM_IMAGE(BottomHeartFull);
-	static constexpr FEmbeddedBottomImage CounterRupee = BOTTOM_IMAGE(BottomCounterRupee);
-	static constexpr FEmbeddedBottomImage CounterKey = BOTTOM_IMAGE(BottomCounterKey);
-	static constexpr FEmbeddedBottomImage CounterBomb = BOTTOM_IMAGE(BottomCounterBomb);
-
-	if (owner == nullptr) return;
 	const int maximumHealth = std::max(8, owner->GetMaxHealth());
 	int remainingHealth = std::max(0, owner->health);
-	const unsigned hearts = std::min(20u, static_cast<unsigned>((maximumHealth + 7) / 8));
-	constexpr int SideX = 242;
-	constexpr int HeartSideX = 239;
-	constexpr int SideWidth = 64;
-	const unsigned columns = hearts <= 6u ? std::min(3u, std::max(1u, hearts)) :
-		(hearts <= 16u ? std::min(4u, hearts) : std::min(5u, hearts));
-	const int heartWidth = hearts <= 6u ? 14 : (hearts <= 16u ? 11 : 9);
-	const int heartHeight = hearts <= 6u ? 16 : (hearts <= 16u ? 12 : 9);
-	const int heartGap = hearts <= 6u ? 4 : 3;
-	const int heartRowGap = hearts <= 6u ? 4 : (hearts <= 16u ? 3 : 2);
-	const int rowWidth = static_cast<int>(columns) * heartWidth +
-		(static_cast<int>(columns) - 1) * heartGap;
-	const int heartStartX = HeartSideX + (SideWidth - rowWidth) / 2;
-	const int HeartStartY = hearts > 6u && hearts <= 16u ? 31 : 37;
-	for (unsigned index = 0; index < hearts; ++index)
+	const int hearts = std::min(16, (maximumHealth + 7) / 8);
+	for (int index = 0; index < hearts; ++index)
 	{
 		const int points = std::min(8, remainingHealth);
 		remainingHealth -= points;
@@ -1887,134 +1975,70 @@ void DrawBottomHeartsAndCounters(unsigned char *framebuffer, AActor *owner)
 		else if (points >= 5) heart = &HeartThreeQuarter;
 		else if (points >= 3) heart = &HeartHalf;
 		else if (points >= 1) heart = &HeartQuarter;
-		const unsigned rowCount = std::min(columns, hearts - index / columns * columns);
-		const int rowOffset = static_cast<int>(columns - rowCount) * (heartWidth + heartGap) / 2;
-		DrawEmbeddedBottomImageSized(framebuffer,
-			heartStartX + rowOffset + static_cast<int>(index % columns) * (heartWidth + heartGap),
-			HeartStartY + static_cast<int>(index / columns) * (heartHeight + heartRowGap),
-			*heart, heartWidth, heartHeight);
+		DrawEmbeddedBottomImageSized(framebuffer, SideX + 2 + (index % 8) * HeartStep,
+			HeartsY + (index / 8) * (HeartHeight + 4), *heart, HeartWidth, HeartHeight);
 	}
-	const int heartRows = static_cast<int>((hearts + columns - 1u) / columns);
-	const int heartsBottom = HeartStartY + heartRows * heartHeight +
-		std::max(0, heartRows - 1) * heartRowGap;
-	constexpr int FaceWidth = 46;
-	constexpr int FaceHeight = 55;
-	const int counterStartY = std::max(157, heartsBottom + 75);
-	const int faceY = heartsBottom + (counterStartY - heartsBottom - FaceHeight) / 2;
+}
 
-	FGameTexture *face = StatusBar != nullptr && StatusBar->CPlayer != nullptr &&
-		StatusBar->CPlayer->mo != nullptr ?
-		StatusBar->mugshot.GetFace(StatusBar->CPlayer, "STF", 5) : nullptr;
-	if (face != nullptr)
-	{
-		FString faceName = face->GetName();
-		if (BottomInventoryAmount(owner, "ZeldaRingRed") > 0)
-			faceName.Substitute("STF", "RRN");
-		else if (BottomInventoryAmount(owner, "ZeldaRingBlue") > 0)
-			faceName.Substitute("STF", "BRN");
-		const FTextureID faceTexture = TexMan.CheckForTexture(faceName.GetChars(),
-			ETextureType::Any, FTextureManager::TEXMAN_TryAny);
-		if (faceTexture.isValid()) face = TexMan.GetGameTexture(faceTexture, true);
-		DrawBottomGameTextureSized(framebuffer,
-			SideX + (SideWidth - FaceWidth) / 2 - 3, faceY,
-			face, FaceWidth, FaceHeight);
-	}
+void DrawBottomStatus(unsigned char *framebuffer, AActor *owner)
+{
+	using namespace BottomLayout;
+	static constexpr FEmbeddedBottomImage CounterRupee = BOTTOM_IMAGE(BottomCounterRupee);
+	static constexpr FEmbeddedBottomImage CounterKey = BOTTOM_IMAGE(BottomCounterKey);
+	static constexpr FEmbeddedBottomImage CounterBomb = BOTTOM_IMAGE(BottomCounterBomb);
+
+	// The map's frame and its zoom button; the map itself is drawn by the GPU over it.
+	OverlayFrame(framebuffer, MapFrameX, MapFrameY, MapFrameWidth, MapFrameHeight, 2, Blue);
+	OverlayRect(framebuffer, ZoomX, ZoomY - 2, ZoomWidth, 2, Blue);
+	const char *zoom = Tr(BottomMapZoomedOut ? "ZOOM IN" : "ZOOM OUT");
+	NesText(framebuffer, ZoomX + (ZoomWidth - NesTextWidth(zoom, 1)) / 2, ZoomY + 4, zoom, 1,
+		White);
+	if (owner == nullptr) return;
 
 	struct FCounter
 	{
 		const FEmbeddedBottomImage *Image;
 		const char *Inventory;
-		int Y;
 	};
 	const FCounter Counters[] = {
-		{ &CounterRupee, "ZeldaRupee", counterStartY },
-		{ &CounterKey, "ZeldaKey", counterStartY + 18 },
-		{ &CounterBomb, "BombAmmo", counterStartY + 36 },
+		{ &CounterRupee, "ZeldaRupee" },
+		{ &CounterKey, "ZeldaKey" },
+		{ &CounterBomb, "BombAmmo" },
 	};
+	int y = CounterY;
 	for (const auto &counter : Counters)
 	{
-		// v0.27 grows the complete rupee/key/bomb cluster by another 15%.
-		const int iconWidth = std::max(1,
-			static_cast<int>(counter.Image->Width * 132u / 100u));
-		const int iconHeight = std::max(1,
-			static_cast<int>(counter.Image->Height * 132u / 100u));
-		constexpr int textWidth = 3 * 8;
-		constexpr int CounterGap = 3;
-		const int counterX = SideX + (SideWidth - iconWidth - CounterGap - textWidth) / 2 - 5;
-		DrawEmbeddedBottomImageSized(framebuffer, counterX, counter.Y,
-			*counter.Image, iconWidth, iconHeight);
+		DrawEmbeddedBottomImage(framebuffer, SideX + 8, y, *counter.Image);
 		char amount[8] = {};
 		if (std::strcmp(counter.Inventory, "BombAmmo") == 0 &&
 			BottomInventoryAmount(owner, "ZeldaInfiniteBomb") > 0)
 		{
-			std::snprintf(amount, sizeof(amount), "INF");
+			std::snprintf(amount, sizeof(amount), "XINF");
 		}
 		else
 		{
-			std::snprintf(amount, sizeof(amount), "%03d",
+			std::snprintf(amount, sizeof(amount), "X%d",
 				std::clamp(BottomInventoryAmount(owner, counter.Inventory), 0, 999));
 		}
-		OverlayTextSized(framebuffer, counterX + iconWidth + CounterGap,
-			counter.Y + 1, amount, 7, 9, 8, OverlayIvory);
+		NesText(framebuffer, SideX + 24, y + 1, amount, 1, White);
+		y += CounterStep;
 	}
-}
 
-void DrawBottomTabs(unsigned char *framebuffer)
-{
-	// Keep the simple v0.28 tab treatment, but use a slightly smaller clean
-	// pixel face. The blue frame line remains visible behind the two labels and
-	// the selected page gets its own underline instead of a boxed button.
-	constexpr int MapLeft = 31;
-	constexpr int ItemsLeft = 133;
-	constexpr int TabWidth = 100;
-	OverlayRect(framebuffer, 16, 202, 219, 36, OverlayInk);
-	OverlayRect(framebuffer, 16, 219, 288, 2, OverlayBlue);
-	constexpr int GlyphWidth = 7;
-	constexpr int GlyphHeight = 10;
-	constexpr int Advance = 8;
-	auto drawTab = [&](int left, const char *label, bool selected)
-	{
-		const int length = static_cast<int>(std::strlen(label));
-		const int textWidth = length > 0 ? (length - 1) * Advance + GlyphWidth : 0;
-		const int textX = left + (TabWidth - textWidth) / 2;
-		OverlayRect(framebuffer, textX - 5, 207, textWidth + 10, 17, OverlayInk);
-		OverlayTextSized(framebuffer, textX, 209, label,
-			GlyphWidth, GlyphHeight, Advance, OverlayIvory);
-		if (selected)
-			OverlayRect(framebuffer, left + 22, 232, TabWidth - 44, 2, OverlayBlue);
-	};
-	drawTab(MapLeft, "MAP", BottomGameplayTab == EBottomGameplayTab::Map);
-	drawTab(ItemsLeft, "ITEMS", BottomGameplayTab == EBottomGameplayTab::Items);
+	const char *life = Tr("-LIFE-");
+	NesText(framebuffer, SideX + (SideWidth - NesTextWidth(life, 1)) / 2, LifeY, life, 1,
+		Red);
+	DrawBottomHearts(framebuffer, owner);
 }
 
 void DrawBottomGameplay(unsigned char *framebuffer)
 {
-	static constexpr FEmbeddedBottomImage Frame = BOTTOM_IMAGE(BottomGameFrame);
-	// Decoded once into the framebuffer's layout, with a mask of its opaque pixels; decoding
-	// the RLE pixel by pixel on every redraw took most of its time.
-	constexpr size_t FramePixels = BottomScreenWidth * BottomScreenHeight;
-	static std::vector<uint32_t> framePixels;
-	static std::vector<uint8_t> frameOpaque;
-	if (framePixels.empty())
-	{
-		std::vector<uint32_t> decoded(FramePixels, 0u);
-		std::vector<uint32_t> marker(FramePixels, 0x01020304u);
-		// Decoded over two backgrounds: a pixel that differs is one the frame leaves as it was.
-		DrawEmbeddedBottomImage(reinterpret_cast<unsigned char *>(decoded.data()), 0, 0, Frame);
-		DrawEmbeddedBottomImage(reinterpret_cast<unsigned char *>(marker.data()), 0, 0, Frame);
-		frameOpaque.resize(FramePixels);
-		for (size_t index = 0; index < FramePixels; ++index)
-			frameOpaque[index] = decoded[index] == marker[index];
-		framePixels = std::move(decoded);
-	}
-	uint32_t *target = reinterpret_cast<uint32_t *>(framebuffer);
-	for (size_t index = 0; index < FramePixels; ++index)
-		if (frameOpaque[index]) target[index] = framePixels[index];
+	using namespace BottomLayout;
+	OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight, Black);
 	AActor *owner = players[consoleplayer].mo;
-	if (BottomGameplayTab == EBottomGameplayTab::Map) DrawBottomAutomap(framebuffer);
-	else DrawBottomItems(framebuffer, owner, players[consoleplayer].ReadyWeapon);
-	DrawBottomHeartsAndCounters(framebuffer, owner);
-	DrawBottomTabs(framebuffer);
+	DrawBottomAutomap(framebuffer, MapX, MapY, MapWidth, MapHeight,
+		BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear);
+	DrawBottomInventory(framebuffer, owner, players[consoleplayer].ReadyWeapon);
+	DrawBottomStatus(framebuffer, owner);
 }
 
 #undef BOTTOM_IMAGE
@@ -3328,7 +3352,8 @@ uint64_t BottomGameplaySignature()
 		hash *= 1099511628211ull;
 	};
 	AActor *owner = players[consoleplayer].mo;
-	mix(static_cast<uint64_t>(BottomGameplayTab));
+	mix(static_cast<uint64_t>(BottomMapZoomedOut));
+	mix(static_cast<uint64_t>(BottomGodMode()));
 	mix(primaryLevel != nullptr ? primaryLevel->lines.Size() : 0u);
 	mix(reinterpret_cast<uintptr_t>(owner));
 	if (owner == nullptr) return hash;
@@ -3341,15 +3366,8 @@ uint64_t BottomGameplaySignature()
 	{
 		mix(static_cast<uint64_t>(BottomInventoryAmount(owner, type)));
 	}
-	if (BottomGameplayTab == EBottomGameplayTab::Items)
-	{
-		for (const FBottomItem &item : BottomItems())
-			mix(BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3));
-	}
-	FGameTexture *face = StatusBar != nullptr && StatusBar->CPlayer != nullptr &&
-		StatusBar->CPlayer->mo != nullptr ?
-		StatusBar->mugshot.GetFace(StatusBar->CPlayer, "STF", 5) : nullptr;
-	mix(reinterpret_cast<uintptr_t>(face));
+	for (const FBottomItem &item : BottomItems())
+		mix(BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3));
 	return hash;
 }
 
@@ -5655,9 +5673,9 @@ bool I_3DSDiagnosticTouch(float x, float y)
 		return true;
 	}
 
-	// SDL reports touch coordinates normalized to the 320x240 lower LCD. The
-	// bottom strip belongs to the gameplay tabs; the rest remains the relative
-	// look surface so this UI does not take a movement control away from players.
+	// SDL reports touch coordinates normalized to the 320x240 lower LCD. The items, the map's
+	// zoom button and (debug builds) GOD and ALL take a touch; everywhere else, the map
+	// included, remains the relative look surface (BottomLayout).
 	if (gamestate != GS_LEVEL)
 	{
 		return false;
@@ -5665,34 +5683,33 @@ bool I_3DSDiagnosticTouch(float x, float y)
 
 	const float pixelX = x * BottomScreenWidth;
 	const float pixelY = y * BottomScreenHeight;
-	if (BottomGameplayTab == EBottomGameplayTab::Map &&
-		pixelX >= 31.0f && pixelX < 235.0f &&
-		pixelY >= 38.0f && pixelY < 194.0f)
+	using namespace BottomLayout;
+#if LOD3DS_DEBUG_TOOLS
+	if (Inside(pixelX, pixelY, GodX, CheatY, CheatWidth, CheatHeight))
+	{
+		AddCommandString("god");
+		return true;
+	}
+	if (Inside(pixelX, pixelY, AllX, CheatY, CheatWidth, CheatHeight))
+	{
+		BottomGiveEverything();
+		SetOverlayNotification(Tr("ALL ITEMS GIVEN"));
+		return true;
+	}
+#endif
+	if (Inside(pixelX, pixelY, ZoomX, ZoomY, ZoomWidth, ZoomHeight))
 	{
 		BottomMapZoomedOut = !BottomMapZoomedOut;
 		DrawBottomOverlay(true);
 		return true;
 	}
-	if (BottomGameplayTab == EBottomGameplayTab::Items &&
-		pixelX >= 34.0f && pixelX < 230.0f &&
-		pixelY >= 38.0f && pixelY < 202.0f)
+	const unsigned itemCount = static_cast<unsigned>(BottomItems().size());
+	const int rows = static_cast<int>((itemCount + Columns - 1) / Columns);
+	if (Inside(pixelX, pixelY, GridX, GridY, Columns * CellWidth, rows * CellHeight))
 	{
-		const unsigned column = static_cast<unsigned>((pixelX - 34.0f) / 49.0f);
-		const unsigned row = static_cast<unsigned>((pixelY - 38.0f) / 41.0f);
-		if (BottomSelectItem(row * 4u + column)) DrawBottomOverlay(true);
-		return true;
-	}
-	if (pixelY < 202.0f) return false;
-	if (pixelX >= 31.0f && pixelX < 133.0f)
-	{
-		BottomGameplayTab = EBottomGameplayTab::Map;
-		DrawBottomOverlay(true);
-		return true;
-	}
-	if (pixelX >= 133.0f && pixelX < 235.0f)
-	{
-		BottomGameplayTab = EBottomGameplayTab::Items;
-		DrawBottomOverlay(true);
+		const unsigned column = static_cast<unsigned>((pixelX - GridX) / CellWidth);
+		const unsigned row = static_cast<unsigned>((pixelY - GridY) / CellHeight);
+		if (BottomSelectItem(row * Columns + column)) DrawBottomOverlay(true);
 		return true;
 	}
 	return false;
@@ -5726,11 +5743,11 @@ void I_3DSOverlayFrame()
 	// Once a tic (I_StartFrame): this tic's bottom GPU draws replace the last tic's.
 	I_3DSGpuBottomNewTic();
 	DrawBottomOverlay(false);
-	if (I_3DSGpuBottomBuffer() != nullptr && BottomPresentation == EBottomPresentation::Gameplay &&
-		BottomGameplayTab == EBottomGameplayTab::Map)
+	if (I_3DSGpuBottomBuffer() != nullptr && BottomPresentation == EBottomPresentation::Gameplay)
 	{
-		QueueGpuMap(E3DSGpuScreen::Bottom, 31, 38, 204, 156,
-			BottomMapZoomedOut ? 32.0 : 12.0);
+		using namespace BottomLayout;
+		QueueGpuMap(E3DSGpuScreen::Bottom, MapX, MapY, MapWidth, MapHeight,
+			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear);
 	}
 }
 

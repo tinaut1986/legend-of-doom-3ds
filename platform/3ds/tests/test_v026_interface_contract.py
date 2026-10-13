@@ -58,9 +58,9 @@ class V026InterfaceContractTests(unittest.TestCase):
         self.assertNotIn("if (DrawNativePixelMenu(framebuffer))", diagnostics)
         self.assertIn('Font "NewSmallFont", "White"', patch)
         self.assertIn("DrawBottomRoundedRectOutline", diagnostics)
-        self.assertIn("counter.Image->Width * 132u / 100u", diagnostics)
-        self.assertIn("OverlayTextSized(framebuffer, textX, 209, label", diagnostics)
-        self.assertIn("OverlayRect(framebuffer, 16, 219, 288, 2, OverlayBlue)", diagnostics)
+        self.assertIn('NesText(framebuffer, BBoxX, TitleY, Tr("INVENTORY"), 1, Red)', diagnostics)
+        self.assertIn('Tr(BottomMapZoomedOut ? "ZOOM IN" : "ZOOM OUT")', diagnostics)
+        self.assertNotIn("DrawBottomTabs", diagnostics)
         self.assertIn("A_OverlayOffset(OverlayID(), 51, 170)", patch)
 
     def test_controller_menu_fixed_layout_and_expanded_map(self):
@@ -95,7 +95,7 @@ class V026InterfaceContractTests(unittest.TestCase):
         self.assertNotIn('Menu.OptionWidth("INPUT")', patch)
         self.assertNotIn('mFontColorHeader, "ACTION"', patch)
         self.assertIn('Font "NewSmallFont", "White"', patch)
-        self.assertIn("BottomSelectItem(row * 4u + column)", diagnostics)
+        self.assertIn("BottomSelectItem(row * Columns + column)", diagnostics)
 
     def test_v030_save_load_uses_independent_screens_and_native_keyboard(self):
         diagnostics = (ROOT / "src/common/platform/3ds/diagnostics_3ds.cpp").read_text()

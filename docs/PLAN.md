@@ -33,6 +33,8 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 
 | Branch | What | State |
 |---|---|---|
+| `feat/bottom-nes` | U4: the NES-style bottom screen, GOD / ALL in debug builds | Built, not committed, **not yet seen on a console** (the New 3DS was away) |
+| `feat/stereo-3d` | P3: stereo 3D on the GPU world (slider; world behind the screen, convergence at the player's radius), GPU sprites, the weapon over the world, masked two-sided mid-textures (MAP01's bushes, rocks, trees), the flats' scale / rotation / offsets | Kept in `git stash` while U4 is built (no commits yet); the 3D, sprites and weapon seen by the owner, the rest **not yet seen on a console** |
 | _(merged)_ | `feat/gpu-world-spike` (P2.3 first step: walls and flats of the swrenderer's visible set drawn by the PICA200, `lod3ds_gpu_world`, debug builds, off by default; and the bottom map's flicker above 35 fps) merged into `release/v0.1.1` 2026-10-13 after the owner's look on the New 3DS ("60 fuera y 110 en mazmorra", no flicker) | |
 | _(merged)_ | `docs/gpu-path` (P2.1 note, P2.2 decision, the one-shot hwrenderer probe for debug builds) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead | |
 | _(merged)_ | `feat/overlay-anywhere` (the developer overlay with SELECT also over the title and its menus, owner 2026-10-13) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead after Claude saw it work on the New 3DS | |
@@ -217,6 +219,17 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   letters the NES font lacks (Á É Í Ó Ú Ñ Ü ¿ ¡) drawn in its 8x8 style.
   *Done when:* the owner switches the language on the console and finds no English left
   in the interface in Spanish (and none Spanish in English).
+
+- [ ] **U4** The gameplay bottom screen like the NES Zelda's pause screen, with debug cheats.
+  *Spec:* owner 2026-10-13: the MAP / ITEMS tabs look bolted on, their text scaled, the layout
+  and style clash, and a touch on the map both zoomed it and moved the camera. One screen with
+  no tabs, on black with the NES palette and font: INVENTORY with the B item's box and every
+  item in one frame (a touch selects one), the map in a frame with its own zoom button, the
+  rupee / key / bomb counters and -LIFE- with the hearts; every other touch moves the camera.
+  Debug builds: GOD (the engine's god mode) and ALL (every item, the counters full, sixteen
+  hearts; the triforce pieces left out, they drive the story).
+  *Done when:* the owner finds it integrated on the console, the map zooms only with its
+  button, and GOD / ALL work in a debug build and are absent from a stable one.
 
 ## Phase 2: GPU world renderer, 60 fps on New 3DS
 
