@@ -32,8 +32,8 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 
 | Branch | What | State |
 |---|---|---|
-| `fix/ftp-stop-freeze` | Turning the FTP server off froze the Minish Cap port (same code): safe stop (3 s join, a thread that does not end is left running, `STUCK, RESTART THE GAME`), remote-control waits give up when the server stops, the socket service is never shut down, non-blocking socket waits, stop and 30 s watchdog lines in `startup.log` | Merged into `release/v0.1.1` 2026-10-13 **before** a console check: waits for the owner's check on the console (FTP SERVER off with a client connected, and during `lod-link.py` commands) |
 | _(merged)_ | `feat/language` (U1 + U3, with `feat/native-menus`) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("todo ok") | |
+| _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
 | _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
 **Priority** (2026-10-13): U2 2D and bottom screen on the GPU (next) → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D
