@@ -55,11 +55,21 @@ void PolyRenderState::ClearScreen()
 	Draw(DT_TriangleStrip, FFlatVertexBuffer::FULLSCREEN_INDEX, 4, true);
 }
 
+#ifdef __3DS__
+// P2.2 probe (i_main.cpp, hwrender-probe.txt): the hardware renderer prepares and applies every
+// draw but none reaches the poly drawers, which crash on the 3DS (docs/gpu-renderer-design.md).
+// Its CPU side can then be timed with `bench`.
+bool I_3DSHwRenderProbeNoDraw = false;
+#endif
+
 void PolyRenderState::Draw(int dt, int index, int count, bool apply)
 {
 	if (apply || mNeedApply)
 		Apply();
 
+#ifdef __3DS__
+	if (I_3DSHwRenderProbeNoDraw) return;
+#endif
 	mDrawCommands->Draw(index, count, dtToDrawMode[dt]);
 }
 
@@ -68,6 +78,9 @@ void PolyRenderState::DrawIndexed(int dt, int index, int count, bool apply)
 	if (apply || mNeedApply)
 		Apply();
 
+#ifdef __3DS__
+	if (I_3DSHwRenderProbeNoDraw) return;
+#endif
 	mDrawCommands->DrawIndexed(index, count, dtToDrawMode[dt]);
 }
 

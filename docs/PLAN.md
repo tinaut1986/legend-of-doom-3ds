@@ -10,7 +10,8 @@ change (what goes where: the table in `CLAUDE.md`).
   workflow on par with `../zelda-tmc-3ds`.
 - **Starting point:** EstebanPdN's `legend-of-doom-3ds` v1.0 (forked 2026-10-12,
   `main` = `upstream/main` = `b1f6c09`). New 3DS family only. The published profile
-  `hardware-hybrid` renders the world with SoftPoly on CPU0/CPU2 at 320x192 by default
+  `hardware-hybrid` renders the world with the classic software renderer (swrenderer, true
+  colour, on the main thread only; corrected 2026-10-13, see `docs/frame-budget.md`) at 320x192 by default
   (50-100% render scale) and lets the PICA200 scale the finished frame to 400x240;
   uncapped, Doom logic at 35 Hz. It already has dual-screen menus, a bottom-screen
   map and items, touch/C-Stick camera, save previews, a CIA updater with stable and
@@ -32,6 +33,7 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 
 | Branch | What | State |
 |---|---|---|
+| _(merged)_ | `docs/gpu-path` (P2.1 note, P2.2 decision, the one-shot hwrenderer probe for debug builds) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead | |
 | _(merged)_ | `feat/overlay-anywhere` (the developer overlay with SELECT also over the title and its menus, owner 2026-10-13) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead after Claude saw it work on the New 3DS | |
 | _(merged)_ | `fix/install-relaunch` (#1: the relaunch after `SITE INSTALL` waits 10 s, through libctru's chainloader) merged into `release/v0.1.1` 2026-10-13 after 6 installs in a row on the New 3DS with no loader dump | |
 | _(merged)_ | `feat/gpu-2d` (U2) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("funciona"; gameplay still ~20 fps: the 3D view, P2) | |
@@ -220,13 +222,16 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
 The base for everything else: 3D doubles the world drawing and the Old 3DS has a
 third of the CPU, so neither is reachable with SoftPoly on the CPU.
 
-- [ ] **P2.1** Where the frame goes today.
+- [ ] **P2.1** Where the frame goes today. Note: [`docs/frame-budget.md`](frame-budget.md)
+  (first numbers 2026-10-13; a busy screen, a boss and the hwrenderer's scene walk still to record).
   *Spec:* from P0.3's recordings, split the New 3DS frame into game logic,
   BSP/visibility, SoftPoly raster (per core), presenter, audio, and idle; identify what
   stays on the CPU whatever the renderer (logic, BSP, ZScript).
   *Done when:* a note in `docs/` with those numbers and the CPU budget left for
   rendering at 60 fps (16.7 ms) and 30 fps.
-- [ ] **P2.2** Choose the GPU path.
+- [x] **P2.2** Choose the GPU path. Draft: [`docs/gpu-renderer-design.md`](gpu-renderer-design.md)
+  (measured 2026-10-13: the hwrenderer's CPU side is ~20 ms on MAP01; decided: (c), a renderer
+  of our own fed by the swrenderer's visibility).
   *Spec:* compare, with measurements where possible: (a) upstream's NovaGL route
   (GZDoom's GLES renderer through a GLES 1.x layer); (b) a native citro3d backend for
   GZDoom's `hwrenderer` (vertex buffers, render state, PICA200 texture formats and
@@ -388,3 +393,12 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   and jumping 10 s later never did (4, then 6 with the final build). The cause inside the system
   (presumably the HOME menu still handling the updated title when the jump arrives) is not
   known. The chainloader stays, as in `../sm-3ds`.
+- **2026-10-13** P2.2 decided by the owner: **(c)**, a GPU world renderer of our own, fed by the
+  swrenderer's opaque pass (its BSP walk, 1D occlusion and MAP01 distance cull) with each map's
+  geometry built at load and draws batched by texture and light level
+  (`docs/gpu-renderer-design.md`). GZDoom's hwrenderer was measured with its draws dropped:
+  ~20 ms of CPU a frame on MAP01 even culled at the fog distance (BSP 11 ms, angle clipper 11 ms),
+  against 7 ms for the swrenderer's whole scene setup and ~9.5 ms left for 60 fps. NovaGL (a) was
+  already ruled out by upstream's history. The poly backend's drawers crash on the 3DS in mode 4
+  (not investigated, unused by (c)). First step: a timed spike on MAP01 (walls and flats from
+  load-time buffers, the swrenderer's visible set, no lighting).
