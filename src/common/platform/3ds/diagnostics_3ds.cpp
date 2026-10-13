@@ -3266,9 +3266,17 @@ void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int 
 	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
 }
 
+// Outside a level the developer overlay covers the menus too: it is how its STATUS box (the
+// FTP address) is read before a game starts. In a level the menus keep the bottom screen.
+bool DeveloperOverlayCoversMenus()
+{
+	return DeveloperOverlayVisible && gamestate != GS_LEVEL;
+}
+
 EBottomPresentation DesiredBottomPresentation()
 {
 	if (DiagnosticProgressActive) return EBottomPresentation::Progress;
+	if (DeveloperOverlayCoversMenus()) return EBottomPresentation::DeveloperOverlay;
 	if (menuactive != MENU_Off && CurrentMenu != nullptr)
 		return EBottomPresentation::NativeMenu;
 	if (DeveloperOverlayVisible && gamestate == GS_LEVEL)
@@ -4982,7 +4990,7 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		NativeMenuFrozenPitch = pitchBytes;
 	}
 
-	unsigned char *bottom = BeginBottomFrame();
+	unsigned char *bottom = DeveloperOverlayCoversMenus() ? nullptr : BeginBottomFrame();
 	if (bottom != nullptr && DrawNativeMenu(bottom))
 	{
 		ExpireOverlayNotification(osGetTime());
@@ -5011,7 +5019,7 @@ void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 		return;
 	}
 
-	unsigned char *bottom = BeginBottomFrame();
+	unsigned char *bottom = DeveloperOverlayCoversMenus() ? nullptr : BeginBottomFrame();
 	if (bottom != nullptr)
 	{
 		DrawNativeMenuBottomFrame(bottom, menuPixels, basePixels,
@@ -5432,8 +5440,8 @@ F3DSDiagnosticButtonResult I_3DSDiagnosticButtonEvent(unsigned int button, bool 
 	if (pressed) HeldButtons |= bit;
 	else HeldButtons &= ~bit;
 
-	if (button == 2u && lod3ds_select_overlay && gamestate == GS_LEVEL &&
-		(menuactive == MENU_Off || DeveloperOverlayVisible))
+	if (button == 2u && lod3ds_select_overlay &&
+		(gamestate != GS_LEVEL || menuactive == MENU_Off || DeveloperOverlayVisible))
 	{
 		if (pressed)
 		{
@@ -5514,6 +5522,22 @@ void I_3DSRequestCleanDiagnosticDumps()
 bool I_3DSDiagnosticTouch(float x, float y)
 {
 	if (x < 0.0f || x > 1.0f || y < 0.0f || y > 1.0f) return false;
+	// The overlay, wherever it is on screen (over the menus outside a level), takes the touches.
+	if (DesiredBottomPresentation() == EBottomPresentation::DeveloperOverlay)
+	{
+		const float pixelX = x * BottomScreenWidth;
+		const float pixelY = y * BottomScreenHeight;
+		if (pixelY >= 178.0f && pixelY < 222.0f)
+		{
+			if (pixelX >= 7.0f && pixelX < 106.0f) I_3DSRequestDiagnosticDump();
+			else if (pixelX >= 110.0f && pixelX < 210.0f)
+				I_3DSRequestFullDiagnosticDump();
+			else if (pixelX >= 214.0f && pixelX < 314.0f)
+				I_3DSRequestCleanDiagnosticDumps();
+			DrawBottomOverlay(true);
+		}
+		return true;
+	}
 	if (I_3DSNativeMenuVisible())
 	{
 		if (NativeMenuTouch(static_cast<int>(x * BottomScreenWidth),
@@ -5628,22 +5652,6 @@ bool I_3DSDiagnosticTouch(float x, float y)
 	{
 		M_StartControlPanel(true);
 		M_SetMenu(NAME_Mainmenu, -1);
-		return true;
-	}
-
-	if (DeveloperOverlayVisible && gamestate == GS_LEVEL)
-	{
-		const float pixelX = x * BottomScreenWidth;
-		const float pixelY = y * BottomScreenHeight;
-		if (pixelY >= 178.0f && pixelY < 222.0f)
-		{
-			if (pixelX >= 7.0f && pixelX < 106.0f) I_3DSRequestDiagnosticDump();
-			else if (pixelX >= 110.0f && pixelX < 210.0f)
-				I_3DSRequestFullDiagnosticDump();
-			else if (pixelX >= 214.0f && pixelX < 314.0f)
-				I_3DSRequestCleanDiagnosticDumps();
-			DrawBottomOverlay(true);
-		}
 		return true;
 	}
 
