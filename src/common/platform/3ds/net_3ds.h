@@ -1,7 +1,7 @@
 #pragma once
 // The socket service, shared by the updater and the debug FTP server. socInit can run only once
-// at a time, so both take it through this reference count; the last release shuts it down.
-// Thread-safe.
+// at a time, so both take it through this reference count. It stays up once started: the last
+// release does not shut it down (net_3ds.c says why). Thread-safe.
 #ifdef __cplusplus
 extern "C" {
 #endif
