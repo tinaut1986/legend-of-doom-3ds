@@ -33,6 +33,7 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 
 | Branch | What | State |
 |---|---|---|
+| _(merged)_ | `feat/gpu-world-spike` (P2.3 first step: walls and flats of the swrenderer's visible set drawn by the PICA200, `lod3ds_gpu_world`, debug builds, off by default; and the bottom map's flicker above 35 fps) merged into `release/v0.1.1` 2026-10-13 after the owner's look on the New 3DS ("60 fuera y 110 en mazmorra", no flicker) | |
 | _(merged)_ | `docs/gpu-path` (P2.1 note, P2.2 decision, the one-shot hwrenderer probe for debug builds) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead | |
 | _(merged)_ | `feat/overlay-anywhere` (the developer overlay with SELECT also over the title and its menus, owner 2026-10-13) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead after Claude saw it work on the New 3DS | |
 | _(merged)_ | `fix/install-relaunch` (#1: the relaunch after `SITE INSTALL` waits 10 s, through libctru's chainloader) merged into `release/v0.1.1` 2026-10-13 after 6 installs in a row on the New 3DS with no loader dump | |

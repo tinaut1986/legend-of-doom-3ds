@@ -39,6 +39,10 @@ constexpr size_t ArenaVertices = 32768;
 constexpr size_t MaxDrawsPerFrame = 2048;
 constexpr size_t CommandBufferBytes = 0x80000;
 constexpr int MaxTextureSize = 1024;
+// The 3D world's vertices for one frame (P2.3 spike); two alternate like the 2D arenas.
+constexpr size_t WorldArenaVertices = 49152;
+// The bottom screen's draws of one tic (the map), kept and redrawn until the next tic's.
+constexpr size_t BottomArenaVertices = 16384;
 
 using FVertex = F3DSGpuVertex;
 
@@ -118,8 +122,18 @@ C3D_RenderTarget *BottomTarget;
 // The CPU's bottom interface, in the framebuffer's layout (gpu_3ds.h).
 uint8_t *BottomStaging;
 bool BottomDirty;
-bool BottomHadDraws;
-std::vector<FDraw> BottomDraws;
+// The bottom screen's GPU draws are queued once a tic (I_3DSOverlayFrame runs on new tics
+// only), while frames come faster: each tic's set goes into its own arena (two alternate) and
+// stays on screen until the next tic replaces it. Redrawing it only then keeps it from
+// flickering at more than 35 fps and saves the bottom target's draws in between.
+FVertex *BottomArenas[2];
+int BottomWriteArena;       // where the current tic's draws go
+int BottomShownArena;       // what BottomShown points into
+size_t BottomPendingUsed;
+std::vector<FDraw> BottomDraws; // the current tic's, in BottomArenas[BottomWriteArena]
+std::vector<FDraw> BottomShown; // the last complete tic's, drawn on the bottom target
+bool BottomTicPending;      // BottomDraws is a new tic's set, to replace BottomShown
+bool BottomRedraw;          // the bottom target has to be drawn and output this frame
 uint64_t LastPresentMilliseconds;
 C3D_Tex CanvasTexture;
 uint32_t *CanvasUpload;
@@ -131,6 +145,25 @@ std::vector<FPendingRelease> PendingReleases;
 uint32_t SubmittedFrames;
 bool TopPresented;
 F3DSGpuStats Stats;
+
+// The 3D world (gpu_3ds.h, I_3DSGpuWorldBegin): its own program (the shader binary's second
+// entry), arenas and draws, drawn first in a frame that has them.
+struct FWorldDraw
+{
+	C3D_Tex Texture;
+	bool Textured;
+	uint32_t First;
+	uint32_t Count;
+};
+shaderProgram_s WorldProgram;
+bool WorldProgramReady;
+int WorldProjectionLocation = -1;
+F3DSGpuWorldVertex *WorldArenas[2];
+size_t WorldUsed;
+std::vector<FWorldDraw> WorldDraws;
+C3D_Mtx WorldMatrix;
+uint32_t WorldClearColor;
+bool WorldQueued;
 
 // Last state sent to citro3d, to skip redundant changes within a frame.
 EMode AppliedMode;
@@ -581,8 +614,18 @@ void BeginPass()
 bool PrepareBottom()
 {
 	if (BottomTarget == nullptr) return false;
-	const bool draws = !BottomDraws.empty();
-	if (!BottomDirty && !draws && !BottomHadDraws) return false;
+	if (BottomTicPending)
+	{
+		// A new tic's set replaces the one on screen; nothing to redraw if both are empty.
+		if (!BottomDraws.empty() || !BottomShown.empty()) BottomRedraw = true;
+		if (BottomPendingUsed > 0)
+			GSPGPU_FlushDataCache(BottomArenas[BottomWriteArena], BottomPendingUsed * sizeof(FVertex));
+		BottomShown.swap(BottomDraws);
+		BottomShownArena = BottomWriteArena;
+		BottomDraws.clear();
+		BottomTicPending = false;
+	}
+	if (!BottomDirty && !BottomRedraw) return false;
 	const size_t bytes = static_cast<size_t>(BottomWidth) * BottomHeight * 4u;
 	GSPGPU_FlushDataCache(BottomStaging, bytes);
 	// Linear to tiled with no other change: the target's output transfer undoes it exactly.
@@ -598,17 +641,55 @@ bool PrepareBottom()
 // The bottom target's draws, inside the frame being built, after the top screen's.
 void DrawBottom()
 {
-	const bool draws = !BottomDraws.empty();
 	C3D_FrameDrawOn(BottomTarget);
-	if (draws)
+	if (!BottomShown.empty())
 	{
 		BeginPass();
+		C3D_BufInfo *buffers = C3D_GetBufInfo();
+		BufInfo_Init(buffers);
+		BufInfo_Add(buffers, BottomArenas[BottomShownArena], sizeof(FVertex), 3, 0x210);
 		C3D_AlphaTest(true, GPU_GREATER, 0);
-		for (const FDraw &draw : BottomDraws) ApplyDraw(draw);
+		for (const FDraw &draw : BottomShown) ApplyDraw(draw);
 		C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
 	}
-	BottomHadDraws = draws;
-	BottomDraws.clear();
+	BottomRedraw = false;
+}
+
+// The world's draws, first in the top target, depth-tested; the 2D pass starts afterwards from
+// BeginPass(), which turns the depth test off again.
+void DrawWorld(F3DSGpuWorldVertex *vertices)
+{
+	C3D_BindProgram(&WorldProgram);
+	C3D_AttrInfo *attributes = C3D_GetAttrInfo();
+	AttrInfo_Init(attributes);
+	AttrInfo_AddLoader(attributes, 0, GPU_FLOAT, 3);
+	AttrInfo_AddLoader(attributes, 1, GPU_FLOAT, 2);
+	AttrInfo_AddLoader(attributes, 2, GPU_UNSIGNED_BYTE, 4);
+	C3D_BufInfo *buffers = C3D_GetBufInfo();
+	BufInfo_Init(buffers);
+	BufInfo_Add(buffers, vertices, sizeof(F3DSGpuWorldVertex), 3, 0x210);
+	C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, WorldProjectionLocation, &WorldMatrix);
+	C3D_DepthTest(true, GPU_GREATER, GPU_WRITE_ALL);
+	C3D_CullFace(GPU_CULL_NONE);
+	C3D_AlphaTest(false, GPU_ALWAYS, 0);
+	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
+	AppliedModeValid = false;
+	ApplyMode(EMode::Opaque, 0);
+	const C3D_Tex *bound = nullptr;
+	bool anyBound = false;
+	for (const FWorldDraw &draw : WorldDraws)
+	{
+		const C3D_Tex *texture = draw.Textured ? &draw.Texture : nullptr;
+		if (!anyBound || texture != bound)
+		{
+			ApplyMode(texture != nullptr ? EMode::Opaque : EMode::NoTexture, 0);
+			C3D_TexBind(0, const_cast<C3D_Tex *>(texture));
+			bound = texture;
+			anyBound = true;
+		}
+		C3D_DrawArrays(GPU_TRIANGLES, static_cast<int>(draw.First), static_cast<int>(draw.Count));
+	}
 }
 
 }
@@ -653,6 +734,21 @@ bool I_3DSGpuInit()
 	shaderProgramInit(&Program);
 	shaderProgramSetVsh(&Program, &ShaderBinary->DVLE[0]);
 	ProjectionLocation = shaderInstanceGetUniformLocation(Program.vertexShader, "projection");
+	if (ShaderBinary->numDVLE > 1)
+	{
+		shaderProgramInit(&WorldProgram);
+		shaderProgramSetVsh(&WorldProgram, &ShaderBinary->DVLE[1]);
+		WorldProjectionLocation = shaderInstanceGetUniformLocation(WorldProgram.vertexShader,
+			"projection");
+		WorldProgramReady = WorldProjectionLocation >= 0;
+	}
+	for (auto &arena : WorldArenas)
+	{
+		arena = static_cast<F3DSGpuWorldVertex *>(
+			linearMemAlign(WorldArenaVertices * sizeof(F3DSGpuWorldVertex), 0x80));
+		if (arena == nullptr) WorldProgramReady = false;
+	}
+	WorldDraws.reserve(512);
 
 	if (!C3D_TexInitVRAM(&CanvasTexture, CanvasTextureWidth, CanvasTextureHeight, GPU_RGBA8))
 	{
@@ -698,8 +794,18 @@ bool I_3DSGpuInit()
 	C3D_RenderTargetSetOutput(BottomTarget, GFX_BOTTOM, GFX_LEFT, OutputTransferFlags());
 	BottomDirty = true;
 
+	for (auto &arena : BottomArenas)
+	{
+		arena = static_cast<FVertex *>(linearMemAlign(BottomArenaVertices * sizeof(FVertex), 0x80));
+		if (arena == nullptr)
+		{
+			I_3DSGpuShutdown();
+			return false;
+		}
+	}
 	Draws.reserve(MaxDrawsPerFrame);
 	BottomDraws.reserve(64);
+	BottomShown.reserve(64);
 	OverlayDraws.reserve(64);
 	Ready = true;
 	return true;
@@ -726,11 +832,30 @@ void I_3DSGpuShutdown()
 		linearFree(BottomStaging);
 		BottomStaging = nullptr;
 	}
+	for (auto &arena : BottomArenas)
+	{
+		if (arena != nullptr) linearFree(arena);
+		arena = nullptr;
+	}
 	BottomDraws.clear();
+	BottomShown.clear();
+	BottomTicPending = false;
 	if (CanvasTexture.data != nullptr)
 	{
 		C3D_TexDelete(&CanvasTexture);
 		CanvasTexture = {};
+	}
+	for (auto &arena : WorldArenas)
+	{
+		if (arena != nullptr) linearFree(arena);
+		arena = nullptr;
+	}
+	WorldDraws.clear();
+	WorldQueued = false;
+	if (WorldProgramReady)
+	{
+		shaderProgramFree(&WorldProgram);
+		WorldProgramReady = false;
 	}
 	if (ShaderBinary != nullptr)
 	{
@@ -923,9 +1048,12 @@ bool I_3DSGpuRecord2D(F2DDrawer *drawer)
 
 void I_3DSGpuDiscard2D()
 {
+	WorldDraws.clear();
+	WorldQueued = false;
+	WorldUsed = 0;
 	Draws.clear();
 	OverlayDraws.clear();
-	BottomDraws.clear();
+	// The bottom screen's draws belong to the tic, not to the frame: they stay for the next.
 	if (Ready) Arenas[CurrentArena].Used = 0;
 }
 
@@ -947,9 +1075,18 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 		return false;
 	}
 
-	const size_t uploadBytes = lod3ds::CopyPresentPixels(CanvasUpload, CanvasTextureWidth,
-		pixels, pitchBytes, width, height);
-	if (R_FAILED(GSPGPU_FlushDataCache(CanvasUpload, uploadBytes))) return false;
+	const bool world = WorldQueued && WorldProgramReady;
+	F3DSGpuWorldVertex *worldVertices = WorldArenas[CurrentArena];
+	if (!world)
+	{
+		const size_t uploadBytes = lod3ds::CopyPresentPixels(CanvasUpload, CanvasTextureWidth,
+			pixels, pitchBytes, width, height);
+		if (R_FAILED(GSPGPU_FlushDataCache(CanvasUpload, uploadBytes))) return false;
+	}
+	else
+	{
+		GSPGPU_FlushDataCache(worldVertices, WorldUsed * sizeof(F3DSGpuWorldVertex));
+	}
 
 	FVertex *quad = nullptr;
 	uint32_t quadFirst = 0;
@@ -961,34 +1098,41 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 	const bool bottom = PrepareBottom();
 	if (!C3D_FrameBegin(0)) return false;
 	CollectReleases();
-	C3D_SyncDisplayTransfer(CanvasUpload,
-		GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
-		static_cast<u32 *>(CanvasTexture.data),
-		GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
-		TextureTransferFlags());
+	if (!world)
+	{
+		C3D_SyncDisplayTransfer(CanvasUpload,
+			GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
+			static_cast<u32 *>(CanvasTexture.data),
+			GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
+			TextureTransferFlags());
+	}
 
-	C3D_RenderTargetClear(TopTarget, C3D_CLEAR_ALL, 0x000000ff, 0);
+	C3D_RenderTargetClear(TopTarget, C3D_CLEAR_ALL, world ? WorldClearColor : 0x000000ff, 0);
 	C3D_FrameDrawOn(TopTarget);
 	FArena &arena = Arenas[CurrentArena];
+	if (world) DrawWorld(worldVertices);
 	BeginPass();
 
-	// The canvas, opaque.
-	FDraw canvas = MakeScreenDraw(EMode::Canvas, &CanvasTexture, quadFirst, 6);
-	canvas.BlendSrc = STYLEALPHA_One;
-	canvas.BlendDst = STYLEALPHA_Zero;
-	ApplyDraw(canvas);
+	if (!world)
+	{
+		// The canvas, opaque.
+		FDraw canvas = MakeScreenDraw(EMode::Canvas, &CanvasTexture, quadFirst, 6);
+		canvas.BlendSrc = STYLEALPHA_One;
+		canvas.BlendDst = STYLEALPHA_Zero;
+		ApplyDraw(canvas);
+	}
 
 	// SoftPoly's 2D alpha test discards fully transparent fragments.
 	C3D_AlphaTest(true, GPU_GREATER, 0);
 	for (const FDraw &draw : Draws) ApplyDraw(draw);
 	for (const FDraw &draw : OverlayDraws) ApplyDraw(draw);
 	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
-	const size_t bottomDraws = BottomDraws.size();
+	const size_t bottomDraws = bottom ? BottomShown.size() : 0;
 	if (bottom) DrawBottom();
-	else BottomDraws.clear();
 
-	Stats.LastDraws = static_cast<uint32_t>(Draws.size() + OverlayDraws.size() + bottomDraws + 1);
-	Stats.LastVertices = static_cast<uint32_t>(arena.Used);
+	Stats.LastDraws = static_cast<uint32_t>(Draws.size() + OverlayDraws.size() + bottomDraws +
+		(world ? WorldDraws.size() : 1));
+	Stats.LastVertices = static_cast<uint32_t>(arena.Used + (world ? WorldUsed : 0));
 	// The draws' texture copies go with the vectors below; leave citro3d no pointer to them.
 	C3D_TexBind(0, nullptr);
 	GSPGPU_FlushDataCache(arena.Vertices, arena.Used * sizeof(FVertex));
@@ -999,9 +1143,63 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 
 	Draws.clear();
 	OverlayDraws.clear();
+	WorldDraws.clear();
+	WorldQueued = false;
+	WorldUsed = 0;
 	CurrentArena ^= 1;
 	Arenas[CurrentArena].Used = 0;
 	return true;
+}
+
+void I_3DSGpuWorldBegin(const float matrix[16], uint32_t clearColor)
+{
+	if (!Ready || !WorldProgramReady) return;
+	// The LCD is rotated a quarter turn (as Mtx_PerspTilt): clip x comes from the upright
+	// screen's y, clip y from minus its x.
+	C3D_Mtx &m = WorldMatrix;
+	for (int column = 0; column < 4; ++column)
+	{
+		m.r[0].c[3 - column] = matrix[4 + column];
+		m.r[1].c[3 - column] = -matrix[column];
+		m.r[2].c[3 - column] = matrix[8 + column];
+		m.r[3].c[3 - column] = matrix[12 + column];
+	}
+	WorldClearColor = clearColor;
+	WorldDraws.clear();
+	WorldUsed = 0;
+	WorldQueued = true;
+}
+
+F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count)
+{
+	if (!WorldQueued || count <= 0 || WorldUsed + static_cast<size_t>(count) > WorldArenaVertices)
+		return nullptr;
+	F3DSGpuWorldVertex *out = WorldArenas[CurrentArena] + WorldUsed;
+	FWorldDraw draw{};
+	draw.Textured = texture != nullptr;
+	if (texture != nullptr) draw.Texture = texture->Texture;
+	draw.First = static_cast<uint32_t>(WorldUsed);
+	draw.Count = static_cast<uint32_t>(count);
+	if (!WorldDraws.empty())
+	{
+		// Same texture as the previous draw and contiguous: one draw.
+		FWorldDraw &last = WorldDraws.back();
+		if (last.Textured == draw.Textured && last.First + last.Count == draw.First &&
+			(!draw.Textured || last.Texture.data == draw.Texture.data))
+		{
+			last.Count += draw.Count;
+			WorldUsed += static_cast<size_t>(count);
+			return out;
+		}
+	}
+	WorldDraws.push_back(draw);
+	WorldUsed += static_cast<size_t>(count);
+	return out;
+}
+
+float I_3DSGpuLastDrawingTime()
+{
+	return C3DReady ? C3D_GetDrawingTime() : 0.0f;
 }
 
 unsigned char *I_3DSGpuBottomBuffer()
@@ -1032,7 +1230,7 @@ void I_3DSGpuBottomChanged()
 	std::memcpy(framebuffer, BottomStaging, bytes);
 	GSPGPU_FlushDataCache(framebuffer, bytes);
 	gfxScreenSwapBuffers(GFX_BOTTOM, false);
-	BottomHadDraws = true;
+	BottomRedraw = true;
 }
 
 F3DSGpuVertex *I_3DSGpuQueueTriangles(E3DSGpuScreen screen, F3DSGpuTexture *texture,
@@ -1043,7 +1241,14 @@ F3DSGpuVertex *I_3DSGpuQueueTriangles(E3DSGpuScreen screen, F3DSGpuTexture *text
 	if (queue.size() >= MaxDrawsPerFrame) return nullptr;
 	FVertex *vertices = nullptr;
 	uint32_t first = 0;
-	if (!ArenaReserve(static_cast<size_t>(count), vertices, first)) return nullptr;
+	if (screen == E3DSGpuScreen::Bottom)
+	{
+		if (BottomPendingUsed + static_cast<size_t>(count) > BottomArenaVertices) return nullptr;
+		first = static_cast<uint32_t>(BottomPendingUsed);
+		vertices = BottomArenas[BottomWriteArena] + BottomPendingUsed;
+		BottomPendingUsed += static_cast<size_t>(count);
+	}
+	else if (!ArenaReserve(static_cast<size_t>(count), vertices, first)) return nullptr;
 	FDraw draw = MakeScreenDraw(texture != nullptr ? EMode::Normal : EMode::NoTexture,
 		texture != nullptr ? &texture->Texture : nullptr, first, static_cast<uint32_t>(count));
 	draw.Screen = screen;
@@ -1058,6 +1263,16 @@ F3DSGpuVertex *I_3DSGpuQueueTriangles(E3DSGpuScreen screen, F3DSGpuTexture *text
 	}
 	queue.push_back(draw);
 	return vertices;
+}
+
+void I_3DSGpuBottomNewTic()
+{
+	if (!Ready) return;
+	// Into the arena BottomShown does not use: the GPU may still read that one.
+	BottomWriteArena = BottomShownArena ^ 1;
+	BottomPendingUsed = 0;
+	BottomDraws.clear();
+	BottomTicPending = true;
 }
 
 F3DSGpuTexture *I_3DSGpuGameTexture(FGameTexture *gameTexture, bool wrap)
@@ -1204,6 +1419,10 @@ void I_3DSGpuOverlayRect(float x, float y, float width, float height, uint32_t r
 #else
 
 bool I_3DSGpuInit() { return false; }
+void I_3DSGpuWorldBegin(const float *, uint32_t) {}
+void I_3DSGpuBottomNewTic() {}
+F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *, int) { return nullptr; }
+float I_3DSGpuLastDrawingTime() { return 0.0f; }
 void I_3DSGpuShutdown() {}
 bool I_3DSGpuReady() { return false; }
 void I_3DSGpuWaitIdle() {}

@@ -51,6 +51,9 @@
 #include "swrenderer/line/r_wallsetup.h"
 #include "swrenderer/r_renderthread.h"
 #include "r_memory.h"
+#ifdef __3DS__
+#include "common/platform/3ds/gpu_world_3ds.h"
+#endif
 
 EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor)
 
@@ -65,6 +68,11 @@ namespace swrenderer
 	{
 		if (pic == nullptr)
 			return;
+#ifdef __3DS__
+		// The GPU draws the world (gpu_world_3ds.cpp): only the walk's clipping is wanted.
+		if (I_3DSGpuWorldActive())
+			return;
+#endif
 
 		this->x1 = x1;
 		this->x2 = x2;

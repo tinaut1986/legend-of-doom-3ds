@@ -1,0 +1,36 @@
+; Vertex shader of the 3D world on the GPU (gpu_3ds.cpp, DrawWorld; P2.3 spike): the second
+; entry of the shader binary, after gpu_3ds.v.pica (picasso shares names between the files).
+;
+; v0: position (x, y, z) in map units; projection maps it to clip space (gpu_3ds.h,
+;     I_3DSGpuWorldBegin, with the LCD's rotation).
+; v1: texture coordinate (s, t), PICA convention (t = 1 at the image top).
+; v2: vertex colour, four unsigned bytes R, G, B, A.
+
+.fvec projection[4]
+.constf world_constants(0.0, 1.0, 0.003921568627, 0.0)  ; 0, 1, 1/255
+
+.out outpos position
+.out outtc0 texcoord0
+.out outclr color
+
+.alias inpos v0
+.alias intex v1
+.alias inclr v2
+
+.entry world_main
+.proc world_main
+    ; r0 = (x, y, z, 1)
+    mov r0.xyz, inpos
+    mov r0.w, world_constants.y
+
+    dp4 outpos.x, projection[0], r0
+    dp4 outpos.y, projection[1], r0
+    dp4 outpos.z, projection[2], r0
+    dp4 outpos.w, projection[3], r0
+
+    mov outtc0, intex
+
+    ; PICA allows a uniform/constant only as the first source operand.
+    mul outclr, world_constants.zzzz, inclr
+    end
+.end
