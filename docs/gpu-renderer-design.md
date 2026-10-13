@@ -122,6 +122,38 @@ First step if (c) is chosen: a spike that draws MAP01's walls and flats from loa
 with the swrenderer's visible set, no lighting, timed with the recorder: it validates the CPU
 estimate before any parity work.
 
+## Spike result (2026-10-13, branch `feat/gpu-world-spike`)
+
+`gpu_world_3ds.cpp`: right after the swrenderer's opaque pass, its visible subsectors
+(`PvsSubsectors`, front to back) become wall quads and flat fans, batched by texture, drawn by
+the PICA200 with a depth buffer in place of the canvas (`gpu_3ds.cpp`, `DrawWorld`; second
+shader `gpu_world_3ds.v.pica`). The projection is the swrenderer's own (`CenterX`, `CenterY`,
+`InvZtoScale`, the focal tangent), so the GPU image lines up with the CPU one. With it on, the
+swrenderer still walks and clips but draws no wall columns, planes, sky, translucent pass or
+weapon (`I_3DSGpuWorldActive`). Built per frame from the visible set (no load-time buffers yet).
+Debug builds: `lod3ds_gpu_world 1`, numbers in `lod3ds_gpu_world_stats`.
+
+New 3DS, 400x240 (render scale 1.0), standing at each map's start, recorder means:
+
+| Spot | world | fps | 3D view | capture (CPU) | draws / vertices | GPU frame |
+|---|---|---|---|---|---|---|
+| MAP01 | CPU (swrenderer) | 27.8 | 22.9 ms | | | |
+| MAP01 | **GPU** | **60.3** | **6.7 ms** | 0.7 ms | 6 / 1257 | 10.2 ms |
+| MAP02 | CPU | 38.2 | 19.8 ms | | | |
+| MAP02 | **GPU** | **105** | **4.3 ms** | 0.9 ms | 6 / 2016 | 8.4 ms |
+
+"3D view" with the GPU is the swrenderer's walk (with its wall setup and clipping, not yet
+trimmed) plus the capture. MAP01 reaches the LCD's 60 Hz with the walk untrimmed. The GPU's own
+time (citro3d's drawing time for the whole frame, 2D and bottom screen included) is well inside
+a frame. The estimate of the proposal holds.
+
+Missing before parity (P2.3): light (sector level and the software falloff, fog LUTs), sky,
+sprites and the weapon, masked mid-textures, 3D floors (MAP01), portals, slopes' texture
+alignment, flat offsets/rotation/scale, texture animation and wall scrolling (they come from
+the engine's texture lookups each frame, untested), and the swrenderer's walk trimmed to
+visibility only. Near-plane clipping by the PICA200 has not shown problems standing; to watch
+when walking into walls.
+
 ## The probe
 
 Debug builds take a one-shot probe (`i_main.cpp`): **`hwrender-probe.txt`** in

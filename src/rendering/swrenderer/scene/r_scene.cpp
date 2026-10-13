@@ -57,6 +57,9 @@
 #include "r_thread.h"
 #include "r_memory.h"
 #include "swrenderer/r_renderthread.h"
+#ifdef __3DS__
+#include "common/platform/3ds/gpu_world_3ds.h"
+#endif
 #include "swrenderer/things/r_playersprite.h"
 #include <chrono>
 
@@ -182,7 +185,11 @@ namespace swrenderer
 		if (r_modelscene)
 			MainThread()->Viewport->SetupPolyViewport(MainThread());
 
+		#ifdef __3DS__
+		if (renderPlayerSprites && !I_3DSGpuWorldActive())
+		#else
 		if (renderPlayerSprites)
+		#endif
 			RenderPSprites();
 
 		MainThread()->Viewport->viewpoint.camera->renderflags = savedflags;
@@ -285,9 +292,16 @@ namespace swrenderer
 			thread->ClipSegments->Clip(thread->X2, viewwidth, true, &visitor);
 
 		thread->OpaquePass->RenderScene(thread->Viewport->Level());
+		#ifdef __3DS__
+		I_3DSGpuWorldCapture(thread);
+		#endif
 		thread->Clip3D->ResetClip(); // reset clips (floor/ceiling)
 
+		#ifdef __3DS__
+		if (viewactive && !I_3DSGpuWorldActive())
+		#else
 		if (viewactive)
+		#endif
 		{
 			thread->PlaneList->Render();
 			#ifdef __3DS__

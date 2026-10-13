@@ -69,8 +69,13 @@ void I_3DSGpuTextureRelease(F3DSGpuTexture *texture);
 unsigned char *I_3DSGpuBottomBuffer();
 void I_3DSGpuBottomChanged();
 
-// Draws queued for this frame on either screen, after everything else there, in that screen's
-// pixels (400x240 or 320x240). Color: bytes R, G, B, A (I_3DSGpuColor).
+// Starts the bottom screen's GPU draws of a new tic: they replace the previous tic's on the next
+// presented frame, which stay on screen until then (frames come faster than tics).
+void I_3DSGpuBottomNewTic();
+
+// Draws queued on either screen, after everything else there (top: this frame; bottom: this
+// tic, see I_3DSGpuBottomNewTic), in that screen's pixels (400x240 or 320x240).
+// Color: bytes R, G, B, A (I_3DSGpuColor).
 enum class E3DSGpuScreen { Top, Bottom };
 struct F3DSGpuVertex
 {
@@ -99,3 +104,20 @@ void I_3DSGpuImageUpload(F3DSGpuImage *image, const uint32_t *rgba, int pitchPix
 // Queued for this frame's overlay pass, in top-screen pixels (400x240).
 void I_3DSGpuOverlayImage(F3DSGpuImage *image, float x, float y, float width, float height);
 void I_3DSGpuOverlayRect(float x, float y, float width, float height, uint32_t rgba);
+
+// The 3D world drawn by the PICA200 (P2.3 spike, docs/gpu-renderer-design.md): when a frame has
+// world draws, they are drawn with depth in place of the canvas, under the 2D and the overlays.
+// Matrix: world (x, y, z, 1) to clip space for an upright 400x240 screen, row-major, depth z/w
+// in [-1, 0] from near to far; the LCD's rotation is applied here.
+struct F3DSGpuWorldVertex
+{
+	float X, Y, Z;
+	float S, T; // PICA convention: t = 1 at the image top
+	uint32_t Color; // bytes R, G, B, A
+};
+void I_3DSGpuWorldBegin(const float matrix[16], uint32_t clearColor);
+// Room for count vertices of a triangle list textured with texture (nullptr: vertex colour);
+// nullptr when the frame's world arena is full.
+F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count);
+// GPU time of the last frame (citro3d's drawing time), in ms.
+float I_3DSGpuLastDrawingTime();

@@ -5723,6 +5723,8 @@ void I_3DSServiceDiagnosticDump()
 
 void I_3DSOverlayFrame()
 {
+	// Once a tic (I_StartFrame): this tic's bottom GPU draws replace the last tic's.
+	I_3DSGpuBottomNewTic();
 	DrawBottomOverlay(false);
 	if (I_3DSGpuBottomBuffer() != nullptr && BottomPresentation == EBottomPresentation::Gameplay &&
 		BottomGameplayTab == EBottomGameplayTab::Map)
