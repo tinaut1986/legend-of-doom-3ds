@@ -66,6 +66,14 @@ bool I_3DSDiagnosticTouch(float x, float y);
 // pixels for the lower LCD, then restores the upper canvas with only the
 // translucent live/title background.
 bool I_3DSNativeMenuVisible();
+
+// Native menus (PLAN U1, native_menu_3ds.inc). OwnsFrame: the open menu is one drawn
+// straight on the touch screen, so the engine does not draw it (no M_Drawer).
+// Frozen: and the top screen of its first frame is kept, so D_Display renders nothing.
+// Present: from PolyFrameBuffer::Update instead of the compositor and the menu route.
+bool I_3DSNativeMenuOwnsFrame();
+bool I_3DSNativeMenuFrozen();
+void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, int height);
 void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 	const unsigned char *basePixels, int pitchBytes, int width, int height);
 

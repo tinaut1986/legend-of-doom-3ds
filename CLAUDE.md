@@ -246,6 +246,12 @@ SDL2DIR=$HOME/.local/sdl2-host CXXFLAGS="-include cstdint" ./platform/3ds/build.
 The contract tests (`platform/3ds/tests/test_*.py`) assert strings in the source: when
 one fails after a deliberate change, update the test in the same commit.
 
+**Interface text** is English in the source and always goes through `Tr()` with a Spanish
+row in the game patch's `language.csv` (`platform/3ds/README.md`, "Menus and languages");
+the owner plays in Spanish. New menus are drawn in `native_menu_3ds.inc` with the NES font
+(x1, x2 only for the short list menus), not with the engine's fonts or the 5x7 overlay font,
+and messages for the player are bottom-screen toasts (`SetOverlayNotification`).
+
 Diagnostics already in upstream (all builds): **L+R+A** quick capture, **L+R+X** full
 capture with memory, **L+R+Y** delete captures, into `sdmc:/3ds/Legend of Doom 3DS/dumps/`
 (`src/common/platform/3ds/diagnostics_3ds.cpp`); updater log in `update.log`. The

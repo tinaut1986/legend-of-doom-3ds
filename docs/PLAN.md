@@ -25,17 +25,18 @@ boxes below. History: `git log` and the decisions log.
 
 **Release line:** `release/v0.1.1` (on origin). Published: **`v0.1.0`** (2026-10-12, **beta**,
 not on `main`): GitHub release with the CIA, QR, debug symbols, manifest and checksums, built by
-`build-release.yml` on its first run. `main` is still upstream's v1.0: nothing stable published. `main` is upstream's v1.0.
+`build-release.yml` on its first run. `main` is still upstream's v1.0: nothing stable published.
+The 2026-10-13 merges below are pushed to origin (no tag yet).
 
 **Branches:**
 
 | Branch | What | State |
 |---|---|---|
 | `fix/ftp-stop-freeze` | Turning the FTP server off froze the Minish Cap port (same code): safe stop (3 s join, a thread that does not end is left running, `STUCK, RESTART THE GAME`), remote-control waits give up when the server stops, the socket service is never shut down, non-blocking socket waits, stop and 30 s watchdog lines in `startup.log` | Merged into `release/v0.1.1` 2026-10-13 **before** a console check: waits for the owner's check on the console (FTP SERVER off with a client connected, and during `lod-link.py` commands) |
-| _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch`, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
+| _(merged)_ | `feat/language` (U1 + U3, with `feat/native-menus`) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("todo ok") | |
+| _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
-**Priority** (2026-10-13): P1 debug tools and console link → U1 menus → U2 2D and
-bottom screen on the GPU → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D
+**Priority** (2026-10-13): U2 2D and bottom screen on the GPU (next) → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D
 and P4 Old 3DS (order between these two to be set once P2.2 decides the renderer). P0.3
 goes on alongside, with the P1.3 recorder.
 
@@ -181,7 +182,7 @@ look that does not have to mean poor design, the FPS counter tiny over a menu bu
 screen wide in gameplay, messages on the bottom screen as toasts, and everything on the
 GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
 
-- [ ] **U1** Menus that are quick to use and look good.
+- [x] **U1** Menus that are quick to use and look good.
   *Spec:* options without submenus to enter just to flip a value (what is changed is
   visible and changed in place, by button and by touch); drawn directly for the bottom
   LCD at its own resolution with integer-scaled pixel fonts, instead of the engine's menu
@@ -195,6 +196,21 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   other overlays at the LCD's native resolution whatever the render scale.
   *Done when:* recordings show the title's 70 ms and the bottom map's 34 ms gone, and the
   FPS counter is the same size in gameplay and menus.
+  *Known (2026-10-13):* the gameplay FPS counter is drawn by `I_3DSComposeGameplayFrame`
+  into the canvas at the render scale (e.g. 280x168 at 0.7, with smaller "compact" glyphs
+  under 200 wide), which the PICA200 then stretches to 400x240, so it grows with a lower
+  render scale; over a menu the canvas is 400x240 and it is drawn 1:1. The hybrid
+  presenter (`I_PolyPresentDirect3DS`, `sdlglvideo.cpp`) draws with citro2d after the
+  stretch, which is where native-resolution overlays belong; note its `C2D_Init(16)`
+  object limit.
+
+- [x] **U3** Language option: English and Spanish (castellano), the interface only.
+  *Spec:* owner 2026-10-13: an option to pick the language, everything translated; for
+  now only what the port draws (menus, options, dialogs, toasts, hints, the bottom
+  screen, the updater), not the game's own text in the Legend of Doom pk3. Spanish
+  letters the NES font lacks (Á É Í Ó Ú Ñ Ü ¿ ¡) drawn in its 8x8 style.
+  *Done when:* the owner switches the language on the console and finds no English left
+  in the interface in Spanish (and none Spanish in English).
 
 ## Phase 2: GPU world renderer, 60 fps on New 3DS
 
@@ -315,6 +331,23 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   pause menu re-rendering the 3D view plus ~37 ms of routing, 34 ms per bottom-map
   redraw) are large, contained wins; the 3D view is ~40 ms of the gameplay frame and
   needs the bigger P2 work.
+- **2026-10-13** U1 look, chosen with the owner from mockups: the game's own NES font
+  (SMALLFNT lump, decoded at run time) at integer scales, x2 for the short list menus
+  (main, pause, skill), x1 with 20-pixel rows for everything else (owner: "same font as
+  the rest, x1" for UPDATE and the others); NES palette, blue selection box, heart cursor,
+  a hint bar at the bottom; OPTIONS as one screen with four tabs (VIDEO, SOUND, CONTROL,
+  DEBUG; L/R or a tap) instead of a root menu with submenus; sliders as ten cells in half
+  steps; messages as toasts on the touch screen, not over the game. Menus drawn natively:
+  every text list menu, the four option tabs, save/load, yes/no boxes, UPDATE (and its
+  changelog on top) and CONTROLS; only the text keyboard keeps the old route. The top
+  screen keeps the menu's first frame (dimmed) and D_Display renders nothing meanwhile.
+- **2026-10-13** U3: the port's text goes through `Tr("ENGLISH")`, which looks up
+  `LOD_ENGLISH` (letters and digits joined by `_`) in `language.csv`, added to the game
+  pk3 by the game patch; English is the fallback, so a missing row never shows a blank.
+  `language` = `auto` follows the 3DS system language (CFGU; Spanish or else English).
+  Spanish capitals keep the full height of the NES font with the accent drawn above the
+  cell (the line spacing has the room); a squeezed letter read as lower case. The game's
+  own text (Legend of Doom's dialogue and items) stays English for now (owner).
 - **2026-10-13** Owner moved P1.4/P1.5 (console link) ahead of the menu/HUD look work,
   so later UI work can be checked from the PC. Ported from `../mzm` (its server has the
   login and the install-only mode). Differences: the FTP thread runs one priority step

@@ -50,6 +50,10 @@ public:
 	unsigned ExtractSaveData(int index);
 	void ClearSaveStuff();
 	bool DrawSavePic(int x, int y, int w, int h);
+#ifdef __3DS__
+	// The selected save's picture, for the 3DS native save/load menu.
+	FGameTexture *GetSavePic() const { return SavePic; }
+#endif
 	void DrawSaveComment(FFont *font, int cr, int x, int y, int scalefactor);
 	void SetFileInfo(int Selected);
 	unsigned SavegameCount();
