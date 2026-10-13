@@ -10,6 +10,8 @@ struct F3DSDiagnosticButtonResult
 // intentionally independent from GZDoom's logfile so a crash or hang during
 // early engine/video initialization still leaves a precise last-known stage.
 void I_3DSStartupLog(const char *stage);
+// The same for the C side (ftp_server_3ds.c): `line` is logged as the stage. Main thread only.
+extern "C" void I_3DSStartupLogLine(const char *line);
 void I_3DSWriteFatalLog(const char *message);
 
 // The 3DS video service is brought up before the expensive WAD/ZScript load.

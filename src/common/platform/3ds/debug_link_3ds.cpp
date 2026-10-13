@@ -1,6 +1,7 @@
 #include "debug_link_3ds.h"
 #include "diagnostics_3ds.h"
 #include "app_paths_3ds.h"
+#include "ftp_server_3ds.h"
 #include "lod3ds_version.h"
 
 #if LOD3DS_DEBUG_TOOLS
@@ -33,6 +34,7 @@ constexpr const char *LinkDebugDir = LOD3DS_APP_DIR "/debug";
 
 // A request the game thread never takes (game hung, or stuck in a long load).
 constexpr int64_t LinkWaitNanoseconds = 20000000000LL;
+constexpr int64_t LinkWaitSliceNanoseconds = 50000000LL;
 
 constexpr unsigned LinkPeekMax = 256;
 constexpr unsigned LinkResultMax = 600;
@@ -154,7 +156,19 @@ void RunOnGameThread(ELinkOp op, char *reply, unsigned cap)
 	LightEvent_Clear(&Done);
 	Result[0] = '\0';
 	PendingOp.store(op, std::memory_order_release);
-	if (LightEvent_WaitTimeout(&Done, LinkWaitNanoseconds) != 0)
+	// In slices, giving up as soon as the server stops: FtpServer_Stop runs on the game thread,
+	// so a request waiting for it could only time out, long after the stop's 3 s join.
+	bool done = false;
+	for (int64_t waited = 0; waited < LinkWaitNanoseconds && FtpServer_Running();
+		waited += LinkWaitSliceNanoseconds)
+	{
+		if (LightEvent_WaitTimeout(&Done, LinkWaitSliceNanoseconds) == 0)
+		{
+			done = true;
+			break;
+		}
+	}
+	if (!done)
 	{
 		PendingOp.store(ELinkOp::None, std::memory_order_release);
 		std::snprintf(reply, cap, "451 The game did not take the request (loading or stopped?).");
