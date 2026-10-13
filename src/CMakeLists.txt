@@ -483,6 +483,7 @@ if( CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS" )
 		common/platform/3ds/lifecycle_3ds.cpp
 		common/platform/3ds/memory.cpp
 		common/platform/3ds/net_3ds.c
+		common/platform/3ds/perf_3ds.cpp
 		common/platform/3ds/update/updater.c
 		common/platform/3ds/update/update_manifest.c
 		common/platform/3ds/st_start.cpp )

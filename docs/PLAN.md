@@ -31,11 +31,13 @@ not on `main`): GitHub release with the CIA, QR, debug symbols, manifest and che
 
 | Branch | What | State |
 |---|---|---|
+| `feat/perf-recorder` | P1.3 perf recorder; cut from `feat/console-link` (its client is `lod-link.py perf`), merge after it | Checked on the New 3DS 2026-10-13: first recordings below |
 | `feat/console-link` | P1.4 + P1.5: in-game FTP server, install over FTP with relaunch, remote control (`lod-link.py`), from `../mzm` | Checked on the New 3DS 2026-10-13: FTP, `--install` + relaunch with the server back on, `state`, `press`, `stick`, `shot`, `cvar`. Relaunch comes back with the server on by itself. Not yet: `touch`, `console map`, updater with the server on |
 
-**Priority** (2026-10-12): P0.1 → P0.2 → P1 debug tools and console link → P0.3
-baseline → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D and P4 Old 3DS
-(order between these two to be set once P2.2 decides the renderer).
+**Priority** (2026-10-13): P1 debug tools and console link → U1 menus → U2 2D and
+bottom screen on the GPU → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D
+and P4 Old 3DS (order between these two to be set once P2.2 decides the renderer). P0.3
+goes on alongside, with the P1.3 recorder.
 
 
 
@@ -143,6 +145,14 @@ Specs are written when the phase starts, from `../zelda-tmc-3ds` P1 (same IDs or
 - [ ] **P1.1** DEBUG build switch and a DEBUG page in the bottom-screen menus.
 - [ ] **P1.2** SD log (rotating, buffered/direct, settings and periodic perf lines).
 - [ ] **P1.3** Perf recorder (CSV per frame) + `tools/perf-csv/analyze.py`.
+  *Spec:* `perf_3ds.cpp` (from TMC's `debug_perf_3ds`): one row per presented frame in RAM,
+  written as `debug/perf-NNNN.csv` on stop; parts timed where the engine does them
+  (logic tics, 3D view, SoftPoly raster wait, 2D, 3DS compositor, PICA200 present,
+  limiter, bottom screen, the rest as `other`), game state, menu and canvas size; console
+  command `lod3ds_perf start|stop|status`; `platform/3ds/tools/perf-analyze.py`;
+  `lod-link.py perf SECONDS` records, fetches and summarises.
+  *Done when:* recordings from the New 3DS split the frame by part (first ones in the
+  Baseline section below).
 - [ ] **P1.4** FTP server in the game; install a CIA over FTP and relaunch.
   *Spec:* `../mzm`'s server (one client, passive, SD root, login in
   `ftp_credentials_3ds.h`) behind OPTIONS -> DEVELOPER -> FTP SERVER (archived cvar
@@ -163,6 +173,28 @@ Specs are written when the phase starts, from `../zelda-tmc-3ds` P1 (same IDs or
   *Done when:* from the PC, `lod-link.py` opens the menu and walks it with `press`,
   moves the player with `stick`, warps with `console map`, and `shot` returns both
   screens as they look on the console.
+
+## Phase U: menus, 2D and the bottom screen
+
+From the owner (2026-10-13): menus nested inside menus just to tick an option, a pixel-art
+look that does not have to mean poor design, the FPS counter tiny over a menu but half the
+screen wide in gameplay, messages on the bottom screen as toasts, and everything on the
+GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
+
+- [ ] **U1** Menus that are quick to use and look good.
+  *Spec:* options without submenus to enter just to flip a value (what is changed is
+  visible and changed in place, by button and by touch); drawn directly for the bottom
+  LCD at its own resolution with integer-scaled pixel fonts, instead of the engine's menu
+  rendered on the top canvas, pixel-diffed and rescaled on the CPU; while a menu is open
+  over a paused game the 3D view is not rendered again every frame.
+  *Done when:* the owner approves the look on the console, and a pause-menu recording
+  shows no 3D view or routing cost (9.4 fps at render scale 1.0 before).
+- [ ] **U2** 2D and the bottom screen on the GPU.
+  *Spec:* title picture, HUD, menus, FPS counter and the bottom-screen map/items drawn by
+  the PICA200 (citro2d) instead of the SoftPoly raster and CPU loops; the FPS counter and
+  other overlays at the LCD's native resolution whatever the render scale.
+  *Done when:* recordings show the title's 70 ms and the bottom map's 34 ms gone, and the
+  FPS counter is the same size in gameplay and menus.
 
 ## Phase 2: GPU world renderer, 60 fps on New 3DS
 
@@ -226,7 +258,21 @@ third of the CPU, so neither is reachable with SoftPoly on the CPU.
 
 ## Baseline measurements (P0.3)
 
-_Empty until P0.3._
+Partial, from the P1.3 recorder (`lod-link.py perf 10`) on the owner's New 3DS,
+2026-10-13, build `edaf44ee684b` (`hardware-hybrid`, debug), render scale 1.0
+(canvas 400x240; the default is 0.7). Milliseconds per frame, mean.
+
+| Spot | fps (1% low) | logic | 3D view | raster wait | 2D | compose | present | bottom | other |
+|---|---|---|---|---|---|---|---|---|---|
+| Title screen | 13.2 (12.8) | 0.2 | 0 | 70.4 | 0.8 | 0 | 2.0 | 1.4 | 1.2 |
+| MAP01, standing | 14.7 (7.9) | 9.2 | 27.3 | 11.8 | 0.8 | 0.5 | 2.2 | 14.7 (34 when redrawn) | 1.5 |
+| MAP01, pause menu open | 9.4 (9.1) | 1.2 | 24.5 | 40.7 | 0.8 | 21.6 | 1.8 | 0 | 15.3 |
+
+Readings: the title's 70 ms is 2D only (the title picture through the SoftPoly raster);
+a paused game still renders the 3D view every frame; routing the menu to the bottom LCD
+(pixel diff of the 400x240 canvas, copies, CPU scaling) costs ~37 ms; the bottom-screen
+map costs 34 ms per redraw. Still to record: the default render scale, the first
+dungeon, a boss, `hardware-safe`, the Old 3DS.
 
 ## Decisions log
 
@@ -261,6 +307,14 @@ _Empty until P0.3._
   published by the release workflow; the release branch renamed to `release/v0.1.1`.
   P0.1 is done once the console's updater (BETA channel) lists `v0.1.0`.
 - **2026-10-12** Release-notes marker `<!-- lod-notes -->` (TMC uses `tmc-notes`).
+- **2026-10-13** Owner: settings were lost on closing; `fix/save-settings-on-quit` writes
+  the config when leaving the option menus (upstream's fast QUIT GAME skips the final
+  save on purpose, FIXES-v035, and HOME -> Close never reaches it).
+- **2026-10-13** Priority set with the owner after the first recordings: U1 menus, then
+  U2 2D/bottom screen on the GPU, then P2. The menu and 2D costs (title 70 ms of 2D,
+  pause menu re-rendering the 3D view plus ~37 ms of routing, 34 ms per bottom-map
+  redraw) are large, contained wins; the 3D view is ~40 ms of the gameplay frame and
+  needs the bigger P2 work.
 - **2026-10-13** Owner moved P1.4/P1.5 (console link) ahead of the menu/HUD look work,
   so later UI work can be checked from the PC. Ported from `../mzm` (its server has the
   login and the install-only mode). Differences: the FTP thread runs one priority step

@@ -131,6 +131,9 @@
 #ifdef __unix__
 #include "i_system.h"  // for SHARE_DIR
 #endif // __unix__
+#ifdef __3DS__
+#include "common/platform/3ds/perf_3ds.h"
+#endif
 
 EXTERN_CVAR(Bool, hud_althud)
 EXTERN_CVAR(Int, vr_mode)
@@ -1183,6 +1186,9 @@ void D_Display ()
 		
 		D_Render([&]()
 		{
+#ifdef __3DS__
+			F3DSPerfScope perfWorld(E3DSPerfPart::World);
+#endif
 			viewsec = RenderView(&players[consoleplayer]);
 		}, true);
 
