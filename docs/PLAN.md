@@ -31,7 +31,7 @@ not on `main`): GitHub release with the CIA, QR, debug symbols, manifest and che
 
 | Branch | What | State |
 |---|---|---|
-| `feat/console-link` | P1.4 + P1.5: in-game FTP server, install over FTP with relaunch, remote control (`lod-link.py`), from `../mzm` | Checked on the New 3DS 2026-10-13: FTP, `--install` + relaunch with the server back on, `state`, `press`, `stick`, `shot`, `cvar`. Not yet: `touch`, `console map`, updater with the server on |
+| `feat/console-link` | P1.4 + P1.5: in-game FTP server, install over FTP with relaunch, remote control (`lod-link.py`), from `../mzm` | Checked on the New 3DS 2026-10-13: FTP, `--install` + relaunch with the server back on, `state`, `press`, `stick`, `shot`, `cvar`. Relaunch comes back with the server on by itself. Not yet: `touch`, `console map`, updater with the server on |
 
 **Priority** (2026-10-12): P0.1 → P0.2 → P1 debug tools and console link → P0.3
 baseline → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D and P4 Old 3DS
