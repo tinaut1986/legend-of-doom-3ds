@@ -1,5 +1,6 @@
 #include "updater.h"
 #include "../app_paths_3ds.h"
+#include "../net_3ds.h"
 #include "lod3ds_version.h"
 #include <3ds.h>
 #include <curl/curl.h>
@@ -247,19 +248,14 @@ static bool install_3dsx(void) {
   remove(backup); return true;
 }
 static void run_job(void *arg) {
-  void *soc_buffer = NULL; bool soc_ready = false, curl_ready = false, ac_ready = false, ssl_ready = false;
+  bool net_ready = false, curl_ready = false, ssl_ready = false;
   bool ok = false; Transfer t = {0};
   UpdateStatus s; Updater_GetStatus(&s);
-  Result rc = acInit();
-  if (R_FAILED(rc)) { UpdateLog("acInit failed: %08lx", (unsigned long)rc); publish(UPDATE_ERROR, "WI-FI SERVICE FAILED"); goto done; }
-  ac_ready = true; u32 wifi = 0;
-  rc = ACU_GetWifiStatus(&wifi);
-  if (R_FAILED(rc) || !wifi) { UpdateLog("Wi-Fi status: result=%08lx wifi=%lu", (unsigned long)rc, (unsigned long)wifi); publish(UPDATE_ERROR, "NO WI-FI CONNECTION"); goto done; }
-  soc_buffer = memalign(4096, 1024 * 1024);
-  if (!soc_buffer) { publish(UPDATE_ERROR, "NETWORK MEMORY ERROR"); goto done; }
-  rc = socInit(soc_buffer, 1024 * 1024);
-  if (R_FAILED(rc)) { UpdateLog("socInit failed: %08lx errno=%d", (unsigned long)rc, errno); publish(UPDATE_ERROR, "SOCKET SERVICE FAILED"); goto done; }
-  soc_ready = true;
+  Result rc;
+  // Shared with the debug FTP server (net_3ds.h): socInit runs once for both.
+  if (!Net3DS_Acquire()) { UpdateLog("socket service failed errno=%d", errno); publish(UPDATE_ERROR, "SOCKET SERVICE FAILED"); goto done; }
+  net_ready = true;
+  if (!Net3DS_WifiConnected()) { UpdateLog("Wi-Fi status: not connected"); publish(UPDATE_ERROR, "NO WI-FI CONNECTION"); goto done; }
   // The 3DS mbedTLS entropy callback uses sslcGenerateRandomData. Its service
   // must be open before curl seeds its TLS generator, and stay open until cleanup.
   rc = sslcInit(0);
@@ -311,9 +307,7 @@ done:
   if (download_job) remove(UPDATE_PART);
   if (curl_ready) curl_global_cleanup();
   if (ssl_ready) sslcExit();
-  if (soc_ready) socExit();
-  free(soc_buffer);
-  if (ac_ready) acExit();
+  if (net_ready) Net3DS_Release();
   Updater_GetStatus(&s);
   if (!ok && s.state != UPDATE_ERROR)
     publish(UPDATE_ERROR, cancelled() ? "UPDATE CANCELLED" : "CONNECTION FAILED - RETRY");

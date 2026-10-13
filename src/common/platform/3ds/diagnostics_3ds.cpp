@@ -2,6 +2,8 @@
 #include "cache_3ds.h"
 #include "update/updater.h"
 #include "app_paths_3ds.h"
+#include "cia_install_3ds.h"
+#include "ftp_server_3ds.h"
 #include "lod3ds_version.h"
 
 #include <3ds.h>
@@ -65,6 +67,9 @@ EXTERN_CVAR(Bool, crosshairon)
 
 CVAR(Bool, lod3ds_select_overlay, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 CVAR(Bool, lod3ds_map_collisions, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+// OPTIONS -> DEVELOPER -> FTP SERVER (debug builds): the in-game FTP server and remote control
+// (ftp_server_3ds.h, debug_link_3ds.h). Archived, so it comes back after a relaunch.
+CVAR(Bool, lod3ds_ftp_server, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 extern uint64_t LastCount;
 extern double LastFrameMilliseconds;
 
@@ -142,6 +147,8 @@ uint64_t OverlayLastDrawMilliseconds;
 uint64_t OverlayNotificationUntilMilliseconds;
 bool OverlayAudioReady;
 char OverlayNotification[48];
+// Changes whenever a toast appears or goes, so the static bottom presentations redraw for it.
+uint32_t OverlayNotificationSerial;
 bool DiagnosticProgressActive;
 EDiagnosticDumpMode DiagnosticProgressMode = EDiagnosticDumpMode::None;
 uint64_t DiagnosticProgressValue;
@@ -1803,6 +1810,28 @@ void SetOverlayNotification(const char *message, uint64_t durationMilliseconds =
 	std::snprintf(OverlayNotification, sizeof(OverlayNotification), "%s",
 		message != nullptr ? message : "");
 	OverlayNotificationUntilMilliseconds = osGetTime() + durationMilliseconds;
+	++OverlayNotificationSerial;
+}
+
+void ExpireOverlayNotification(uint64_t now)
+{
+	if (OverlayNotification[0] != '\0' && now >= OverlayNotificationUntilMilliseconds)
+	{
+		OverlayNotification[0] = '\0';
+		++OverlayNotificationSerial;
+	}
+}
+
+// The toast: a bar near the bottom of the touch screen, drawn last over whatever
+// presentation is there (gameplay, menus, title, developer overlay).
+void DrawBottomToast(unsigned char *framebuffer)
+{
+	if (OverlayNotification[0] == '\0') return;
+	const int width = std::min(304, LoadingTextWidth(OverlayNotification, 1) + 24);
+	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
+	OverlayRect(framebuffer, x, 210, width, 21, OverlayInk);
+	OverlayFrame(framebuffer, x, 210, width, 21, 2, OverlayBlue);
+	OverlayCenteredText(framebuffer, x, width, 217, OverlayNotification, 1, OverlayIvory);
 }
 
 void DrawDeveloperOverlay(unsigned char *framebuffer)
@@ -1868,8 +1897,23 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 		OverlayGreen);
 	OverlayText(framebuffer, 146, 145, isNew3DS ? "NEW 3DS 804MHZ" : "OLD 3DS",
 		1, OverlayIvory);
-	OverlayCenteredText(framebuffer, 8, 304, 158,
-		"QUICK DUMP EXCLUDES 136 MB MEMORY IMAGE", 1, OverlayIvory);
+	if (FtpServer_Running() || lod3ds_ftp_server)
+	{
+		char address[40] = {};
+		char ftp[64] = {};
+		bool connected = false;
+		FtpServer_Address(address, sizeof(address));
+		FtpServer_Stats(nullptr, nullptr, &connected);
+		std::snprintf(ftp, sizeof(ftp), "FTP %s%s%s", address,
+			FtpServer_InstallOnly() ? " INSTALL ONLY" : "", connected ? " LINKED" : "");
+		OverlayCenteredText(framebuffer, 8, 304, 158, ftp, 1,
+			FtpServer_Running() ? OverlayGreen : OverlayIvory);
+	}
+	else
+	{
+		OverlayCenteredText(framebuffer, 8, 304, 158,
+			"QUICK DUMP EXCLUDES 136 MB MEMORY IMAGE", 1, OverlayIvory);
+	}
 
 	struct FButton { int X; const char *Title; const char *Chord; };
 	static constexpr FButton Buttons[] = {
@@ -2765,6 +2809,13 @@ EBottomPresentation DesiredBottomPresentation()
 void DrawBottomOverlay(bool force)
 {
 	const uint64_t now = osGetTime();
+	ExpireOverlayNotification(now);
+	static uint32_t drawnToast = 0;
+	if (drawnToast != OverlayNotificationSerial)
+	{
+		drawnToast = OverlayNotificationSerial;
+		force = true;
+	}
 	const EBottomPresentation desired = DesiredBottomPresentation();
 	if (!force && BottomPresentation == desired &&
 		now - OverlayLastDrawMilliseconds < OverlayRefreshMilliseconds) return;
@@ -2797,6 +2848,7 @@ void DrawBottomOverlay(bool force)
 	{
 		BottomPresentation = EBottomPresentation::DeveloperOverlay;
 		DrawDeveloperOverlay(framebuffer);
+		DrawBottomToast(framebuffer);
 		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
 		gfxScreenSwapBuffers(GFX_BOTTOM, false);
 		return;
@@ -2831,6 +2883,7 @@ void DrawBottomOverlay(bool force)
 			OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight,
 				OverlayParchment);
 		}
+		DrawBottomToast(framebuffer);
 		BottomPresentation = target;
 		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
 		gfxScreenSwapBuffers(GFX_BOTTOM, false);
@@ -2838,11 +2891,8 @@ void DrawBottomOverlay(bool force)
 	}
 
 	BottomPresentation = EBottomPresentation::Gameplay;
-	if (OverlayNotification[0] != '\0' && now >= OverlayNotificationUntilMilliseconds)
-	{
-		OverlayNotification[0] = '\0';
-	}
 	DrawBottomGameplay(framebuffer);
+	DrawBottomToast(framebuffer);
 
 	I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
 	gfxScreenSwapBuffers(GFX_BOTTOM, false);
@@ -4352,6 +4402,8 @@ void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 	{
 		DrawNativeMenuBottomFrame(bottom, menuPixels, basePixels,
 			pitchBytes, width, height);
+		ExpireOverlayNotification(osGetTime());
+		DrawBottomToast(bottom);
 		I_3DSCleanDataCache(bottom, BottomScreenWidth * BottomScreenHeight * 4u);
 		gfxScreenSwapBuffers(GFX_BOTTOM, false);
 		BottomPresentation = EBottomPresentation::NativeMenu;
@@ -5066,4 +5118,93 @@ int I_3DSUpdateAction(int action)
 void I_3DSServiceUpdater()
 {
     if (Updater_ShouldClose() && !Updater_Busy()) I_3DSQuitWithoutSaving();
+}
+
+bool I_3DSSaveScreenShots(const char *topPath, const char *bottomPath)
+{
+	bool ok = true;
+	const struct { gfxScreen_t Screen; const char *Path; } shots[] = {
+		{ GFX_TOP, topPath }, { GFX_BOTTOM, bottomPath } };
+	for (const auto &shot : shots)
+	{
+		// The SD card's rename does not replace a file: drop the previous shot first.
+		std::remove(shot.Path);
+		FScreenSnapshot snapshot;
+		if (!CaptureScreenSnapshot(shot.Screen, snapshot) ||
+			!WriteFramebufferBmp(shot.Path, snapshot.Pixels, snapshot.Width,
+				snapshot.Height, snapshot.Format))
+		{
+			ok = false;
+		}
+	}
+	return ok;
+}
+
+bool M_SaveDefaults(const char *filename);
+
+namespace
+{
+// The console and its log only: a notify line would print over the game.
+void ConsoleLinkLog(const char *line)
+{
+	Printf(PRINT_LOG, "%s\n", line);
+}
+}
+
+void I_3DSServiceConsoleLink()
+{
+	FtpServer_Tick(ConsoleLinkLog);
+	// While an installer arrives or installs, a toast on the touch screen says so: an install
+	// over the running game never happens without a warning.
+	static const char *shownNotice = nullptr;
+	const char *notice = FtpServer_Notice();
+	if (notice != shownNotice)
+	{
+		if (notice != nullptr) SetOverlayNotification(notice, 10u * 60u * 1000u);
+		else SetOverlayNotification(nullptr, 0);
+		shownNotice = notice;
+	}
+	if (FtpServer_TakeRelaunch())
+	{
+		// SITE INSTALL put a new build in place: jump into it, then close as on HOME -> close.
+		// Save the config first: once the jump is under way APT closes the app before the
+		// engine's final save, and FTP SERVER has to be on in the new build.
+		M_SaveDefaults(nullptr);
+		ConsoleLinkLog("relaunching into the build just installed");
+		if (!CiaInstall_JumpToSelf()) ConsoleLinkLog("the jump into the new build was refused");
+		throw CExitEvent(0);
+	}
+#if LOD3DS_DEBUG_TOOLS
+	// On when the game last ran (or a start found no Wi-Fi): try again every ~2 s (input polls
+	// run at 35 Hz) until it serves or the option goes off.
+	static unsigned retry = 0;
+	if (lod3ds_ftp_server)
+	{
+		if (!FtpServer_Running() && (retry == 0 || ++retry >= 70) &&
+			(retry == 0 || osGetWifiStrength() > 0))
+		{
+			retry = 1;
+			FtpServer_Start();
+		}
+	}
+	else
+	{
+		retry = 0;
+		if (FtpServer_Running()) FtpServer_Stop();
+	}
+#else
+	// Stable builds: the install-only server, for the owner, when dev-ftp.txt is in the data
+	// folder (created over FTP while a debug build was installed). Checked once.
+	static bool checked = false;
+	if (!checked)
+	{
+		checked = true;
+		if (access(LOD3DS_APP_DIR "/dev-ftp.txt", F_OK) == 0) FtpServer_StartInstallOnly();
+	}
+#endif
+}
+
+void I_3DSStopConsoleLink()
+{
+	if (FtpServer_Running()) FtpServer_Stop();
 }

@@ -183,7 +183,7 @@ diff --git a/MENUDEF b/MENUDEF
 index c7c6d33..9ddcbc3 100644
 --- a/MENUDEF
 +++ b/MENUDEF
-@@ -1,50 +1,117 @@
+@@ -1,50 +1,118 @@
  DEFAULTLISTMENU
  {
  	// Font "ZeldFNT", "Untranslated"
@@ -305,6 +305,7 @@ index c7c6d33..9ddcbc3 100644
 +    Command "QUICK DUMP", "lod3ds_dump"
 +    Command "FULL DUMP", "lod3ds_fulldump"
 +    Option "OVERLAY WITH SELECT", "lod3ds_select_overlay", "OnOff"
++    Option "FTP SERVER", "lod3ds_ftp_server", "OnOff"
  }
  
  ListMenu "SkillMenu"

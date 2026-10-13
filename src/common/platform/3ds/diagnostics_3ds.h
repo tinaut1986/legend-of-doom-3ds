@@ -104,3 +104,12 @@ bool I_3DSQuitWithoutSavingRequested();
 
 int I_3DSUpdateAction(int action);
 void I_3DSServiceUpdater();
+
+// The in-game FTP server and remote control (ftp_server_3ds.h, debug_link_3ds.h). Service runs
+// once per input poll on the game thread: starts or stops the server with OPTIONS -> DEVELOPER ->
+// FTP SERVER, logs its lines and relaunches after a SITE INSTALL. Stop before exiting.
+void I_3DSServiceConsoleLink();
+void I_3DSStopConsoleLink();
+
+// Both LCDs as 24-bit BMPs (the remote control's SITE SHOT).
+bool I_3DSSaveScreenShots(const char *topPath, const char *bottomPath);

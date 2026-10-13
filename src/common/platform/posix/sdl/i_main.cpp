@@ -533,6 +533,7 @@ int main (int argc, char **argv)
 	const int result = GameMain();
 	#ifdef __3DS__
 	Updater_Shutdown();
+	I_3DSStopConsoleLink();
 	#endif
 
 	#ifdef __3DS__

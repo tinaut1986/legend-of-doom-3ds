@@ -101,6 +101,16 @@ git diff --check
 
 The build script also validates the patch files, banner structure and banner audio. GitHub Actions checks clean source, pinned patch application, package contents, public-file boundaries and output checksums, and builds `hardware-safe`. A successful CI build establishes package/build checks; gameplay and performance still require console evidence.
 
+## Console link (debug builds)
+
+Debug builds (`LOD3DS_DEBUG_TOOLS=1`: dev builds and betas) carry an FTP server inside the game, on port 5000, switched on with **OPTIONS -> DEVELOPER -> FTP SERVER**. The setting is saved, so the server comes back after a relaunch; with no Wi-Fi it retries every two seconds. Its address shows in the developer overlay's STATUS box (DEVELOPER -> OVERLAY WITH SELECT, then SELECT in a level), and `build_3ds.sh` finds it by scanning the LAN. It is ported from `../mzm` (`ftp_server_3ds.c`, `debug_link_3ds`, `cia_install_3ds.c`, `net_3ds.c` under `src/common/platform/3ds/`).
+
+- **Files.** The whole SD card is `/`; the game's folder is `/3ds/Legend of Doom 3DS/`. Login in `src/common/platform/3ds/ftp_credentials_3ds.h` (also in `CLAUDE.md`), one client at a time, passive mode. FileZilla, WinSCP, curl and lftp work.
+- **Install over the running game.** `SITE INSTALL <path>` installs a CIA of this title from the SD card and relaunches into it; a toast on the touch screen says so meanwhile. `./build_3ds.sh --install [IP]` builds, uploads to `update/dev.cia` and sends the command.
+- **Remote control.** `platform/3ds/tools/lod-link.py` drives the game through `SITE` commands: `state`, `keys`/`press` (buttons), `stick` (Circle Pad / C-Stick), `touch`, `shot` (both screens as PNG), `console` (any GZDoom console command: `map`, `give`, `save`...), `cvar`, `dump`, `peek`/`poke` (by address or ELF symbol), `get` and `run FILE`. `lod-link.py --help` lists them.
+
+Stable builds have no FTP server unless `dev-ftp.txt` exists in `/3ds/Legend of Doom 3DS/` (created over FTP while a debug build is installed): then they start an install-only server that reaches only `update/` and has no remote control, enough for `--install`.
+
 ## Historical notes
 
 The earlier version-by-version implementation notes are preserved in [history/README-before-v1.0.md](history/README-before-v1.0.md). The [August technical roadmap](../../docs/history/ROADMAP-2026-08-27.es.md), [v0.31 review](CODE-REVIEW-v031.es.md), [performance audit](PERFORMANCE-AUDIT.es.md) and versioned fix notes describe their original candidates and measurements. Use this guide and the published build manifest for the current release profile.
