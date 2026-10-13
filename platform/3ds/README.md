@@ -15,7 +15,7 @@ Dependency revisions and checksums are pinned in [dependencies.sh](dependencies.
 
 | Profile | Purpose |
 |---|---|
-| `hardware-hybrid` | Published v1.0 renderer: SoftPoly world rendering on CPU0/CPU2, OpenAL/NDSP audio and a bounded PICA200 texture presenter. |
+| `hardware-hybrid` | Published renderer: SoftPoly world rendering on CPU0/CPU2, OpenAL/NDSP audio, and the PICA200 for the 2D, the overlays and the bottom screen (`gpu_3ds.cpp`). |
 | `hardware-safe` | Default build and GitHub Actions profile. CPU-only recovery renderer at 320×200 with SDL/libctru presentation and OpenAL/NDSP audio. |
 | `release` | Legacy NovaGL world-renderer experiment. The name does not mean this is the published v1.0 profile. |
 | `hardware-candidate` | NovaGL hardware investigation with audio, telemetry and automatic MAP01 startup. |
@@ -74,7 +74,9 @@ The CIA embeds the matching engine and game data in RomFS. The 3DSX needs the ma
 
 ## Renderer and runtime
 
-The hybrid profile renders gameplay at 320×192 by default, with a configurable 50–100% render scale in 5% steps. Menus use native 400×240. CPU0 and CPU2 perform SoftPoly raster work; scene traversal stays single-owner and the audited desktop BSP worker is disabled on 3DS. OpenAL/NDSP handles audio on CPU1. PICA200 receives a completed frame texture rather than world geometry. NovaGL is linked but not initialized in this profile.
+The hybrid profile renders gameplay at 320×192 by default, with a configurable 50–100% render scale in 5% steps. Menus use native 400×240. CPU0 and CPU2 perform SoftPoly raster work; scene traversal stays single-owner and the audited desktop BSP worker is disabled on 3DS. OpenAL/NDSP handles audio on CPU1. NovaGL is linked but not initialized in this profile.
+
+The PICA200 side is `src/common/platform/3ds/gpu_3ds.cpp` (one citro3d context, the shader `gpu_3ds.v.pica`, assembled by picasso at build time). Each frame it stretches the SoftPoly canvas (the 3D view) to the top LCD with bilinear filtering, then draws the engine's 2D over it at 400×240 (title pictures, HUD, wipes: the F2DDrawer commands, with SoftPoly's 2D shading reproduced in the TEV), then the port's overlays (FPS counter, crosshair, the top automap). A drawer using something the GPU path does not do, and the frames whose 2D the port needs inside the canvas pixels (a native menu's first frame, the keyboard route, a wipe's new screen), still go through SoftPoly; the cvar `lod3ds_gpu_2d 0` sends all of it there, for comparisons. The bottom screen's interface is still drawn by the CPU code in `diagnostics_3ds.cpp`, into a buffer in the framebuffer's layout that the GPU copies to its own target only when it changed; the map's terrain, lines and player arrow are GPU triangles drawn every frame over it. Without a presented frame for a while (a level load, a dump) the bottom buffer goes to the framebuffer through the CPU.
 
 Rendering is uncapped and display-synchronized; Doom simulation remains at 35 Hz. A 60 Hz LCD does not establish a 60 FPS gameplay result. Record physical-console measurements separately from host and emulator results, and include the build ID, profile and display settings.
 

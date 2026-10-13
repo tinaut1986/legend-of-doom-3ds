@@ -1,0 +1,36 @@
+; Vertex shader of the 3DS GPU 2D path (gpu_3ds.cpp): screen-space quads and triangles for
+; the canvas, the engine's 2D, the overlays and the bottom screen.
+;
+; v0: position (x, y) in the caller's pixel space; projection maps it to clip space
+;     (Mtx_OrthoTilt for the rotated LCDs).
+; v1: texture coordinate (s, t), already in PICA convention (t = 1 at the image top).
+; v2: vertex colour, four unsigned bytes R, G, B, A.
+
+.fvec projection[4]
+.constf constants(0.0, 1.0, 0.003921568627, 0.0)  ; 0, 1, 1/255
+
+.out outpos position
+.out outtc0 texcoord0
+.out outclr color
+
+.alias inpos v0
+.alias intex v1
+.alias inclr v2
+
+.proc main
+    ; r0 = (x, y, 0, 1)
+    mov r0.xy, inpos
+    mov r0.z, constants.x
+    mov r0.w, constants.y
+
+    dp4 outpos.x, projection[0], r0
+    dp4 outpos.y, projection[1], r0
+    dp4 outpos.z, projection[2], r0
+    dp4 outpos.w, projection[3], r0
+
+    mov outtc0, intex
+
+    ; PICA allows a uniform/constant only as the first source operand.
+    mul outclr, constants.zzzz, inclr
+    end
+.end

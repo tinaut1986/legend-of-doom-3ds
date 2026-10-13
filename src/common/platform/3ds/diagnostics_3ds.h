@@ -73,15 +73,24 @@ bool I_3DSNativeMenuVisible();
 // Present: from PolyFrameBuffer::Update instead of the compositor and the menu route.
 bool I_3DSNativeMenuOwnsFrame();
 bool I_3DSNativeMenuFrozen();
-void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, int height);
+// gpuOverlays: the frame is presented by the GPU path (gpu_3ds.h), so the FPS counter and the
+// crosshair go there, at the LCD's resolution, instead of into the canvas.
+void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, int height,
+	bool gpuOverlays);
 void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
-	const unsigned char *basePixels, int pitchBytes, int width, int height);
+	const unsigned char *basePixels, int pitchBytes, int width, int height,
+	bool gpuOverlays);
+
+// The engine 2D cannot go to the GPU this frame: the port needs it inside the canvas pixels
+// (a native menu's first frame, which is kept; a menu routed to the touch screen; the top
+// automap, which the compositor draws over everything).
+bool I_3DSGpu2DBlocked();
 
 // Final CPU-canvas compositor. It makes FPS and the supplied crosshair
 // independent of gameplay render scale and replaces the classic brown
 // automap with an enlarged copy of the textured lower-screen map.
 void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
-	int width, int height);
+	int width, int height, bool gpuOverlays);
 
 // Called from the main thread after input polling, before the next frame is
 // rendered. A pending request is consumed at most once per chord press.
