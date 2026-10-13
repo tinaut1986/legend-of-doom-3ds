@@ -84,6 +84,13 @@ private:
 	int mNativeMenuBaseWidth = 0;
 	int mNativeMenuBaseHeight = 0;
 	#endif
+	#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	// Whether this frame can be presented by the GPU path (gpu_3ds.h), and whether its 2D
+	// goes there; mForceSoftware2D is set around the calls that need the 2D in the canvas.
+	bool Gpu3DSPresentable() const;
+	bool UseGpu2D3DS() const;
+	bool mForceSoftware2D = false;
+	#endif
 
 	struct ScreenQuadVertex
 	{

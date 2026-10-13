@@ -422,7 +422,7 @@ if [[ "${BUILD_PROFILE}" == "hardware-safe" ]]; then
   fi
 elif [[ "${BUILD_PROFILE}" == "hardware-hybrid" ]]; then
   HYBRID_SYMBOLS="$("${DEVKITARM}/bin/arm-none-eabi-nm" -C "${GAME_BUILD}/gzdoom.elf")"
-  for required_symbol in I_PolyPresentDirect3DS C3D_SyncDisplayTransfer C2D_DrawImage threadCreate alcOpenDevice ndspInit; do
+  for required_symbol in I_PolyPresentDirect3DS C3D_SyncDisplayTransfer I_3DSGpuRecord2D threadCreate alcOpenDevice ndspInit; do
     if ! grep -q "${required_symbol}" <<<"${HYBRID_SYMBOLS}"; then
       printf 'Hardware-hybrid ELF is missing required symbol: %s\n' "${required_symbol}" >&2
       exit 1
@@ -574,10 +574,10 @@ ARM_SIZE="${DEVKITARM}/bin/arm-none-eabi-size"
 	printf 'novagl_mvp=%s\n' "$([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf inactive || printf combined-cache-on-dirty-transform)"
 	printf 'gles_world_vbo_upload=shadowed-ranges\n'
 	printf 'gzdoom_bsp_worker=disabled-on-3ds-race-audited\n'
-	printf 'software_presenter=%s\n' "$([[ "${HYBRID_PERFORMANCE}" == "ON" ]] && printf citro2d-bounded-single-quad-with-sdl-init-fallback || ([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf sdl-software-v0.6-contract || printf inactive))"
+	printf 'software_presenter=%s\n' "$([[ "${HYBRID_PERFORMANCE}" == "ON" ]] && printf citro3d-canvas-quad-plus-gpu-2d-and-overlays-with-sdl-init-fallback || ([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf sdl-software-v0.6-contract || printf inactive))"
 	printf 'software_presenter_sampling=%s\n' "$([[ "${HYBRID_PERFORMANCE}" == "ON" ]] && printf pica200-bilinear || ([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf sdl-16.16-nearest || printf inactive))"
 	printf 'software_presenter_color=%s\n' "$([[ "${HYBRID_PERFORMANCE}" == "ON" ]] && printf bgra-to-rgb-tev-g-b-alpha-before-draw || ([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf sdl-owned || printf inactive))"
-	printf 'software_presenter_cache_cleans=%s\n' "$([[ "${HYBRID_PERFORMANCE}" == "ON" ]] && printf gsp-active-upload-rows-plus-bounded-citro2d-vertex-range || ([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf owned-by-sdl-libctru || printf inactive))"
+	printf 'software_presenter_cache_cleans=%s\n' "$([[ "${HYBRID_PERFORMANCE}" == "ON" ]] && printf gsp-active-upload-rows-plus-frame-vertex-arena || ([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf owned-by-sdl-libctru || printf inactive))"
 	printf 'hardware_safe_gpu_entrypoints=%s\n' "$([[ "${HYBRID_PERFORMANCE}" == "ON" ]] && printf not-applicable-hybrid-presenter-only || ([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf link-time-rejected || printf not-applicable))"
 	printf 'hardware_safe_first_present_breadcrumbs=%s\n' "$([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf first-three-frames || printf inactive)"
 	printf 'early_loading_screen=sdl-owned-rgba8-triforce-animation-96x96-33frames\n'

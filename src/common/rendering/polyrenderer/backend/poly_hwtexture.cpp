@@ -27,6 +27,9 @@
 #include "hw_renderstate.h"
 #include "poly_framebuffer.h"
 #include "poly_hwtexture.h"
+#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+#include "common/platform/3ds/gpu_3ds.h"
+#endif
 
 PolyHardwareTexture *PolyHardwareTexture::First = nullptr;
 
@@ -54,6 +57,9 @@ void PolyHardwareTexture::ResetAll()
 
 void PolyHardwareTexture::Reset()
 {
+#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	ReleaseGpuTextures();
+#endif
 	if (auto fb = GetPolyFrameBuffer())
 	{
 		auto &deleteList = fb->FrameDeleteList;
@@ -87,10 +93,16 @@ void PolyHardwareTexture::AllocateBuffer(int w, int h, int texelsize)
 		mCanvas->Resize(w, h, false);
 		bufferpitch = mCanvas->GetPitch();
 	}
+#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	++mContentSerial;
+#endif
 }
 
 uint8_t *PolyHardwareTexture::MapBuffer()
 {
+#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	++mContentSerial;
+#endif
 	return mCanvas->GetPixels();
 }
 
@@ -106,6 +118,9 @@ void PolyHardwareTexture::CreateWipeTexture(int w, int h, const char *name)
 		mCanvas.reset(new DCanvas(0, 0, true));
 		mCanvas->Resize(w, h, false);
 	}
+#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	++mContentSerial;
+#endif
 
 	auto fb = static_cast<PolyFrameBuffer*>(screen);
 
@@ -199,6 +214,9 @@ void PolyHardwareTexture::CreateWipeTexture(int w, int h, const char *name)
 void PolyHardwareTexture::CreateImage(FTexture *tex, int translation, int flags)
 {
 	mCanvas.reset(new DCanvas(0, 0, true));
+#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	++mContentSerial;
+#endif
 
 	if (!tex->isHardwareCanvas())
 	{
@@ -213,3 +231,32 @@ void PolyHardwareTexture::CreateImage(FTexture *tex, int translation, int flags)
 		mCanvas->Resize(w, h, false);
 	}
 }
+
+#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+F3DSGpuTexture *PolyHardwareTexture::GpuTexture(FTexture *tex, int translation, int flags, bool wrap)
+{
+	DCanvas *image = GetImage(tex, translation, flags);
+	const int slot = wrap ? 1 : 0;
+	if (mGpuTexture[slot] == nullptr || mGpuSerial[slot] != mContentSerial)
+	{
+		F3DSGpuTexture *updated = I_3DSGpuTextureUpdate(mGpuTexture[slot], image, wrap);
+		if (updated == nullptr)
+		{
+			// The old copy was not released by a failed update; keep the pair consistent.
+			return nullptr;
+		}
+		mGpuTexture[slot] = updated;
+		mGpuSerial[slot] = mContentSerial;
+	}
+	return mGpuTexture[slot];
+}
+
+void PolyHardwareTexture::ReleaseGpuTextures()
+{
+	for (auto &texture : mGpuTexture)
+	{
+		I_3DSGpuTextureRelease(texture);
+		texture = nullptr;
+	}
+}
+#endif

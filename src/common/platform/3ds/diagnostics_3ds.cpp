@@ -4,6 +4,7 @@
 #include "app_paths_3ds.h"
 #include "cia_install_3ds.h"
 #include "ftp_server_3ds.h"
+#include "gpu_3ds.h"
 #include "lod3ds_version.h"
 
 #include <3ds.h>
@@ -855,7 +856,15 @@ void DrawBottomGameTextureSized(unsigned char *framebuffer, int x, int y,
 	{
 		return;
 	}
-	FBitmap bitmap = texture->GetTexture()->GetBgraBitmap(nullptr);
+	// Only the face is drawn this way; it changes a few times a second and decoding it is
+	// the slow part, so keep the last one.
+	static FGameTexture *cachedTexture;
+	static FBitmap bitmap;
+	if (cachedTexture != texture)
+	{
+		bitmap = texture->GetTexture()->GetBgraBitmap(nullptr);
+		cachedTexture = texture;
+	}
 	const int sourceWidth = bitmap.GetWidth();
 	const int sourceHeight = bitmap.GetHeight();
 	if (sourceWidth <= 0 || sourceHeight <= 0 || bitmap.GetPixels() == nullptr) return;
@@ -1244,24 +1253,22 @@ FOverlayColor BottomFloorTextureColor(sector_t *sector, double worldX, double wo
 	};
 }
 
-void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
-	int mapWidth = 204, int mapHeight = 156, double requestedWorldUnitsPerPixel = 0.0)
+// Where the map is centred: on the player while outdoors or near the last centre, else left
+// where it was (the player is then drawn nowhere). Shared by the CPU and GPU drawings and by
+// both screens, as one view.
+struct FBottomMapView
 {
-	const int MapX = mapX;
-	const int MapY = mapY;
-	const int MapWidth = mapWidth;
-	const int MapHeight = mapHeight;
-	const double worldUnitsPerPixel = requestedWorldUnitsPerPixel > 0.0 ?
-		requestedWorldUnitsPerPixel : (BottomMapZoomedOut ? 32.0 : 12.0);
-	OverlayRect(framebuffer, MapX, MapY, MapWidth, MapHeight, OverlayInk);
+	bool Valid = false;
+	bool PlayerDetached = false;
+	double CenterX = 0.0;
+	double CenterY = 0.0;
+	AActor *Camera = nullptr;
+};
 
-	if (primaryLevel == nullptr || primaryLevel->lines.Size() == 0)
-	{
-		OverlayCenteredText(framebuffer, MapX, MapWidth, MapY + MapHeight / 2 - 4,
-			"MAP UNAVAILABLE", 1, OverlayIvory);
-		return;
-	}
-
+FBottomMapView BottomMapView()
+{
+	FBottomMapView view;
+	if (primaryLevel == nullptr || primaryLevel->lines.Size() == 0) return view;
 	static FLevelLocals *trackedLevel;
 	static FString trackedMapName;
 	static bool hasExteriorCenter;
@@ -1303,12 +1310,49 @@ void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
 			}
 		}
 	}
-	if (!hasExteriorCenter)
+	view.Valid = hasExteriorCenter;
+	view.PlayerDetached = playerDetached;
+	view.CenterX = centerX;
+	view.CenterY = centerY;
+	view.Camera = camera;
+	return view;
+}
+
+bool BottomSubsectorShown(const subsector_t *subsector)
+{
+	return subsector != nullptr && (subsector->flags & SSECMF_DRAWN) != 0 &&
+		(subsector->flags & (SSECF_HOLE | SSECF_POLYORG)) == 0 &&
+		subsector->render_sector != nullptr &&
+		(subsector->render_sector->MoreFlags & SECMF_HIDDEN) == 0;
+}
+
+// The GPU draws the map's terrain, lines and arrow (QueueGpuMap) while it owns the screen; the
+// CPU then draws only the map's background and messages.
+bool BottomMapTerrainOnGpu;
+
+void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
+	int mapWidth = 204, int mapHeight = 156, double requestedWorldUnitsPerPixel = 0.0)
+{
+	const int MapX = mapX;
+	const int MapY = mapY;
+	const int MapWidth = mapWidth;
+	const int MapHeight = mapHeight;
+	const double worldUnitsPerPixel = requestedWorldUnitsPerPixel > 0.0 ?
+		requestedWorldUnitsPerPixel : (BottomMapZoomedOut ? 32.0 : 12.0);
+	OverlayRect(framebuffer, MapX, MapY, MapWidth, MapHeight, OverlayInk);
+
+	const FBottomMapView view = BottomMapView();
+	if (!view.Valid)
 	{
 		OverlayCenteredText(framebuffer, MapX, MapWidth, MapY + MapHeight / 2 - 4,
 			"MAP UNAVAILABLE", 1, OverlayIvory);
 		return;
 	}
+	if (BottomMapTerrainOnGpu) return;
+	AActor *camera = view.Camera;
+	const bool playerDetached = view.PlayerDetached;
+	const double centerX = view.CenterX;
+	const double centerY = view.CenterY;
 
 	auto transformX = [&](double worldX)
 	{
@@ -1332,10 +1376,7 @@ void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
 				(mapX + 1 - MapWidth * 0.5) * worldUnitsPerPixel;
 			subsector_t *subsector = primaryLevel->PointInRenderSubsector(
 				DVector2(worldX, worldY));
-			if (subsector == nullptr || (subsector->flags & SSECMF_DRAWN) == 0 ||
-				(subsector->flags & (SSECF_HOLE | SSECF_POLYORG)) != 0 ||
-				subsector->render_sector == nullptr ||
-				(subsector->render_sector->MoreFlags & SECMF_HIDDEN) != 0 ||
+			if (!BottomSubsectorShown(subsector) ||
 				!BottomPointInsideSubsector(subsector, worldX, worldY))
 			{
 				continue;
@@ -1382,6 +1423,289 @@ void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
 			MapX, MapY, MapX + MapWidth - 1, MapY + MapHeight - 1, OverlayRed);
 		DrawBottomMapLineClipped(framebuffer, leftX, leftY, rightX, rightY,
 			MapX, MapY, MapX + MapWidth - 1, MapY + MapHeight - 1, OverlayIvory);
+	}
+}
+
+// One LCD pixel wide line as two triangles.
+void PushGpuLine(F3DSGpuVertex *&out, float x0, float y0, float x1, float y1, uint32_t color)
+{
+	const float dx = x1 - x0;
+	const float dy = y1 - y0;
+	const float length = std::sqrt(dx * dx + dy * dy);
+	const float nx = length > 0.0f ? -dy / length * 0.5f : 0.5f;
+	const float ny = length > 0.0f ? dx / length * 0.5f : 0.0f;
+	const F3DSGpuVertex a0{ x0 + nx, y0 + ny, 0.0f, 0.0f, color };
+	const F3DSGpuVertex a1{ x0 - nx, y0 - ny, 0.0f, 0.0f, color };
+	const F3DSGpuVertex b0{ x1 + nx, y1 + ny, 0.0f, 0.0f, color };
+	const F3DSGpuVertex b1{ x1 - nx, y1 - ny, 0.0f, 0.0f, color };
+	*out++ = a0; *out++ = a1; *out++ = b0;
+	*out++ = b0; *out++ = a1; *out++ = b1;
+}
+
+uint32_t GpuColor(FOverlayColor color)
+{
+	return I_3DSGpuColor(color.Red, color.Green, color.Blue);
+}
+
+// The map drawn by the GPU, as DrawBottomAutomap draws it on the CPU: every shown subsector in
+// view as a polygon with its floor texture and light (BottomFloorTextureColor, here at full
+// resolution instead of 2x2 blocks), the collision lines when asked for and the player's
+// arrow, clipped to the map's rectangle.
+// The subsectors' bounding boxes, kept for the level so the view test is four comparisons.
+struct FMapBounds
+{
+	float Left, Right, Bottom, Top;
+};
+
+const std::vector<FMapBounds> &MapBounds()
+{
+	static std::vector<FMapBounds> bounds;
+	static FLevelLocals *level;
+	static FString mapName;
+	static unsigned count;
+	if (level != primaryLevel || mapName.Compare(primaryLevel->MapName) != 0 ||
+		count != primaryLevel->subsectors.Size())
+	{
+		level = primaryLevel;
+		mapName = primaryLevel->MapName;
+		count = primaryLevel->subsectors.Size();
+		bounds.assign(count, FMapBounds{ 1.0f, -1.0f, 1.0f, -1.0f });
+		for (unsigned index = 0; index < count; ++index)
+		{
+			const subsector_t &subsector = primaryLevel->subsectors[index];
+			if (subsector.firstline == nullptr || subsector.numlines < 3) continue;
+			FMapBounds box{ 1e30f, -1e30f, 1e30f, -1e30f };
+			bool complete = true;
+			for (uint32_t i = 0; i < subsector.numlines; ++i)
+			{
+				const vertex_t *vertex = subsector.firstline[i].v1;
+				if (vertex == nullptr)
+				{
+					complete = false;
+					break;
+				}
+				box.Left = std::min(box.Left, static_cast<float>(vertex->fX()));
+				box.Right = std::max(box.Right, static_cast<float>(vertex->fX()));
+				box.Bottom = std::min(box.Bottom, static_cast<float>(vertex->fY()));
+				box.Top = std::max(box.Top, static_cast<float>(vertex->fY()));
+			}
+			if (complete) bounds[index] = box;
+		}
+	}
+	return bounds;
+}
+
+// The lines' end points, kept for the level in one array: testing them against the view walks
+// it instead of every line_t and its two vertices (~4 ms a frame on MAP01 that way).
+struct FMapLine
+{
+	float X0, Y0, X1, Y1;
+};
+
+const std::vector<FMapLine> &MapLines()
+{
+	static std::vector<FMapLine> lines;
+	static FLevelLocals *level;
+	static FString mapName;
+	static unsigned count;
+	if (level != primaryLevel || mapName.Compare(primaryLevel->MapName) != 0 ||
+		count != primaryLevel->lines.Size())
+	{
+		level = primaryLevel;
+		mapName = primaryLevel->MapName;
+		count = primaryLevel->lines.Size();
+		lines.assign(count, FMapLine{ 1.0f, 1.0f, -1.0f, -1.0f });
+		for (unsigned index = 0; index < count; ++index)
+		{
+			const line_t &line = primaryLevel->lines[index];
+			if (line.v1 == nullptr || line.v2 == nullptr) continue;
+			lines[index] = FMapLine{ static_cast<float>(line.v1->fX()),
+				static_cast<float>(line.v1->fY()), static_cast<float>(line.v2->fX()),
+				static_cast<float>(line.v2->fY()) };
+		}
+	}
+	return lines;
+}
+
+void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int mapHeight,
+	double worldUnitsPerPixel)
+{
+	const FBottomMapView view = BottomMapView();
+	if (!view.Valid) return;
+	const int scissor[4] = { mapX, mapY, mapX + mapWidth, mapY + mapHeight };
+	const double halfWidth = mapWidth * 0.5 * worldUnitsPerPixel;
+	const double halfHeight = mapHeight * 0.5 * worldUnitsPerPixel;
+	const double minX = view.CenterX - halfWidth;
+	const double maxX = view.CenterX + halfWidth;
+	const double minY = view.CenterY - halfHeight;
+	const double maxY = view.CenterY + halfHeight;
+	auto toX = [&](double worldX)
+	{
+		return static_cast<float>(mapX + mapWidth * 0.5 + (worldX - view.CenterX) / worldUnitsPerPixel);
+	};
+	auto toY = [&](double worldY)
+	{
+		return static_cast<float>(mapY + mapHeight * 0.5 - (worldY - view.CenterY) / worldUnitsPerPixel);
+	};
+
+	struct FPolygon
+	{
+		F3DSGpuTexture *Texture;
+		FGameTexture *GameTexture;
+		const subsector_t *Subsector;
+	};
+	static std::vector<FPolygon> polygons;
+	polygons.clear();
+	// The floor textures met this frame, so each is looked up once.
+	struct FFloor
+	{
+		int Index;
+		FGameTexture *GameTexture;
+		F3DSGpuTexture *Texture;
+	};
+	static std::vector<FFloor> floors;
+	floors.clear();
+	const std::vector<FMapBounds> &bounds = MapBounds();
+	for (unsigned index = 0; index < bounds.size(); ++index)
+	{
+		const FMapBounds &box = bounds[index];
+		// An empty box (Left > Right) is a subsector the map never draws.
+		if (box.Right < minX || box.Left > maxX || box.Top < minY || box.Bottom > maxY ||
+			box.Left > box.Right)
+		{
+			continue;
+		}
+		const subsector_t &subsector = primaryLevel->subsectors[index];
+		if (!BottomSubsectorShown(&subsector)) continue;
+
+		const FTextureID floorTexture = subsector.render_sector->GetTexture(sector_t::floor);
+		const int textureIndex = floorTexture.isValid() ? floorTexture.GetIndex() : -1;
+		auto found = std::find_if(floors.begin(), floors.end(),
+			[&](const FFloor &floor) { return floor.Index == textureIndex; });
+		if (found == floors.end())
+		{
+			FGameTexture *gameTexture = textureIndex >= 0 ?
+				TexMan.GetGameTexture(floorTexture, true) : nullptr;
+			floors.push_back(FFloor{ textureIndex, gameTexture,
+				gameTexture != nullptr ? I_3DSGpuGameTexture(gameTexture, true) : nullptr });
+			found = floors.end() - 1;
+		}
+		polygons.push_back(FPolygon{ found->Texture, found->GameTexture, &subsector });
+	}
+	std::sort(polygons.begin(), polygons.end(),
+		[](const FPolygon &a, const FPolygon &b) { return a.Texture < b.Texture; });
+
+	for (size_t first = 0; first < polygons.size();)
+	{
+		size_t last = first;
+		int count = 0;
+		while (last < polygons.size() && polygons[last].Texture == polygons[first].Texture)
+		{
+			count += (static_cast<int>(polygons[last].Subsector->numlines) - 2) * 3;
+			++last;
+		}
+		F3DSGpuTexture *texture = polygons[first].Texture;
+		F3DSGpuVertex *out = I_3DSGpuQueueTriangles(screen, texture, count, scissor);
+		if (out == nullptr) break;
+		for (size_t index = first; index < last; ++index)
+		{
+			const subsector_t &subsector = *polygons[index].Subsector;
+			sector_t *sector = subsector.render_sector;
+			FGameTexture *gameTexture = polygons[index].GameTexture;
+			uint32_t color = I_3DSGpuColor(20, 28, 34);
+			double scaleX = 1.0, scaleY = 1.0, offsetX = 0.0, offsetY = 0.0;
+			double textureWidth = 1.0, textureHeight = 1.0;
+			if (texture != nullptr && gameTexture != nullptr)
+			{
+				const double light = 0.50 + 0.50 *
+					std::clamp(sector->GetFloorLight(), 0, 255) / 255.0;
+				const uint8_t shade = static_cast<uint8_t>(std::clamp(light * 255.0, 0.0, 255.0));
+				color = I_3DSGpuColor(shade, shade, shade);
+				scaleX = std::max(0.001, std::abs(sector->GetXScale(sector_t::floor)));
+				scaleY = std::max(0.001, std::abs(sector->GetYScale(sector_t::floor)));
+				offsetX = sector->GetXOffset(sector_t::floor);
+				offsetY = sector->GetYOffset(sector_t::floor);
+				textureWidth = std::max(1, gameTexture->GetTexelWidth());
+				textureHeight = std::max(1, gameTexture->GetTexelHeight());
+			}
+			// Texture coordinates in repeats of the texture, shifted by whole repeats so the
+			// PICA's 24-bit floats stay small.
+			auto u = [&](const vertex_t *v) { return (v->fX() + offsetX) * scaleX / textureWidth; };
+			auto w = [&](const vertex_t *v) { return (-v->fY() + offsetY) * scaleY / textureHeight; };
+			const vertex_t *origin = subsector.firstline[0].v1;
+			const double baseU = std::floor(u(origin));
+			const double baseW = std::floor(w(origin));
+			auto vertex = [&](const vertex_t *v)
+			{
+				return F3DSGpuVertex{ toX(v->fX()), toY(v->fY()),
+					static_cast<float>(u(v) - baseU), static_cast<float>(1.0 - (w(v) - baseW)),
+					color };
+			};
+			const F3DSGpuVertex fanOrigin = vertex(origin);
+			for (uint32_t i = 1; i + 1 < subsector.numlines; ++i)
+			{
+				*out++ = fanOrigin;
+				*out++ = vertex(subsector.firstline[i].v1);
+				*out++ = vertex(subsector.firstline[i + 1].v1);
+			}
+		}
+		first = last;
+	}
+
+	if (lod3ds_map_collisions)
+	{
+		static std::vector<unsigned> shown;
+		shown.clear();
+		const std::vector<FMapLine> &lines = MapLines();
+		for (unsigned index = 0; index < lines.size(); ++index)
+		{
+			const FMapLine &end = lines[index];
+			if (std::max(end.X0, end.X1) < minX || std::min(end.X0, end.X1) > maxX ||
+				std::max(end.Y0, end.Y1) < minY || std::min(end.Y0, end.Y1) > maxY)
+			{
+				continue;
+			}
+			const line_t &line = primaryLevel->lines[index];
+			if (line.v1 == nullptr || line.v2 == nullptr || (line.flags & ML_DONTDRAW) != 0 ||
+				(line.flags & (ML_MAPPED | ML_REVEALED)) == 0)
+			{
+				continue;
+			}
+			shown.push_back(index);
+		}
+		F3DSGpuVertex *out = shown.empty() ? nullptr :
+			I_3DSGpuQueueTriangles(screen, nullptr, static_cast<int>(shown.size()) * 6, scissor);
+		if (out != nullptr)
+		{
+			for (const unsigned index : shown)
+			{
+				const FMapLine &end = lines[index];
+				PushGpuLine(out, toX(end.X0), toY(end.Y0), toX(end.X1), toY(end.Y1),
+					GpuColor(BottomMapLineColor(primaryLevel->lines[index])));
+			}
+		}
+	}
+
+	AActor *camera = view.Camera;
+	if (camera != nullptr && !view.PlayerDetached)
+	{
+		const float playerX = toX(camera->X());
+		const float playerY = toY(camera->Y());
+		const float directionX = static_cast<float>(camera->Angles.Yaw.Cos());
+		const float directionY = static_cast<float>(-camera->Angles.Yaw.Sin());
+		const float tipX = playerX + directionX * 7.0f;
+		const float tipY = playerY + directionY * 7.0f;
+		const float leftX = playerX + (-directionX - directionY) * 3.5f;
+		const float leftY = playerY + (directionX - directionY) * 3.5f;
+		const float rightX = playerX + (-directionX + directionY) * 3.5f;
+		const float rightY = playerY + (-directionX - directionY) * 3.5f;
+		F3DSGpuVertex *out = I_3DSGpuQueueTriangles(screen, nullptr, 18, scissor);
+		if (out != nullptr)
+		{
+			PushGpuLine(out, tipX, tipY, leftX, leftY, GpuColor(OverlayRed));
+			PushGpuLine(out, tipX, tipY, rightX, rightY, GpuColor(OverlayRed));
+			PushGpuLine(out, leftX, leftY, rightX, rightY, GpuColor(OverlayIvory));
+		}
 	}
 }
 
@@ -1666,7 +1990,26 @@ void DrawBottomTabs(unsigned char *framebuffer)
 void DrawBottomGameplay(unsigned char *framebuffer)
 {
 	static constexpr FEmbeddedBottomImage Frame = BOTTOM_IMAGE(BottomGameFrame);
-	DrawEmbeddedBottomImage(framebuffer, 0, 0, Frame);
+	// Decoded once into the framebuffer's layout, with a mask of its opaque pixels; decoding
+	// the RLE pixel by pixel on every redraw took most of its time.
+	constexpr size_t FramePixels = BottomScreenWidth * BottomScreenHeight;
+	static std::vector<uint32_t> framePixels;
+	static std::vector<uint8_t> frameOpaque;
+	if (framePixels.empty())
+	{
+		std::vector<uint32_t> decoded(FramePixels, 0u);
+		std::vector<uint32_t> marker(FramePixels, 0x01020304u);
+		// Decoded over two backgrounds: a pixel that differs is one the frame leaves as it was.
+		DrawEmbeddedBottomImage(reinterpret_cast<unsigned char *>(decoded.data()), 0, 0, Frame);
+		DrawEmbeddedBottomImage(reinterpret_cast<unsigned char *>(marker.data()), 0, 0, Frame);
+		frameOpaque.resize(FramePixels);
+		for (size_t index = 0; index < FramePixels; ++index)
+			frameOpaque[index] = decoded[index] == marker[index];
+		framePixels = std::move(decoded);
+	}
+	uint32_t *target = reinterpret_cast<uint32_t *>(framebuffer);
+	for (size_t index = 0; index < FramePixels; ++index)
+		if (frameOpaque[index]) target[index] = framePixels[index];
 	AActor *owner = players[consoleplayer].mo;
 	if (BottomGameplayTab == EBottomGameplayTab::Map) DrawBottomAutomap(framebuffer);
 	else DrawBottomItems(framebuffer, owner, players[consoleplayer].ReadyWeapon);
@@ -2763,13 +3106,131 @@ void ComposeNativeSaveLoadTop(unsigned char *pixels, const unsigned char *menuSo
 			savegameManager.SaveCommentString.GetChars(), OverlayIvory);
 }
 
+void FormatFpsLabel(char *label, size_t size)
+{
+	std::snprintf(label, size, "FPS %llu  %.1fMS",
+		static_cast<unsigned long long>(std::min<uint64_t>(LastCount, 999u)),
+		std::clamp(LastFrameMilliseconds, 0.0, 999.9));
+}
+
+// The FPS counter and the crosshair as GPU overlays (gpu_3ds.h): drawn once into small images
+// at the LCD's resolution, whatever the render scale, and redrawn only when they change.
+uint32_t GpuOverlayPixel(FOverlayColor color, unsigned alpha)
+{
+	return (static_cast<uint32_t>(color.Red) << 24) | (static_cast<uint32_t>(color.Green) << 16) |
+		(static_cast<uint32_t>(color.Blue) << 8) | alpha;
+}
+
+void QueueGpuFpsOverlay()
+{
+	if (!vid_fps) return;
+	constexpr int ImageWidth = 128;
+	constexpr int ImageHeight = 13;
+	static F3DSGpuImage *image;
+	static char drawnLabel[32];
+	static int boxWidth;
+	if (image == nullptr) image = I_3DSGpuImageCreate(ImageWidth, ImageHeight);
+	if (image == nullptr) return;
+
+	char label[32] = {};
+	FormatFpsLabel(label, sizeof(label));
+	if (std::strcmp(label, drawnLabel) != 0)
+	{
+		// The same box and text as the menus' counter (ComposeNativeMenuFps).
+		static uint32_t pixels[ImageWidth * ImageHeight];
+		boxWidth = std::min(ImageWidth, LoadingTextWidth(label, 1) + 8);
+		for (int y = 0; y < ImageHeight; ++y)
+			for (int x = 0; x < ImageWidth; ++x)
+				pixels[y * ImageWidth + x] = x < boxWidth ? GpuOverlayPixel(OverlayInk, 210u) : 0u;
+		int textX = 4;
+		for (const char *cursor = label; *cursor != '\0'; ++cursor, textX += 6)
+		{
+			const uint8_t *rows = LoadingFindGlyph(*cursor);
+			if (rows == nullptr) continue;
+			for (int row = 0; row < 7; ++row)
+				for (int column = 0; column < 5; ++column)
+					if ((rows[row] & (1u << (4 - column))) != 0u && textX + column < boxWidth)
+						pixels[(3 + row) * ImageWidth + textX + column] =
+							GpuOverlayPixel(OverlayIvory, 255u);
+		}
+		I_3DSGpuImageUpload(image, pixels, ImageWidth);
+		std::memcpy(drawnLabel, label, sizeof(drawnLabel));
+	}
+	I_3DSGpuOverlayImage(image, static_cast<float>(400 - boxWidth - 4), 4.0f,
+		ImageWidth, ImageHeight);
+}
+
+void QueueGpuCrosshairOverlay()
+{
+	constexpr int ImageSize = 16;
+	static F3DSGpuImage *image;
+	static int drawnSize;
+	if (image == nullptr) image = I_3DSGpuImageCreate(ImageSize, ImageSize);
+	if (image == nullptr) return;
+	const int targetSize = std::clamp(
+		(static_cast<int>(AimCrosshairWidth) * 400 * 7 + 2000) / 4000, 6, 12);
+	if (targetSize != drawnSize)
+	{
+		// The ivory marker over its ink shadow one pixel down-right, composited here once.
+		static float colour[ImageSize * ImageSize][4];
+		std::memset(colour, 0, sizeof(colour));
+		auto over = [&](int x, int y, FOverlayColor source, float alpha)
+		{
+			if (x < 0 || y < 0 || x >= ImageSize || y >= ImageSize || alpha <= 0.0f) return;
+			float *target = colour[y * ImageSize + x];
+			const float outAlpha = alpha + target[3] * (1.0f - alpha);
+			const float channels[] = { static_cast<float>(source.Red),
+				static_cast<float>(source.Green), static_cast<float>(source.Blue) };
+			for (int channel = 0; channel < 3; ++channel)
+				target[channel] = (channels[channel] * alpha +
+					target[channel] * target[3] * (1.0f - alpha)) / outAlpha;
+			target[3] = outAlpha;
+		};
+		for (int y = 0; y < targetSize; ++y)
+		{
+			const int sourceY = y * AimCrosshairHeight / targetSize;
+			for (int x = 0; x < targetSize; ++x)
+			{
+				const int sourceX = x * AimCrosshairWidth / targetSize;
+				const unsigned alpha = AimCrosshairAlpha[sourceY * AimCrosshairWidth + sourceX];
+				if (alpha >= 8u) over(x + 1, y + 1, OverlayInk, alpha * 3u / 5u / 255.0f);
+			}
+		}
+		for (int y = 0; y < targetSize; ++y)
+		{
+			const int sourceY = y * AimCrosshairHeight / targetSize;
+			for (int x = 0; x < targetSize; ++x)
+			{
+				const int sourceX = x * AimCrosshairWidth / targetSize;
+				const unsigned alpha = AimCrosshairAlpha[sourceY * AimCrosshairWidth + sourceX];
+				if (alpha >= 8u) over(x, y, OverlayIvory, alpha / 255.0f);
+			}
+		}
+		static uint32_t pixels[ImageSize * ImageSize];
+		for (int index = 0; index < ImageSize * ImageSize; ++index)
+		{
+			const float *source = colour[index];
+			const FOverlayColor pixel{ static_cast<unsigned char>(source[0] + 0.5f),
+				static_cast<unsigned char>(source[1] + 0.5f),
+				static_cast<unsigned char>(source[2] + 0.5f) };
+			pixels[index] = GpuOverlayPixel(pixel,
+				static_cast<unsigned>(std::clamp(source[3], 0.0f, 1.0f) * 255.0f + 0.5f));
+		}
+		I_3DSGpuImageUpload(image, pixels, ImageSize);
+		drawnSize = targetSize;
+	}
+	// Keep the approved 70% size, raised four pixels from v0.28 (as I_3DSComposeGameplayFrame).
+	const int left = 200 - targetSize / 2;
+	const int top = 120 - targetSize / 2 + 6;
+	I_3DSGpuOverlayImage(image, static_cast<float>(left), static_cast<float>(top),
+		ImageSize, ImageSize);
+}
+
 void ComposeNativeMenuFps(unsigned char *pixels, int pitchBytes, int width, int height)
 {
 	if (!vid_fps) return;
 	char label[32] = {};
-	std::snprintf(label, sizeof(label), "FPS %llu  %.1fMS",
-		static_cast<unsigned long long>(std::min<uint64_t>(LastCount, 999u)),
-		std::clamp(LastFrameMilliseconds, 0.0, 999.9));
+	FormatFpsLabel(label, sizeof(label));
 	const int boxWidth = LoadingTextWidth(label, 1) + 8;
 	const int x = std::max(2, width - boxWidth - 4);
 	NativeTopRect(pixels, pitchBytes, width, height, x, 4, boxWidth, 13,
@@ -2780,7 +3241,8 @@ void ComposeNativeMenuFps(unsigned char *pixels, int pitchBytes, int width, int 
 #include "update/changelog_view.inc"
 
 void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int height,
-	const unsigned char *menuSource = nullptr, const unsigned char *basePixels = nullptr)
+	bool gpuOverlays, const unsigned char *menuSource = nullptr,
+	const unsigned char *basePixels = nullptr)
 {
 	if (DrawUpdateChangelogTop(pixels, pitchBytes, width, height)) return;
 	const unsigned brightness = NativeMenuCurrentBrightness();
@@ -2800,7 +3262,8 @@ void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int 
 		ComposeNativeSaveLoadTop(pixels, menuSource, basePixels,
 			pitchBytes, width, height, brightness);
 	}
-	ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+	if (gpuOverlays) QueueGpuFpsOverlay();
+	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
 }
 
 EBottomPresentation DesiredBottomPresentation()
@@ -2819,6 +3282,69 @@ EBottomPresentation DesiredBottomPresentation()
 		EBottomPresentation::MenuDimmed;
 }
 
+// Where the bottom interface is drawn: the GPU path's buffer while it owns the bottom screen
+// (gpu_3ds.h), the framebuffer otherwise. Both have the framebuffer's layout.
+unsigned char *BeginBottomFrame()
+{
+	if (unsigned char *buffer = I_3DSGpuBottomBuffer()) return buffer;
+	u16 physicalWidth = 0;
+	u16 physicalHeight = 0;
+	unsigned char *framebuffer = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT,
+		&physicalWidth, &physicalHeight);
+	if (framebuffer == nullptr || physicalWidth != BottomScreenHeight ||
+		physicalHeight != BottomScreenWidth)
+	{
+		return nullptr;
+	}
+	return framebuffer;
+}
+
+void EndBottomFrame(unsigned char *framebuffer)
+{
+	if (framebuffer == I_3DSGpuBottomBuffer())
+	{
+		I_3DSGpuBottomChanged();
+		return;
+	}
+	I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
+	gfxScreenSwapBuffers(GFX_BOTTOM, false);
+}
+
+// What the gameplay interface shows besides the map: when it changes, it is drawn again.
+uint64_t BottomGameplaySignature()
+{
+	uint64_t hash = 1469598103934665603ull;
+	auto mix = [&](uint64_t value)
+	{
+		hash ^= value;
+		hash *= 1099511628211ull;
+	};
+	AActor *owner = players[consoleplayer].mo;
+	mix(static_cast<uint64_t>(BottomGameplayTab));
+	mix(primaryLevel != nullptr ? primaryLevel->lines.Size() : 0u);
+	mix(reinterpret_cast<uintptr_t>(owner));
+	if (owner == nullptr) return hash;
+	mix(static_cast<uint64_t>(owner->health));
+	mix(static_cast<uint64_t>(owner->GetMaxHealth()));
+	mix(reinterpret_cast<uintptr_t>(players[consoleplayer].ReadyWeapon));
+	mix(reinterpret_cast<uintptr_t>(owner->PointerVar<AActor>(NAME_InvSel)));
+	for (const char *type : { "ZeldaRupee", "ZeldaKey", "BombAmmo", "ZeldaInfiniteBomb",
+		"ZeldaRingRed", "ZeldaRingBlue" })
+	{
+		mix(static_cast<uint64_t>(BottomInventoryAmount(owner, type)));
+	}
+	if (BottomGameplayTab == EBottomGameplayTab::Items)
+	{
+		for (const FBottomItem &item : BottomItems())
+			mix(BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3));
+	}
+	FGameTexture *face = StatusBar != nullptr && StatusBar->CPlayer != nullptr &&
+		StatusBar->CPlayer->mo != nullptr ?
+		StatusBar->mugshot.GetFace(StatusBar->CPlayer, "STF", 5) : nullptr;
+	mix(reinterpret_cast<uintptr_t>(face));
+	return hash;
+}
+
 void DrawBottomOverlay(bool force)
 {
 	const uint64_t now = osGetTime();
@@ -2830,25 +3356,29 @@ void DrawBottomOverlay(bool force)
 		force = true;
 	}
 	const EBottomPresentation desired = DesiredBottomPresentation();
-	if (!force && BottomPresentation == desired &&
-		now - OverlayLastDrawMilliseconds < OverlayRefreshMilliseconds) return;
-
-	u16 physicalWidth = 0;
-	u16 physicalHeight = 0;
-	unsigned char *framebuffer = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT,
-		&physicalWidth, &physicalHeight);
-	if (framebuffer == nullptr || physicalWidth != BottomScreenHeight ||
-		physicalHeight != BottomScreenWidth)
+	const bool gpu = I_3DSGpuBottomBuffer() != nullptr;
+	if (gpu && desired == EBottomPresentation::Gameplay)
+	{
+		// The map moves on the GPU every frame; the rest is drawn again only when it changes.
+		static uint64_t drawnSignature;
+		const uint64_t signature = BottomGameplaySignature();
+		if (!force && BottomPresentation == desired && signature == drawnSignature) return;
+		drawnSignature = signature;
+	}
+	else if (!force && BottomPresentation == desired &&
+		now - OverlayLastDrawMilliseconds < OverlayRefreshMilliseconds)
 	{
 		return;
 	}
+
+	unsigned char *framebuffer = BeginBottomFrame();
+	if (framebuffer == nullptr) return;
 	OverlayLastDrawMilliseconds = now;
 	if (desired == EBottomPresentation::Progress)
 	{
 		BottomPresentation = EBottomPresentation::Progress;
 		DrawDiagnosticProgress(framebuffer);
-		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
-		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		EndBottomFrame(framebuffer);
 		return;
 	}
 	if (desired == EBottomPresentation::NativeMenu)
@@ -2862,8 +3392,7 @@ void DrawBottomOverlay(bool force)
 		BottomPresentation = EBottomPresentation::DeveloperOverlay;
 		DrawDeveloperOverlay(framebuffer);
 		DrawBottomToast(framebuffer);
-		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
-		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		EndBottomFrame(framebuffer);
 		return;
 	}
 
@@ -2895,17 +3424,17 @@ void DrawBottomOverlay(bool force)
 		}
 		DrawBottomToast(framebuffer);
 		BottomPresentation = target;
-		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
-		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		EndBottomFrame(framebuffer);
 		return;
 	}
 
 	BottomPresentation = EBottomPresentation::Gameplay;
+	BottomMapTerrainOnGpu = gpu;
 	DrawBottomGameplay(framebuffer);
+	BottomMapTerrainOnGpu = false;
 	DrawBottomToast(framebuffer);
 
-	I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
-	gfxScreenSwapBuffers(GFX_BOTTOM, false);
+	EndBottomFrame(framebuffer);
 }
 
 unsigned LoadingProgressForStage(const char *stage)
@@ -4419,7 +4948,8 @@ bool I_3DSNativeMenuFrozen()
 	return !NativeMenuFrozenTop.empty();
 }
 
-void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, int height)
+void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, int height,
+	bool gpuOverlays)
 {
 	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0) return;
 	const size_t bytes = static_cast<size_t>(pitchBytes) * static_cast<size_t>(height);
@@ -4452,21 +4982,18 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		NativeMenuFrozenPitch = pitchBytes;
 	}
 
-	u16 physicalWidth = 0;
-	u16 physicalHeight = 0;
-	unsigned char *bottom = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &physicalWidth, &physicalHeight);
-	if (bottom != nullptr && physicalWidth == BottomScreenHeight &&
-		physicalHeight == BottomScreenWidth && DrawNativeMenu(bottom))
+	unsigned char *bottom = BeginBottomFrame();
+	if (bottom != nullptr && DrawNativeMenu(bottom))
 	{
 		ExpireOverlayNotification(osGetTime());
 		DrawBottomToast(bottom);
-		I_3DSCleanDataCache(bottom, BottomScreenWidth * BottomScreenHeight * 4u);
-		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		EndBottomFrame(bottom);
 		BottomPresentation = EBottomPresentation::NativeMenu;
 		OverlayLastDrawMilliseconds = osGetTime();
 	}
 	DrawNativeMenuTop(pixels, pitchBytes, width, height);
-	ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+	if (gpuOverlays) QueueGpuFpsOverlay();
+	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
 }
 
 bool I_3DSNativeMenuVisible()
@@ -4475,7 +5002,8 @@ bool I_3DSNativeMenuVisible()
 }
 
 void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
-	const unsigned char *basePixels, int pitchBytes, int width, int height)
+	const unsigned char *basePixels, int pitchBytes, int width, int height,
+	bool gpuOverlays)
 {
 	if (menuPixels == nullptr || basePixels == nullptr || pitchBytes < width * 4 ||
 		width <= 0 || height <= 0)
@@ -4483,19 +5011,14 @@ void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 		return;
 	}
 
-	u16 physicalWidth = 0;
-	u16 physicalHeight = 0;
-	unsigned char *bottom = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT,
-		&physicalWidth, &physicalHeight);
-	if (bottom != nullptr && physicalWidth == BottomScreenHeight &&
-		physicalHeight == BottomScreenWidth)
+	unsigned char *bottom = BeginBottomFrame();
+	if (bottom != nullptr)
 	{
 		DrawNativeMenuBottomFrame(bottom, menuPixels, basePixels,
 			pitchBytes, width, height);
 		ExpireOverlayNotification(osGetTime());
 		DrawBottomToast(bottom);
-		I_3DSCleanDataCache(bottom, BottomScreenWidth * BottomScreenHeight * 4u);
-		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		EndBottomFrame(bottom);
 		BottomPresentation = EBottomPresentation::NativeMenu;
 		OverlayLastDrawMilliseconds = osGetTime();
 	}
@@ -4513,12 +5036,18 @@ void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 	}
 	std::memcpy(menuPixels, basePixels,
 		static_cast<size_t>(pitchBytes) * static_cast<size_t>(height));
-	ComposeNativeMenuTop(menuPixels, pitchBytes, width, height,
+	ComposeNativeMenuTop(menuPixels, pitchBytes, width, height, gpuOverlays,
 		saveLoadSource.empty() ? nullptr : saveLoadSource.data(), basePixels);
 }
 
+bool I_3DSGpu2DBlocked()
+{
+	if (I_3DSNativeMenuOwnsFrame()) return !I_3DSNativeMenuFrozen();
+	return I_3DSNativeMenuVisible();
+}
+
 void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
-	int width, int height)
+	int width, int height, bool gpuOverlays)
 {
 	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0 ||
 		gamestate != GS_LEVEL || menuactive != MENU_Off)
@@ -4546,6 +5075,14 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 				putPixel(px, py, color);
 	};
 
+	if (automapactive && gpuOverlays)
+	{
+		// The wider terrain overview over everything, as the CPU version below: its 320x192
+		// at 64 units a pixel stretched to the LCD is 51.2 units a pixel.
+		I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 0x000000ffu);
+		QueueGpuMap(E3DSGpuScreen::Top, 0, 0, 400, 240, 51.2);
+		return;
+	}
 	if (automapactive)
 	{
 		// Use a wider terrain overview for the upper automap.
@@ -4572,12 +5109,14 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 		return;
 	}
 
-	if (vid_fps)
+	if (gpuOverlays)
+	{
+		QueueGpuFpsOverlay();
+	}
+	else if (vid_fps)
 	{
 		char label[32] = {};
-		std::snprintf(label, sizeof(label), "FPS %llu  %.1fMS",
-			static_cast<unsigned long long>(std::min<uint64_t>(LastCount, 999u)),
-			std::clamp(LastFrameMilliseconds, 0.0, 999.9));
+		FormatFpsLabel(label, sizeof(label));
 		const bool compactGlyphs = width <= 200;
 		const int glyphWidth = compactGlyphs ? 3 : 5;
 		const int glyphHeight = compactGlyphs ? 5 : 7;
@@ -4610,6 +5149,11 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 	if (!crosshairon || camera == nullptr || camera->health <= 0 ||
 		(players[consoleplayer].cheats & CF_CHASECAM))
 	{
+		return;
+	}
+	if (gpuOverlays)
+	{
+		QueueGpuCrosshairOverlay();
 		return;
 	}
 	const int targetSize = std::clamp(
@@ -5172,6 +5716,12 @@ void I_3DSServiceDiagnosticDump()
 void I_3DSOverlayFrame()
 {
 	DrawBottomOverlay(false);
+	if (I_3DSGpuBottomBuffer() != nullptr && BottomPresentation == EBottomPresentation::Gameplay &&
+		BottomGameplayTab == EBottomGameplayTab::Map)
+	{
+		QueueGpuMap(E3DSGpuScreen::Bottom, 31, 38, 204, 156,
+			BottomMapZoomedOut ? 32.0 : 12.0);
+	}
 }
 
 void I_3DSSetAudioReady(bool ready)

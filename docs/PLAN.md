@@ -32,11 +32,12 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 
 | Branch | What | State |
 |---|---|---|
+| _(merged)_ | `feat/gpu-2d` (U2) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("funciona"; gameplay still ~20 fps: the 3D view, P2) | |
 | _(merged)_ | `feat/language` (U1 + U3, with `feat/native-menus`) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("todo ok") | |
 | _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
 | _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
-**Priority** (2026-10-13): U2 2D and bottom screen on the GPU (next) → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D
+**Priority** (2026-10-13): P2 GPU world renderer and 60 fps on New 3DS (next; the frame is now the 3D view, ~23 ms, and logic, ~7 ms) → P3 stereo 3D
 and P4 Old 3DS (order between these two to be set once P2.2 decides the renderer). P0.3
 goes on alongside, with the P1.3 recorder.
 
@@ -190,7 +191,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   over a paused game the 3D view is not rendered again every frame.
   *Done when:* the owner approves the look on the console, and a pause-menu recording
   shows no 3D view or routing cost (9.4 fps at render scale 1.0 before).
-- [ ] **U2** 2D and the bottom screen on the GPU.
+- [x] **U2** 2D and the bottom screen on the GPU.
   *Spec:* title picture, HUD, menus, FPS counter and the bottom-screen map/items drawn by
   the PICA200 (citro2d) instead of the SoftPoly raster and CPU loops; the FPS counter and
   other overlays at the LCD's native resolution whatever the render scale.
@@ -358,3 +359,22 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   `SITE CONSOLE save/load`), and CONSOLE/CVAR added; the relaunch after `SITE INSTALL`
   saves the config itself before the APT jump: once the jump is under way the app is
   closed before the engine's final save (seen on the console: FTP SERVER came back off).
+- **2026-10-13** U2 design (`feat/gpu-2d`, `src/common/platform/3ds/gpu_3ds.cpp`): one citro3d
+  context with its own small shader replaces the citro2d presenter. The engine's F2DDrawer is
+  recorded into GPU draws at the LCD's 400x240 (SoftPoly's 2D shading reproduced in the TEV:
+  texture modes, vertex colour, overlay colour, render styles as GPU blending); a drawer using
+  what the GPU path does not do (shape buffers, burn, desaturation, special colormaps) and the
+  frames whose 2D must be in the canvas pixels (a native menu's first, kept frame; the keyboard
+  route; the wipe's new screen) still go through SoftPoly. Engine textures get a PICA copy owned
+  by their PolyHardwareTexture. The bottom screen keeps its CPU drawing code but into a buffer
+  the GPU copies to its target only when it changed (gameplay redraws when a state signature
+  changes, not every 125 ms), and the map's terrain, lines and arrow are GPU triangles every
+  frame (also the top automap). A/B switch: cvar `lod3ds_gpu_2d`. Measured on the New 3DS:
+  title 13.2 → 35 fps (2D 70 ms → 0.01 ms); MAP01 at render scale 1.0 bottom screen 14.7 ms
+  (34 per redraw) → 1.9 ms mean, 27.7 fps, 1% low 23.6.
+- **2026-10-13** Lessons from the console while doing U2 (each one hung or crashed it): a
+  citro3d frame with no draw is never submitted and the next `C3D_FrameBegin` waits forever; a
+  GX transfer inside a frame runs alongside that frame's drawing (libctru starts up to three GX
+  commands at once) and left the queue waiting forever, so the bottom layer is copied before
+  `C3D_FrameBegin`; the CPU cannot read or write VRAM (data abort); a recorded draw must not
+  point at a texture the engine can free before the present.
