@@ -347,6 +347,10 @@ bool DescribeOptionMenu(DOptionMenuDescriptor *descriptor, TArray<FNativeRow> &r
 bool NativeMenuSupported()
 {
 	if (CurrentMenu == nullptr || menuactive == MENU_Off || DiagnosticProgressActive) return false;
+	// Before ListMenu: the save/load menus derive from it.
+	if (CurrentMenu->IsKindOf("LoadSaveMenu")) return true;
+	if (CurrentMenu->IsKindOf("MessageBoxMenu"))
+		return CurrentMenu->IntVar(FName("mMessageMode")) == 0;
 	if (CurrentMenu->IsKindOf("ListMenu"))
 	{
 		auto *descriptor = CurrentMenu->PointerVar<DListMenuDescriptor>(FName("mDesc"));
@@ -355,9 +359,6 @@ bool NativeMenuSupported()
 		FString title;
 		return DescribeListMenu(descriptor, rows, title);
 	}
-	if (CurrentMenu->IsKindOf("LoadSaveMenu")) return true;
-	if (CurrentMenu->IsKindOf("MessageBoxMenu"))
-		return CurrentMenu->IntVar(FName("mMessageMode")) == 0;
 	if (CurrentMenu->GetClass()->TypeName == FName("LegendSplitOptionMenu"))
 	{
 		auto *descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
