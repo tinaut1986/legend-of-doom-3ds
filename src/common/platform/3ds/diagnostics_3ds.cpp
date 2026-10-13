@@ -4731,6 +4731,11 @@ void I_3DSStartupLog(const char *stage)
 	// New 3DS before the renderer opened (Luma dump 00000101).
 }
 
+extern "C" void I_3DSStartupLogLine(const char *line)
+{
+	I_3DSStartupLog(line);
+}
+
 void I_3DSLoadingScreenStart()
 {
 	if (LoadingAnimationThread != nullptr) return;

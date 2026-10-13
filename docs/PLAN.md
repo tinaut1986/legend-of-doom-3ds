@@ -32,7 +32,9 @@ The 2026-10-13 merges below are **local only**: `release/v0.1.1` has not been pu
 
 | Branch | What | State |
 |---|---|---|
-| _(none open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit`, `feat/native-menus` (U1), `feat/language` (U3, cut from `feat/native-menus`) | |
+| `fix/ftp-stop-freeze` | Turning the FTP server off froze the Minish Cap port (same code): safe stop (3 s join, a thread that does not end is left running, `STUCK, RESTART THE GAME`), remote-control waits give up when the server stops, the socket service is never shut down, non-blocking socket waits, stop and 30 s watchdog lines in `startup.log` | Merged into `release/v0.1.1` 2026-10-13 **before** a console check: waits for the owner's check on the console (FTP SERVER off with a client connected, and during `lod-link.py` commands) |
+| `feat/language` | U1 + U3: `feat/native-menus` (native menus, NES font, tabs, frozen top screen) and the English/Spanish interface on top of it; `release/v0.1.1` (with `fix/ftp-stop-freeze`) merged into it | Checked by the owner on the New 3DS 2026-10-13 ("todo ok"). **To merge into `release/v0.1.1`** (`--no-ff`, no conflicts left): not done because the release branch was checked out in another session's worktree (`../legend-of-doom-3ds-ftpfix`) |
+| _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
 **Priority** (2026-10-13): U2 2D and bottom screen on the GPU (next) → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D
 and P4 Old 3DS (order between these two to be set once P2.2 decides the renderer). P0.3
