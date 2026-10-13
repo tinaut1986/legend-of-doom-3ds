@@ -31,8 +31,7 @@ not on `main`): GitHub release with the CIA, QR, debug symbols, manifest and che
 
 | Branch | What | State |
 |---|---|---|
-| `feat/perf-recorder` | P1.3 perf recorder; cut from `feat/console-link` (its client is `lod-link.py perf`), merge after it | Checked on the New 3DS 2026-10-13: first recordings below |
-| `feat/console-link` | P1.4 + P1.5: in-game FTP server, install over FTP with relaunch, remote control (`lod-link.py`), from `../mzm` | Checked on the New 3DS 2026-10-13: FTP, `--install` + relaunch with the server back on, `state`, `press`, `stick`, `shot`, `cvar`. Relaunch comes back with the server on by itself. Not yet: `touch`, `console map`, updater with the server on |
+| _(none open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch`, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
 **Priority** (2026-10-13): P1 debug tools and console link → U1 menus → U2 2D and
 bottom screen on the GPU → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D
@@ -144,7 +143,7 @@ Specs are written when the phase starts, from `../zelda-tmc-3ds` P1 (same IDs or
 
 - [ ] **P1.1** DEBUG build switch and a DEBUG page in the bottom-screen menus.
 - [ ] **P1.2** SD log (rotating, buffered/direct, settings and periodic perf lines).
-- [ ] **P1.3** Perf recorder (CSV per frame) + `tools/perf-csv/analyze.py`.
+- [x] **P1.3** Perf recorder (CSV per frame) + `tools/perf-csv/analyze.py`.
   *Spec:* `perf_3ds.cpp` (from TMC's `debug_perf_3ds`): one row per presented frame in RAM,
   written as `debug/perf-NNNN.csv` on stop; parts timed where the engine does them
   (logic tics, 3D view, SoftPoly raster wait, 2D, 3DS compositor, PICA200 present,

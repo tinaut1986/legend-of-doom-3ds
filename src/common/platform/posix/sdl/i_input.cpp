@@ -537,6 +537,7 @@ void I_StartTic ()
 	I_GetEvent ();
 	#ifdef __3DS__
 	I_3DSServiceUpdater();
+	I_3DSServiceSettingsSave();
 	I_3DSServiceConsoleLink();
 	I_3DSServiceDiagnosticDump();
 	#endif

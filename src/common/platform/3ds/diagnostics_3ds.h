@@ -113,3 +113,5 @@ void I_3DSStopConsoleLink();
 
 // Both LCDs as 24-bit BMPs (the remote control's SITE SHOT).
 bool I_3DSSaveScreenShots(const char *topPath, const char *bottomPath);
+// Once per input poll: saves the config when the player leaves the option menus.
+void I_3DSServiceSettingsSave();
