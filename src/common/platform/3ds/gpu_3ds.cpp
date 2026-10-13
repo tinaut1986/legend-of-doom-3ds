@@ -49,6 +49,7 @@ using FVertex = F3DSGpuVertex;
 enum class EMode : uint8_t
 {
 	Canvas,       // the BGRA canvas texture, swizzled back to RGB, opaque
+	CanvasMasked, // the same with the canvas's own alpha (over the GPU world: the weapon)
 	Image,        // overlay images: texture * vertex colour
 	NoTexture,
 	Normal,
@@ -118,6 +119,9 @@ DVLB_s *ShaderBinary;
 shaderProgram_s Program;
 int ProjectionLocation = -1;
 C3D_RenderTarget *TopTarget;
+// The right eye (P3): drawn only in a stereo frame (I_3DSGpuWorldBegin with two matrices), the
+// top screen switched to 3D (gfxSet3D) for those frames only.
+C3D_RenderTarget *TopTargetRight;
 C3D_RenderTarget *BottomTarget;
 // The CPU's bottom interface, in the framebuffer's layout (gpu_3ds.h).
 uint8_t *BottomStaging;
@@ -152,6 +156,7 @@ struct FWorldDraw
 {
 	C3D_Tex Texture;
 	bool Textured;
+	bool Masked;
 	uint32_t First;
 	uint32_t Count;
 };
@@ -162,6 +167,8 @@ F3DSGpuWorldVertex *WorldArenas[2];
 size_t WorldUsed;
 std::vector<FWorldDraw> WorldDraws;
 C3D_Mtx WorldMatrix;
+C3D_Mtx WorldMatrixRight;
+bool WorldStereo;
 uint32_t WorldClearColor;
 bool WorldQueued;
 
@@ -273,13 +280,23 @@ void ApplyMode(EMode mode, uint32_t overlay)
 	switch (mode)
 	{
 	case EMode::Canvas:
+	case EMode::CanvasMasked:
 		// The canvas is uploaded as BGRA bytes into an RGBA8 texture: rebuild R, G and B from
-		// the sampled G, B and A channels.
+		// the sampled G, B and A channels (its alpha is the sampled R).
 		C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0, GPU_CONSTANT, GPU_PREVIOUS);
 		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_G,
 			GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR);
 		C3D_TexEnvFunc(env, C3D_RGB, GPU_MODULATE);
-		C3D_TexEnvSrc(env, C3D_Alpha, GPU_CONSTANT, GPU_CONSTANT, GPU_CONSTANT);
+		if (mode == EMode::CanvasMasked)
+		{
+			C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0, GPU_CONSTANT, GPU_CONSTANT);
+			C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_SRC_R, GPU_TEVOP_A_SRC_ALPHA,
+				GPU_TEVOP_A_SRC_ALPHA);
+		}
+		else
+		{
+			C3D_TexEnvSrc(env, C3D_Alpha, GPU_CONSTANT, GPU_CONSTANT, GPU_CONSTANT);
+		}
 		C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
 		C3D_TexEnvColor(env, TevColor(255, 0, 0));
 
@@ -657,7 +674,7 @@ void DrawBottom()
 
 // The world's draws, first in the top target, depth-tested; the 2D pass starts afterwards from
 // BeginPass(), which turns the depth test off again.
-void DrawWorld(F3DSGpuWorldVertex *vertices)
+void DrawWorld(F3DSGpuWorldVertex *vertices, C3D_Mtx &matrix)
 {
 	C3D_BindProgram(&WorldProgram);
 	C3D_AttrInfo *attributes = C3D_GetAttrInfo();
@@ -668,7 +685,7 @@ void DrawWorld(F3DSGpuWorldVertex *vertices)
 	C3D_BufInfo *buffers = C3D_GetBufInfo();
 	BufInfo_Init(buffers);
 	BufInfo_Add(buffers, vertices, sizeof(F3DSGpuWorldVertex), 3, 0x210);
-	C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, WorldProjectionLocation, &WorldMatrix);
+	C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, WorldProjectionLocation, &matrix);
 	C3D_DepthTest(true, GPU_GREATER, GPU_WRITE_ALL);
 	C3D_CullFace(GPU_CULL_NONE);
 	C3D_AlphaTest(false, GPU_ALWAYS, 0);
@@ -678,14 +695,18 @@ void DrawWorld(F3DSGpuWorldVertex *vertices)
 	ApplyMode(EMode::Opaque, 0);
 	const C3D_Tex *bound = nullptr;
 	bool anyBound = false;
+	bool masked = false;
 	for (const FWorldDraw &draw : WorldDraws)
 	{
 		const C3D_Tex *texture = draw.Textured ? &draw.Texture : nullptr;
-		if (!anyBound || texture != bound)
+		if (!anyBound || texture != bound || draw.Masked != masked)
 		{
-			ApplyMode(texture != nullptr ? EMode::Opaque : EMode::NoTexture, 0);
+			ApplyMode(texture == nullptr ? EMode::NoTexture :
+				(draw.Masked ? EMode::Normal : EMode::Opaque), 0);
 			C3D_TexBind(0, const_cast<C3D_Tex *>(texture));
+			C3D_AlphaTest(draw.Masked, GPU_GREATER, 0);
 			bound = texture;
+			masked = draw.Masked;
 			anyBound = true;
 		}
 		C3D_DrawArrays(GPU_TRIANGLES, static_cast<int>(draw.First), static_cast<int>(draw.Count));
@@ -767,6 +788,9 @@ bool I_3DSGpuInit()
 		return false;
 	}
 	C3D_RenderTargetSetOutput(TopTarget, GFX_TOP, GFX_LEFT, OutputTransferFlags());
+	TopTargetRight = C3D_RenderTargetCreate(TopHeight, TopWidth, GPU_RB_RGBA8, GPU_RB_DEPTH16);
+	if (TopTargetRight != nullptr)
+		C3D_RenderTargetSetOutput(TopTargetRight, GFX_TOP, GFX_RIGHT, OutputTransferFlags());
 
 	// The bottom screen starts from what the framebuffer shows now.
 	const size_t bottomBytes = static_cast<size_t>(BottomWidth) * BottomHeight * 4u;
@@ -821,6 +845,11 @@ void I_3DSGpuShutdown()
 	{
 		C3D_RenderTargetDelete(TopTarget);
 		TopTarget = nullptr;
+	}
+	if (TopTargetRight != nullptr)
+	{
+		C3D_RenderTargetDelete(TopTargetRight);
+		TopTargetRight = nullptr;
 	}
 	if (BottomTarget != nullptr)
 	{
@@ -1076,17 +1105,16 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 	}
 
 	const bool world = WorldQueued && WorldProgramReady;
+	const bool stereo = world && WorldStereo && TopTargetRight != nullptr;
+	// The top screen shows two images only in a frame that draws both.
+	if (stereo != gfxIs3D()) gfxSet3D(stereo);
 	F3DSGpuWorldVertex *worldVertices = WorldArenas[CurrentArena];
-	if (!world)
-	{
-		const size_t uploadBytes = lod3ds::CopyPresentPixels(CanvasUpload, CanvasTextureWidth,
-			pixels, pitchBytes, width, height);
-		if (R_FAILED(GSPGPU_FlushDataCache(CanvasUpload, uploadBytes))) return false;
-	}
-	else
-	{
-		GSPGPU_FlushDataCache(worldVertices, WorldUsed * sizeof(F3DSGpuWorldVertex));
-	}
+	// With the GPU world the canvas holds only what the swrenderer still draws (the weapon) on
+	// transparent pixels; it goes over the world with its own alpha.
+	const size_t uploadBytes = lod3ds::CopyPresentPixels(CanvasUpload, CanvasTextureWidth,
+		pixels, pitchBytes, width, height);
+	if (R_FAILED(GSPGPU_FlushDataCache(CanvasUpload, uploadBytes))) return false;
+	if (world) GSPGPU_FlushDataCache(worldVertices, WorldUsed * sizeof(F3DSGpuWorldVertex));
 
 	FVertex *quad = nullptr;
 	uint32_t quadFirst = 0;
@@ -1098,35 +1126,50 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 	const bool bottom = PrepareBottom();
 	if (!C3D_FrameBegin(0)) return false;
 	CollectReleases();
-	if (!world)
-	{
-		C3D_SyncDisplayTransfer(CanvasUpload,
-			GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
-			static_cast<u32 *>(CanvasTexture.data),
-			GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
-			TextureTransferFlags());
-	}
+	C3D_SyncDisplayTransfer(CanvasUpload,
+		GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
+		static_cast<u32 *>(CanvasTexture.data),
+		GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
+		TextureTransferFlags());
 
 	C3D_RenderTargetClear(TopTarget, C3D_CLEAR_ALL, world ? WorldClearColor : 0x000000ff, 0);
 	C3D_FrameDrawOn(TopTarget);
 	FArena &arena = Arenas[CurrentArena];
-	if (world) DrawWorld(worldVertices);
+	if (world) DrawWorld(worldVertices, WorldMatrix);
 	BeginPass();
 
-	if (!world)
+	// The canvas: opaque, or over the GPU world with its alpha.
+	FDraw canvas = MakeScreenDraw(world ? EMode::CanvasMasked : EMode::Canvas, &CanvasTexture,
+		quadFirst, 6);
+	if (world)
 	{
-		// The canvas, opaque.
-		FDraw canvas = MakeScreenDraw(EMode::Canvas, &CanvasTexture, quadFirst, 6);
+		C3D_AlphaTest(true, GPU_GREATER, 0);
+	}
+	else
+	{
 		canvas.BlendSrc = STYLEALPHA_One;
 		canvas.BlendDst = STYLEALPHA_Zero;
-		ApplyDraw(canvas);
 	}
+	ApplyDraw(canvas);
 
 	// SoftPoly's 2D alpha test discards fully transparent fragments.
 	C3D_AlphaTest(true, GPU_GREATER, 0);
 	for (const FDraw &draw : Draws) ApplyDraw(draw);
 	for (const FDraw &draw : OverlayDraws) ApplyDraw(draw);
 	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+	if (stereo)
+	{
+		// The right eye: its own view of the world, the same 2D at the screen's depth.
+		C3D_RenderTargetClear(TopTargetRight, C3D_CLEAR_ALL, WorldClearColor, 0);
+		C3D_FrameDrawOn(TopTargetRight);
+		DrawWorld(worldVertices, WorldMatrixRight);
+		BeginPass();
+		C3D_AlphaTest(true, GPU_GREATER, 0);
+		ApplyDraw(canvas);
+		for (const FDraw &draw : Draws) ApplyDraw(draw);
+		for (const FDraw &draw : OverlayDraws) ApplyDraw(draw);
+		C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+	}
 	const size_t bottomDraws = bottom ? BottomShown.size() : 0;
 	if (bottom) DrawBottom();
 
@@ -1151,12 +1194,12 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 	return true;
 }
 
-void I_3DSGpuWorldBegin(const float matrix[16], uint32_t clearColor)
+namespace
 {
-	if (!Ready || !WorldProgramReady) return;
-	// The LCD is rotated a quarter turn (as Mtx_PerspTilt): clip x comes from the upright
-	// screen's y, clip y from minus its x.
-	C3D_Mtx &m = WorldMatrix;
+// The LCD is rotated a quarter turn (as Mtx_PerspTilt): clip x comes from the upright screen's
+// y, clip y from minus its x.
+void TiltMatrix(C3D_Mtx &m, const float matrix[16])
+{
 	for (int column = 0; column < 4; ++column)
 	{
 		m.r[0].c[3 - column] = matrix[4 + column];
@@ -1164,19 +1207,29 @@ void I_3DSGpuWorldBegin(const float matrix[16], uint32_t clearColor)
 		m.r[2].c[3 - column] = matrix[8 + column];
 		m.r[3].c[3 - column] = matrix[12 + column];
 	}
+}
+}
+
+void I_3DSGpuWorldBegin(const float matrix[16], const float *rightMatrix, uint32_t clearColor)
+{
+	if (!Ready || !WorldProgramReady) return;
+	TiltMatrix(WorldMatrix, matrix);
+	WorldStereo = rightMatrix != nullptr;
+	if (WorldStereo) TiltMatrix(WorldMatrixRight, rightMatrix);
 	WorldClearColor = clearColor;
 	WorldDraws.clear();
 	WorldUsed = 0;
 	WorldQueued = true;
 }
 
-F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count)
+F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool masked)
 {
 	if (!WorldQueued || count <= 0 || WorldUsed + static_cast<size_t>(count) > WorldArenaVertices)
 		return nullptr;
 	F3DSGpuWorldVertex *out = WorldArenas[CurrentArena] + WorldUsed;
 	FWorldDraw draw{};
 	draw.Textured = texture != nullptr;
+	draw.Masked = masked;
 	if (texture != nullptr) draw.Texture = texture->Texture;
 	draw.First = static_cast<uint32_t>(WorldUsed);
 	draw.Count = static_cast<uint32_t>(count);
@@ -1184,7 +1237,8 @@ F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count)
 	{
 		// Same texture as the previous draw and contiguous: one draw.
 		FWorldDraw &last = WorldDraws.back();
-		if (last.Textured == draw.Textured && last.First + last.Count == draw.First &&
+		if (last.Textured == draw.Textured && last.Masked == draw.Masked &&
+			last.First + last.Count == draw.First &&
 			(!draw.Textured || last.Texture.data == draw.Texture.data))
 		{
 			last.Count += draw.Count;
@@ -1195,6 +1249,12 @@ F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count)
 	WorldDraws.push_back(draw);
 	WorldUsed += static_cast<size_t>(count);
 	return out;
+}
+
+void I_3DSGpuTextureScale(const F3DSGpuTexture *texture, float &scaleS, float &scaleT)
+{
+	scaleS = texture != nullptr ? texture->ScaleS : 1.0f;
+	scaleT = texture != nullptr ? texture->ScaleT : 1.0f;
 }
 
 float I_3DSGpuLastDrawingTime()
@@ -1419,9 +1479,10 @@ void I_3DSGpuOverlayRect(float x, float y, float width, float height, uint32_t r
 #else
 
 bool I_3DSGpuInit() { return false; }
-void I_3DSGpuWorldBegin(const float *, uint32_t) {}
+void I_3DSGpuWorldBegin(const float *, const float *, uint32_t) {}
 void I_3DSGpuBottomNewTic() {}
-F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *, int) { return nullptr; }
+F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *, int, bool) { return nullptr; }
+void I_3DSGpuTextureScale(const F3DSGpuTexture *, float &scaleS, float &scaleT) { scaleS = scaleT = 1.0f; }
 float I_3DSGpuLastDrawingTime() { return 0.0f; }
 void I_3DSGpuShutdown() {}
 bool I_3DSGpuReady() { return false; }

@@ -42,9 +42,9 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 | _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
 | _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
-**Priority** (2026-10-13): P2 GPU world renderer and 60 fps on New 3DS (next; the frame is now the 3D view, ~23 ms, and logic, ~7 ms) → P3 stereo 3D
-and P4 Old 3DS (order between these two to be set once P2.2 decides the renderer). P0.3
-goes on alongside, with the P1.3 recorder.
+**Priority** (2026-10-13, owner): P3 stereo 3D on the GPU world (next), then P4 the 2DS (P4.1 boot
+first), then the rest of P2.3 (light, sky, sprites, parity) and P2.4. P0.3 goes on alongside, with
+the P1.3 recorder.
 
 
 
@@ -403,3 +403,6 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   already ruled out by upstream's history. The poly backend's drawers crash on the 3DS in mode 4
   (not investigated, unused by (c)). First step: a timed spike on MAP01 (walls and flats from
   load-time buffers, the swrenderer's visible set, no lighting).
+- **2026-10-13** Priority set by the owner after the GPU world spike (60 fps on MAP01): stereo 3D
+  (P3) next, then the 2DS (P4), before finishing P2.3's parity (light, sky, sprites). Stereo comes
+  almost for free from the GPU world (two submissions of one visible set).
