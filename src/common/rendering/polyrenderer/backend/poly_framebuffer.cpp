@@ -52,6 +52,7 @@
 #ifdef __3DS__
 #include "common/platform/3ds/diagnostics_3ds.h"
 #include "common/platform/3ds/memory_3ds.h"
+#include "common/platform/3ds/perf_3ds.h"
 #endif
 
 void Draw2D(F2DDrawer *drawer, FRenderState &state);
@@ -199,7 +200,12 @@ void PolyFrameBuffer::Update()
 
 	Flush3D.Clock();
 
-	Draw2D();
+	{
+		#ifdef __3DS__
+		F3DSPerfScope perfTwoD(E3DSPerfPart::TwoD);
+		#endif
+		Draw2D();
+	}
 	twod->Clear();
 
 	Flush3D.Unclock();
@@ -213,28 +219,37 @@ void PolyFrameBuffer::Update()
 		int pixelsize = 4;
 		#ifdef __3DS__
 		// Retire workers before composing the native HUD.
-		DrawerThreads::WaitForWorkers();
-		I_3DSComposeGameplayFrame(
-			static_cast<unsigned char *>(mCanvas->GetPixels()),
-			mCanvas->GetPitch() * pixelsize, w, h);
-		if (!mNativeMenuBase.empty() && I_3DSNativeMenuVisible() &&
-			mNativeMenuBaseWidth == w && mNativeMenuBaseHeight == h &&
-			mNativeMenuBasePitch == mCanvas->GetPitch() * pixelsize)
 		{
-			I_3DSRouteNativeMenuFrame(
-				static_cast<unsigned char *>(mCanvas->GetPixels()),
-				mNativeMenuBase.data(), mNativeMenuBasePitch, w, h);
+			F3DSPerfScope perfRaster(E3DSPerfPart::RasterWait);
+			DrawerThreads::WaitForWorkers();
 		}
-		mNativeMenuBase.clear();
-		mNativeMenuBasePitch = 0;
-		mNativeMenuBaseWidth = 0;
-		mNativeMenuBaseHeight = 0;
+		{
+			F3DSPerfScope perfCompose(E3DSPerfPart::Compose);
+			I_3DSComposeGameplayFrame(
+				static_cast<unsigned char *>(mCanvas->GetPixels()),
+				mCanvas->GetPitch() * pixelsize, w, h);
+			if (!mNativeMenuBase.empty() && I_3DSNativeMenuVisible() &&
+				mNativeMenuBaseWidth == w && mNativeMenuBaseHeight == h &&
+				mNativeMenuBasePitch == mCanvas->GetPitch() * pixelsize)
+			{
+				I_3DSRouteNativeMenuFrame(
+					static_cast<unsigned char *>(mCanvas->GetPixels()),
+					mNativeMenuBase.data(), mNativeMenuBasePitch, w, h);
+			}
+			mNativeMenuBase.clear();
+			mNativeMenuBasePitch = 0;
+			mNativeMenuBaseWidth = 0;
+			mNativeMenuBaseHeight = 0;
+		}
 		#endif
 		const uint8_t *src = (const uint8_t*)mCanvas->GetPixels();
 		const bool neutralColorTransform = vid_gamma == 1.0f &&
 			vid_contrast == 1.0f && vid_brightness == 0.0f &&
 			vid_saturation == 1.0f;
 		bool presented = false;
+		#ifdef __3DS__
+		const uint64_t perfPresent = I_3DSPerfNow();
+		#endif
 		#if defined(__3DS__) && (!defined(LOD3DS_SAFE_SOFTWARE) || defined(LOD3DS_HYBRID_PERFORMANCE))
 		if (neutralColorTransform)
 		{
@@ -308,7 +323,15 @@ void PolyFrameBuffer::Update()
 				#endif
 			}
 		}
+		#ifdef __3DS__
+		I_3DSPerfSince(E3DSPerfPart::Present, perfPresent);
+		const uint64_t perfLimit = I_3DSPerfNow();
+		#endif
 		FPSLimit();
+		#ifdef __3DS__
+		I_3DSPerfSince(E3DSPerfPart::Limit, perfLimit);
+		I_3DSPerfFrameDone(w, h);
+		#endif
 	}
 
 	DrawerThreads::WaitForWorkers();

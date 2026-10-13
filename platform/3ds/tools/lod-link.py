@@ -17,6 +17,8 @@ commands of src/common/platform/3ds/debug_link_3ds.h. Standard library only.
     console COMMAND...        run a GZDoom console command (map E1M1, give all, save x...)
     cvar NAME [VALUE]         read a console variable, or set it
     dump                      quick diagnostic capture (as L+R+A), into dumps/
+    perf SECONDS [DIR]        record frame times for SECONDS, fetch debug/perf-NNNN.csv and
+                              summarise it (perf-analyze.py); default DIR /tmp/lod-perf
     shot [DIR]                screenshots of both screens as PNG, default /tmp/lod-shot
     peek WHAT LENGTH          hex bytes; WHAT is a hex address, a symbol of the ELF or SYMBOL+HEX
     poke WHAT HEXBYTES        write bytes there
@@ -195,6 +197,32 @@ def run(link, argv):
         print(link.site('CONSOLE ' + ' '.join(args)))
     elif cmd == 'cvar':
         print(link.site('CVAR ' + ' '.join(args)))
+    elif cmd == 'perf':
+        seconds = float(args[0]) if args else 10
+        out = args[1] if len(args) > 1 else '/tmp/lod-perf'
+        os.makedirs(out, exist_ok=True)
+        link.site('CONSOLE lod3ds_perf start')
+        time.sleep(seconds)
+        link.site('CONSOLE lod3ds_perf stop')
+        # The game writes the file on its own thread after the command; give it a moment.
+        names = []
+        for _ in range(20):
+            time.sleep(0.5)
+            names = sorted(n for n in link.connect().nlst(DATA + '/debug') if re.search(r'perf-\d+\.csv$', n))
+            if names:
+                break
+        if not names:
+            raise LinkError('no perf-NNNN.csv in debug/')
+        name = os.path.basename(names[-1])
+        path = os.path.join(out, name)
+        link.retrieve('%s/debug/%s' % (DATA, name), path)
+        print(path)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        analyze = __import__('perf-analyze')
+        header, rows = analyze.load(path)
+        if header:
+            print(header)
+        analyze.summarise(rows, by_state=True)
     elif cmd == 'dump':
         print(link.site('DUMP'))
     elif cmd == 'shot':

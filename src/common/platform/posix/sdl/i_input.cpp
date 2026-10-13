@@ -50,6 +50,7 @@
 #include "../../3ds/diagnostics_3ds.h"
 #include "../../3ds/i_input_3ds.h"
 #include "../../3ds/debug_link_3ds.h"
+#include "../../3ds/perf_3ds.h"
 #endif
 
 
@@ -546,6 +547,7 @@ void I_StartFrame ()
 {
 	I_ProcessJoysticks();
 	#ifdef __3DS__
+	F3DSPerfScope perfBottom(E3DSPerfPart::Bottom);
 	I_3DSOverlayFrame();
 	#endif
 }
