@@ -104,3 +104,5 @@ bool I_3DSQuitWithoutSavingRequested();
 
 int I_3DSUpdateAction(int action);
 void I_3DSServiceUpdater();
+// Once per input poll: saves the config when the player leaves the option menus.
+void I_3DSServiceSettingsSave();

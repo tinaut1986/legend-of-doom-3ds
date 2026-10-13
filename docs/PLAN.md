@@ -31,7 +31,7 @@ not on `main`): GitHub release with the CIA, QR, debug symbols, manifest and che
 
 | Branch | What | State |
 |---|---|---|
-| _(none open)_ | `chore/fork-setup` (workflow + P0.1) and `docs/release-notes-v0.1.0` merged into `release/v0.1.0` 2026-10-12: the owner installed the dev CIA on the New 3DS next to upstream's app, own folder, version and BETA channel as specified | |
+| `fix/save-settings-on-quit` | Settings were lost on QUIT GAME (upstream skips the final config save) and HOME -> Close: the config is now written when the player leaves the option menus, and before QUIT GAME | Checked on the New 3DS 2026-10-13 (FTP SERVER kept after closing) |
 
 **Priority** (2026-10-12): P0.1 → P0.2 → P1 debug tools and console link → P0.3
 baseline → P2 GPU world renderer and 60 fps on New 3DS → P3 stereo 3D and P4 Old 3DS

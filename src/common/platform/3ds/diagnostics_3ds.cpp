@@ -5067,3 +5067,16 @@ void I_3DSServiceUpdater()
 {
     if (Updater_ShouldClose() && !Updater_Busy()) I_3DSQuitWithoutSaving();
 }
+
+bool M_SaveDefaults(const char *filename);
+
+void I_3DSServiceSettingsSave()
+{
+	// Write the config as soon as the player leaves the option menus: HOME -> Close and the
+	// fast QUIT GAME skip the engine's final save, so this is when the settings stick.
+	static bool inOptions = false;
+	const bool options = menuactive != MENU_Off && CurrentMenu != nullptr &&
+		CurrentMenu->IsKindOf("OptionMenu");
+	if (inOptions && !options) M_SaveDefaults(nullptr);
+	inOptions = options;
+}

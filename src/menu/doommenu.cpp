@@ -37,6 +37,7 @@
 #endif
 
 #include "c_dispatch.h"
+#include "m_misc.h"
 #include "d_gui.h"
 #include "c_buttons.h"
 #include "c_console.h"
@@ -338,6 +339,9 @@ CCMD (menu_quit)
 	DMenu *newmenu = CreateMessageBoxMenu(CurrentMenu, EndString, 0, false, NAME_None, []()
 	{
 #ifdef __3DS__
+		// The fast exit skips the engine's final config save; write the settings changed
+		// in this session (render scale, HUD, FTP SERVER...) here so they survive QUIT GAME.
+		M_SaveDefaults(nullptr);
 		I_3DSQuitWithoutSaving();
 #else
 		if (!netgame)
