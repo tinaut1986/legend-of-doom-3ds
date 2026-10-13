@@ -109,6 +109,8 @@ Debug builds (`LOD3DS_DEBUG_TOOLS=1`: dev builds and betas) carry an FTP server 
 - **Install over the running game.** `SITE INSTALL <path>` installs a CIA of this title from the SD card and relaunches into it; a toast on the touch screen says so meanwhile. `./build_3ds.sh --install [IP]` builds, uploads to `update/dev.cia` and sends the command.
 - **Remote control.** `platform/3ds/tools/lod-link.py` drives the game through `SITE` commands: `state`, `keys`/`press` (buttons), `stick` (Circle Pad / C-Stick), `touch`, `shot` (both screens as PNG), `console` (any GZDoom console command: `map`, `give`, `save`...), `cvar`, `dump`, `peek`/`poke` (by address or ELF symbol), `get` and `run FILE`. `lod-link.py --help` lists them.
 
+- **Perf recorder.** `lod3ds_perf start|stop|status` (console command, debug builds) records one row per presented frame and writes `debug/perf-NNNN.csv` on stop: interval and the time of each part (logic tics, 3D view, SoftPoly raster wait, 2D, compositor, PICA200 present, limiter, bottom screen, the rest), game state, menu and canvas size (`src/common/platform/3ds/perf_3ds.h`). `platform/3ds/tools/perf-analyze.py FILE --by-state` summarises it; `lod-link.py perf SECONDS` does all three from the PC.
+
 Stable builds have no FTP server unless `dev-ftp.txt` exists in `/3ds/Legend of Doom 3DS/` (created over FTP while a debug build is installed): then they start an install-only server that reaches only `update/` and has no remote control, enough for `--install`.
 
 ## Historical notes
