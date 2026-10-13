@@ -32,6 +32,7 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 
 | Branch | What | State |
 |---|---|---|
+| _(merged)_ | `fix/install-relaunch` (#1: the relaunch after `SITE INSTALL` waits 10 s, through libctru's chainloader) merged into `release/v0.1.1` 2026-10-13 after 6 installs in a row on the New 3DS with no loader dump | |
 | _(merged)_ | `feat/gpu-2d` (U2) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("funciona"; gameplay still ~20 fps: the 3D view, P2) | |
 | _(merged)_ | `feat/language` (U1 + U3, with `feat/native-menus`) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("todo ok") | |
 | _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
@@ -378,3 +379,11 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   commands at once) and left the queue waiting forever, so the bottom layer is copied before
   `C3D_FrameBegin`; the CPU cannot read or write VRAM (data abort); a recorded draw must not
   point at a texture the engine can free before the present.
+- **2026-10-13** The relaunch after `SITE INSTALL` (#1) waits 10 s before jumping. The loader
+  dumps were all `0xD86007F3` (kernel out of memory) while allocating our title's code, with the
+  new build already running: a second load of the title. Measured on the New 3DS: jumping at
+  once faulted in 3 installs of 4 with either jump (by hand, or libctru's chainloader at exit);
+  jumping with no install before (6) or after installing without jumping (3) never did; installing
+  and jumping 10 s later never did (4, then 6 with the final build). The cause inside the system
+  (presumably the HOME menu still handling the updated title when the jump arrives) is not
+  known. The chainloader stays, as in `../sm-3ds`.
