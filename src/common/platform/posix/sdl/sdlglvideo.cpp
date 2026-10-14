@@ -62,14 +62,7 @@
 #ifdef __3DS__
 #include <3ds.h>
 #ifdef LOD3DS_HYBRID_PERFORMANCE
-#include <citro2d.h>
-#include "common/platform/3ds/present_pixels.h"
-
-extern "C"
-{
-	extern u32 __ctru_linear_heap;
-	extern u32 __ctru_linear_heap_size;
-}
+#include "common/platform/3ds/gpu_3ds.h"
 #endif
 #ifndef LOD3DS_SAFE_SOFTWARE
 #include <NovaGL.h>
@@ -297,184 +290,13 @@ namespace
 	int polytextureh = 0;
 	bool polyvsync = false;
 	bool polyfirstinit = true;
-
-	#ifdef LOD3DS_HYBRID_PERFORMANCE
-	constexpr int HybridMaximumCanvasWidth = 400;
-	constexpr int HybridMaximumCanvasHeight = 240;
-	constexpr int HybridTextureWidth = 512;
-	constexpr int HybridTextureHeight = 256;
-	C3D_RenderTarget *hybridTarget = nullptr;
-	C3D_Tex hybridTexture{};
-	Tex3DS_SubTexture hybridSubtexture{};
-	uint32_t *hybridUpload = nullptr;
-	void *hybridC2DFlushBase = nullptr;
-	size_t hybridC2DFlushSize = 0;
-	bool hybridC3DReady = false;
-	bool hybridC2DReady = false;
-	bool hybridPresenterReady = false;
-
-	u32 HybridTextureTransferFlags()
-	{
-		return GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) |
-			GX_TRANSFER_RAW_COPY(0) |
-			GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-			GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-			GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO);
-	}
-
-	u32 HybridOutputTransferFlags()
-	{
-		return GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) |
-			GX_TRANSFER_RAW_COPY(0) |
-			GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-			GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-			GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO);
-	}
-
-	void ConfigureHybridBgraTexture()
-	{
-		// Map uploaded BGRA bytes to RGB through sampled G/B/A.
-		C3D_TexEnv *env = C3D_GetTexEnv(0);
-		C3D_TexEnvInit(env);
-		C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0, GPU_CONSTANT, GPU_PREVIOUS);
-		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_G,
-			GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR);
-		C3D_TexEnvFunc(env, C3D_RGB, GPU_MODULATE);
-		C3D_TexEnvSrc(env, C3D_Alpha, GPU_CONSTANT, GPU_CONSTANT, GPU_CONSTANT);
-		C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
-		C3D_TexEnvColor(env, C2D_Color32(255, 0, 0, 255));
-
-		env = C3D_GetTexEnv(1);
-		C3D_TexEnvInit(env);
-		C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0, GPU_CONSTANT, GPU_PREVIOUS);
-		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_B,
-			GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR);
-		C3D_TexEnvFunc(env, C3D_RGB, GPU_MULTIPLY_ADD);
-		C3D_TexEnvColor(env, C2D_Color32(0, 255, 0, 255));
-
-		env = C3D_GetTexEnv(2);
-		C3D_TexEnvInit(env);
-		C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0, GPU_CONSTANT, GPU_PREVIOUS);
-		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_ALPHA,
-			GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR);
-		C3D_TexEnvFunc(env, C3D_RGB, GPU_MULTIPLY_ADD);
-		C3D_TexEnvColor(env, C2D_Color32(0, 0, 255, 255));
-	}
-
-	void DeinitHybridPresenter()
-	{
-		if (hybridTarget != nullptr)
-		{
-			C3D_RenderTargetDelete(hybridTarget);
-			hybridTarget = nullptr;
-		}
-		if (hybridTexture.data != nullptr)
-		{
-			C3D_TexDelete(&hybridTexture);
-			hybridTexture = {};
-		}
-		if (hybridC2DReady)
-		{
-			C2D_Fini();
-			hybridC2DReady = false;
-		}
-		if (hybridC3DReady)
-		{
-			C3D_Fini();
-			hybridC3DReady = false;
-		}
-		if (hybridUpload != nullptr)
-		{
-			linearFree(hybridUpload);
-			hybridUpload = nullptr;
-		}
-		hybridC2DFlushBase = nullptr;
-		hybridC2DFlushSize = 0;
-		hybridPresenterReady = false;
-	}
-
-	bool InitHybridPresenter()
-	{
-		const size_t uploadBytes = HybridTextureWidth * HybridTextureHeight * sizeof(uint32_t);
-		hybridUpload = static_cast<uint32_t *>(linearMemAlign(uploadBytes, 0x80));
-		if (hybridUpload == nullptr) return false;
-		std::memset(hybridUpload, 0, uploadBytes);
-		GSPGPU_FlushDataCache(hybridUpload, uploadBytes);
-
-		if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE))
-		{
-			DeinitHybridPresenter();
-			return false;
-		}
-		hybridC3DReady = true;
-		if (!C2D_Init(16))
-		{
-			DeinitHybridPresenter();
-			return false;
-		}
-		hybridC2DReady = true;
-		C2D_Prepare();
-		// Allow presentation up to the LCD refresh rate.
-		C3D_FrameRate(60.0f);
-
-		// Flush Citro2D vertices explicitly with GX_CMDLIST_FLUSH.
-		C3D_BufInfo *buffers = C3D_GetBufInfo();
-		if (buffers != nullptr && buffers->bufCount > 0)
-		{
-			const u32 heapPhysical = osConvertVirtToPhys(
-				reinterpret_cast<void *>(__ctru_linear_heap));
-			const u32 vertexPhysical = buffers->base_paddr + buffers->buffers[0].offset;
-			const uintptr_t heapStart = static_cast<uintptr_t>(__ctru_linear_heap);
-			const uintptr_t heapEnd = heapStart + __ctru_linear_heap_size;
-			const uintptr_t vertexAddress = heapStart + (vertexPhysical - heapPhysical);
-			const uintptr_t flushStart = vertexAddress & ~static_cast<uintptr_t>(0x7f);
-			const uintptr_t flushEnd = std::min(flushStart + 64u * 1024u, heapEnd);
-			if (flushStart >= heapStart && flushStart < flushEnd)
-			{
-				hybridC2DFlushBase = reinterpret_cast<void *>(flushStart);
-				hybridC2DFlushSize = flushEnd - flushStart;
-			}
-		}
-		if (hybridC2DFlushBase == nullptr)
-		{
-			DeinitHybridPresenter();
-			return false;
-		}
-
-		if (!C3D_TexInitVRAM(&hybridTexture, HybridTextureWidth,
-			HybridTextureHeight, GPU_RGBA8))
-		{
-			DeinitHybridPresenter();
-			return false;
-		}
-		// One PICA200 bilinear sample performs the requested smooth upscale; the
-		// software world renderer still shades only its selected internal pixels.
-		C3D_TexSetFilter(&hybridTexture, GPU_LINEAR, GPU_LINEAR);
-		C3D_TexSetWrap(&hybridTexture, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
-
-		hybridTarget = C3D_RenderTargetCreate(240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH16);
-		if (hybridTarget == nullptr)
-		{
-			DeinitHybridPresenter();
-			return false;
-		}
-		C3D_RenderTargetSetOutput(hybridTarget, GFX_TOP, GFX_LEFT,
-			HybridOutputTransferFlags());
-		hybridPresenterReady = true;
-		return true;
-	}
-	#endif
 }
 
 #ifdef __3DS__
-#ifdef LOD3DS_HYBRID_PERFORMANCE
-extern "C" void C3Di_RenderQueueWaitDone(void);
-#endif
-
 void I_PolyWaitForPresent3DS()
 {
 #ifdef LOD3DS_HYBRID_PERFORMANCE
-	if (hybridPresenterReady) C3Di_RenderQueueWaitDone();
+	I_3DSGpuWaitIdle();
 #endif
 }
 #endif
@@ -486,7 +308,7 @@ void I_PolyPresentInit()
 
 	#ifdef __3DS__
 	#ifdef LOD3DS_HYBRID_PERFORMANCE
-	I_3DSStartupLog(InitHybridPresenter()
+	I_3DSStartupLog(I_3DSGpuInit()
 		? "hybrid-presenter-ready" : "hybrid-presenter-sdl-fallback");
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
 	#endif
@@ -625,45 +447,9 @@ void I_PolyPresentUnlock(int x, int y, int width, int height)
 bool I_PolyPresentDirect3DS(const uint8_t *pixels, int pitch, int width,
 	int height, int x, int y, int outputWidth, int outputHeight)
 {
-	if (!hybridPresenterReady || pixels == nullptr || width < 1 ||
-		height < 1 || width > HybridMaximumCanvasWidth ||
-		height > HybridMaximumCanvasHeight || pitch < width * 4 || x != 0 ||
-		y != 0 || outputWidth != 400 || outputHeight != 240)
-	{
-		return false;
-	}
-
-	const size_t uploadBytes = lod3ds::CopyPresentPixels(hybridUpload,
-		HybridTextureWidth, pixels, pitch, width, height);
-	if (R_FAILED(GSPGPU_FlushDataCache(hybridUpload, uploadBytes))) return false;
-
-	if (!C3D_FrameBegin(0)) return false;
-	C3D_SyncDisplayTransfer(hybridUpload,
-		GX_BUFFER_DIM(HybridTextureWidth, HybridTextureHeight),
-		static_cast<u32 *>(hybridTexture.data),
-		GX_BUFFER_DIM(HybridTextureWidth, HybridTextureHeight),
-		HybridTextureTransferFlags());
-
-	hybridSubtexture = Tex3DS_SubTexture{
-		static_cast<u16>(width), static_cast<u16>(height),
-		0.0f, 1.0f,
-		static_cast<float>(width) / HybridTextureWidth,
-		1.0f - static_cast<float>(height) / HybridTextureHeight
-	};
-	const C2D_Image image{ &hybridTexture, &hybridSubtexture };
-	const C2D_DrawParams params{
-		{ 0.0f, 0.0f, 400.0f, 240.0f },
-		{ 0.0f, 0.0f }, 0.0f, 0.0f
-	};
-	C2D_TargetClear(hybridTarget, C2D_Color32(0, 0, 0, 255));
-	C2D_SceneBegin(hybridTarget);
-	// Set BGRA swizzle before Citro2D snapshots the draw state.
-	ConfigureHybridBgraTexture();
-	C2D_DrawImage(image, &params, nullptr);
-	C2D_Flush();
-	GSPGPU_FlushDataCache(hybridC2DFlushBase, hybridC2DFlushSize);
-	C3D_FrameEnd(GX_CMDLIST_FLUSH);
-	return true;
+	// The canvas, the engine 2D recorded this frame and the overlays (gpu_3ds.h).
+	if (x != 0 || y != 0 || outputWidth != 400 || outputHeight != 240) return false;
+	return I_3DSGpuPresentTop(pixels, pitch, width, height);
 }
 #elif defined(__3DS__) && !defined(LOD3DS_SAFE_SOFTWARE)
 bool I_PolyPresentDirect3DS(const uint8_t *pixels, int pitch, int width,
@@ -759,7 +545,7 @@ bool I_PolyPresentDirect3DS(const uint8_t *pixels, int pitch, int width,
 void I_PolyPresentDeinit()
 {
 	#ifdef LOD3DS_HYBRID_PERFORMANCE
-	DeinitHybridPresenter();
+	I_3DSGpuShutdown();
 	#endif
 	if (polytexture)
 	{

@@ -1,6 +1,11 @@
 #include "diagnostics_3ds.h"
 #include "cache_3ds.h"
 #include "update/updater.h"
+#include "app_paths_3ds.h"
+#include "cia_install_3ds.h"
+#include "ftp_server_3ds.h"
+#include "gpu_3ds.h"
+#include "lod3ds_version.h"
 
 #include <3ds.h>
 #include <citro3d.h>
@@ -26,6 +31,8 @@
 
 #include "gitinfo.h"
 #include "engineerrors.h"
+#include "filesystem.h"
+#include "gstrings.h"
 #include "c_dispatch.h"
 #include "c_cvars.h"
 #include "common/fonts/v_font.h"
@@ -46,6 +53,7 @@
 #include "menustate.h"
 #include "playsim/actor.h"
 #include "playsim/d_player.h"
+#include "playsim/a_pickups.h"
 #include "r_videoscale.h"
 #include "rendering/r_sky.h"
 #include "rendering/swrenderer/r_swcolormaps.h"
@@ -62,7 +70,16 @@ EXTERN_CVAR(Bool, lod3ds_top_hud)
 EXTERN_CVAR(Bool, crosshairon)
 
 CVAR(Bool, lod3ds_select_overlay, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+// Read-only: whether this is a debug build (LOD3DS_DEBUG_TOOLS), for the game's scripts (the
+// OPTIONS tabs show DEBUG only then).
+CVAR(Bool, lod3ds_debug_tools, LOD3DS_DEBUG_TOOLS != 0, CVAR_NOSET | CVAR_NOSAVE)
+// UPDATE -> AUTO UPDATE: at start, look for a new version on the update channel and offer it
+// (I_3DSServiceUpdater). On by default (owner 2026-10-14, as in ../mzm and ../sm-3ds).
+CVAR(Bool, lod3ds_auto_update, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 CVAR(Bool, lod3ds_map_collisions, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+// OPTIONS -> DEVELOPER -> FTP SERVER (debug builds): the in-game FTP server and remote control
+// (ftp_server_3ds.h, debug_link_3ds.h). Archived, so it comes back after a relaunch.
+CVAR(Bool, lod3ds_ftp_server, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 extern uint64_t LastCount;
 extern double LastFrameMilliseconds;
 
@@ -70,23 +87,22 @@ extern double LastFrameMilliseconds;
 #define LOD3DS_BUILD_PROFILE_NAME "release"
 #endif
 
-#ifndef LOD3DS_PORT_VERSION
-#define LOD3DS_PORT_VERSION "dev"
-#endif
 
 namespace
 {
-constexpr const char *AppDirectory = "sdmc:/3ds/legend-of-doom";
-constexpr const char *DumpDirectory = "sdmc:/3ds/legend-of-doom/dumps";
-constexpr const char *BootLogPath = "sdmc:/3ds/legend-of-doom/boot.log";
-constexpr const char *StartupLogPath = "sdmc:/3ds/legend-of-doom/startup.log";
-constexpr const char *FatalLogPath = "sdmc:/3ds/legend-of-doom/fatal.log";
-constexpr const char *ConfigPath = "sdmc:/3ds/legend-of-doom/legend-of-doom.ini";
-constexpr const char *TelemetryPath = "sdmc:/3ds/legend-of-doom/frame-telemetry.csv";
-constexpr const char *BuildManifestPath = "sdmc:/3ds/legend-of-doom/BUILD-MANIFEST.txt";
+constexpr const char *AppDirectory = LOD3DS_APP_DIR;
+constexpr const char *DumpDirectory = LOD3DS_APP_DIR "/dumps";
+constexpr const char *BootLogPath = LOD3DS_APP_DIR "/boot.log";
+constexpr const char *StartupLogPath = LOD3DS_APP_DIR "/startup.log";
+// The run before this one; kept so a crash's log survives the relaunch.
+constexpr const char *PreviousStartupLogPath = LOD3DS_APP_DIR "/startup-previous.log";
+constexpr const char *FatalLogPath = LOD3DS_APP_DIR "/fatal.log";
+constexpr const char *ConfigPath = LOD3DS_APP_DIR "/legend-of-doom.ini";
+constexpr const char *TelemetryPath = LOD3DS_APP_DIR "/frame-telemetry.csv";
+constexpr const char *BuildManifestPath = LOD3DS_APP_DIR "/BUILD-MANIFEST.txt";
 constexpr const char *RomfsBuildManifestPath = "romfs:/BUILD-MANIFEST.txt";
-constexpr const char *NovaLitePath = "sdmc:/3ds/legend-of-doom/nova-lite.csv";
-constexpr const char *NovaGLLogPath = "sdmc:/3ds/legend-of-doom/novagl.log";
+constexpr const char *NovaLitePath = LOD3DS_APP_DIR "/nova-lite.csv";
+constexpr const char *NovaGLLogPath = LOD3DS_APP_DIR "/novagl.log";
 constexpr unsigned TelemetryFramesPerSegment = 720;
 
 constexpr uint32_t ShoulderButtonMask = (1u << 8) | (1u << 9); // R + L
@@ -143,6 +159,10 @@ uint64_t OverlayLastDrawMilliseconds;
 uint64_t OverlayNotificationUntilMilliseconds;
 bool OverlayAudioReady;
 char OverlayNotification[48];
+// Changes whenever a toast appears or goes, so the static bottom presentations redraw for it.
+uint32_t OverlayNotificationSerial;
+// A bar under the toast's text, in thousandths (an FTP install's progress), or -1 for none.
+int OverlayNotificationProgress = -1;
 bool DiagnosticProgressActive;
 EDiagnosticDumpMode DiagnosticProgressMode = EDiagnosticDumpMode::None;
 uint64_t DiagnosticProgressValue;
@@ -164,13 +184,7 @@ enum class EBottomPresentation : unsigned
 EBottomPresentation BottomPresentation = EBottomPresentation::Unknown;
 bool MenuStoryPage;
 
-enum class EBottomGameplayTab : unsigned
-{
-	Map,
-	Items,
-};
 
-EBottomGameplayTab BottomGameplayTab = EBottomGameplayTab::Map;
 bool BottomMapZoomedOut;
 bool DeveloperOverlayVisible;
 bool NativeMenuTransformValid;
@@ -847,7 +861,15 @@ void DrawBottomGameTextureSized(unsigned char *framebuffer, int x, int y,
 	{
 		return;
 	}
-	FBitmap bitmap = texture->GetTexture()->GetBgraBitmap(nullptr);
+	// Only the face is drawn this way; it changes a few times a second and decoding it is
+	// the slow part, so keep the last one.
+	static FGameTexture *cachedTexture;
+	static FBitmap bitmap;
+	if (cachedTexture != texture)
+	{
+		bitmap = texture->GetTexture()->GetBgraBitmap(nullptr);
+		cachedTexture = texture;
+	}
 	const int sourceWidth = bitmap.GetWidth();
 	const int sourceHeight = bitmap.GetHeight();
 	if (sourceWidth <= 0 || sourceHeight <= 0 || bitmap.GetPixels() == nullptr) return;
@@ -1236,24 +1258,22 @@ FOverlayColor BottomFloorTextureColor(sector_t *sector, double worldX, double wo
 	};
 }
 
-void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
-	int mapWidth = 204, int mapHeight = 156, double requestedWorldUnitsPerPixel = 0.0)
+// Where the map is centred: on the player while outdoors or near the last centre, else left
+// where it was (the player is then drawn nowhere). Shared by the CPU and GPU drawings and by
+// both screens, as one view.
+struct FBottomMapView
 {
-	const int MapX = mapX;
-	const int MapY = mapY;
-	const int MapWidth = mapWidth;
-	const int MapHeight = mapHeight;
-	const double worldUnitsPerPixel = requestedWorldUnitsPerPixel > 0.0 ?
-		requestedWorldUnitsPerPixel : (BottomMapZoomedOut ? 32.0 : 12.0);
-	OverlayRect(framebuffer, MapX, MapY, MapWidth, MapHeight, OverlayInk);
+	bool Valid = false;
+	bool PlayerDetached = false;
+	double CenterX = 0.0;
+	double CenterY = 0.0;
+	AActor *Camera = nullptr;
+};
 
-	if (primaryLevel == nullptr || primaryLevel->lines.Size() == 0)
-	{
-		OverlayCenteredText(framebuffer, MapX, MapWidth, MapY + MapHeight / 2 - 4,
-			"MAP UNAVAILABLE", 1, OverlayIvory);
-		return;
-	}
-
+FBottomMapView BottomMapView()
+{
+	FBottomMapView view;
+	if (primaryLevel == nullptr || primaryLevel->lines.Size() == 0) return view;
 	static FLevelLocals *trackedLevel;
 	static FString trackedMapName;
 	static bool hasExteriorCenter;
@@ -1295,12 +1315,49 @@ void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
 			}
 		}
 	}
-	if (!hasExteriorCenter)
+	view.Valid = hasExteriorCenter;
+	view.PlayerDetached = playerDetached;
+	view.CenterX = centerX;
+	view.CenterY = centerY;
+	view.Camera = camera;
+	return view;
+}
+
+bool BottomSubsectorShown(const subsector_t *subsector)
+{
+	return subsector != nullptr && (subsector->flags & SSECMF_DRAWN) != 0 &&
+		(subsector->flags & (SSECF_HOLE | SSECF_POLYORG)) == 0 &&
+		subsector->render_sector != nullptr &&
+		(subsector->render_sector->MoreFlags & SECMF_HIDDEN) == 0;
+}
+
+// The GPU draws the map's terrain, lines and arrow (QueueGpuMap) while it owns the screen; the
+// CPU then draws only the map's background and messages.
+bool BottomMapTerrainOnGpu;
+
+void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
+	int mapWidth = 204, int mapHeight = 156, double requestedWorldUnitsPerPixel = 0.0)
+{
+	const int MapX = mapX;
+	const int MapY = mapY;
+	const int MapWidth = mapWidth;
+	const int MapHeight = mapHeight;
+	const double worldUnitsPerPixel = requestedWorldUnitsPerPixel > 0.0 ?
+		requestedWorldUnitsPerPixel : (BottomMapZoomedOut ? 32.0 : 12.0);
+	OverlayRect(framebuffer, MapX, MapY, MapWidth, MapHeight, OverlayInk);
+
+	const FBottomMapView view = BottomMapView();
+	if (!view.Valid)
 	{
 		OverlayCenteredText(framebuffer, MapX, MapWidth, MapY + MapHeight / 2 - 4,
 			"MAP UNAVAILABLE", 1, OverlayIvory);
 		return;
 	}
+	if (BottomMapTerrainOnGpu) return;
+	AActor *camera = view.Camera;
+	const bool playerDetached = view.PlayerDetached;
+	const double centerX = view.CenterX;
+	const double centerY = view.CenterY;
 
 	auto transformX = [&](double worldX)
 	{
@@ -1324,10 +1381,7 @@ void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
 				(mapX + 1 - MapWidth * 0.5) * worldUnitsPerPixel;
 			subsector_t *subsector = primaryLevel->PointInRenderSubsector(
 				DVector2(worldX, worldY));
-			if (subsector == nullptr || (subsector->flags & SSECMF_DRAWN) == 0 ||
-				(subsector->flags & (SSECF_HOLE | SSECF_POLYORG)) != 0 ||
-				subsector->render_sector == nullptr ||
-				(subsector->render_sector->MoreFlags & SECMF_HIDDEN) != 0 ||
+			if (!BottomSubsectorShown(subsector) ||
 				!BottomPointInsideSubsector(subsector, worldX, worldY))
 			{
 				continue;
@@ -1374,6 +1428,289 @@ void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
 			MapX, MapY, MapX + MapWidth - 1, MapY + MapHeight - 1, OverlayRed);
 		DrawBottomMapLineClipped(framebuffer, leftX, leftY, rightX, rightY,
 			MapX, MapY, MapX + MapWidth - 1, MapY + MapHeight - 1, OverlayIvory);
+	}
+}
+
+// One LCD pixel wide line as two triangles.
+void PushGpuLine(F3DSGpuVertex *&out, float x0, float y0, float x1, float y1, uint32_t color)
+{
+	const float dx = x1 - x0;
+	const float dy = y1 - y0;
+	const float length = std::sqrt(dx * dx + dy * dy);
+	const float nx = length > 0.0f ? -dy / length * 0.5f : 0.5f;
+	const float ny = length > 0.0f ? dx / length * 0.5f : 0.0f;
+	const F3DSGpuVertex a0{ x0 + nx, y0 + ny, 0.0f, 0.0f, color };
+	const F3DSGpuVertex a1{ x0 - nx, y0 - ny, 0.0f, 0.0f, color };
+	const F3DSGpuVertex b0{ x1 + nx, y1 + ny, 0.0f, 0.0f, color };
+	const F3DSGpuVertex b1{ x1 - nx, y1 - ny, 0.0f, 0.0f, color };
+	*out++ = a0; *out++ = a1; *out++ = b0;
+	*out++ = b0; *out++ = a1; *out++ = b1;
+}
+
+uint32_t GpuColor(FOverlayColor color)
+{
+	return I_3DSGpuColor(color.Red, color.Green, color.Blue);
+}
+
+// The map drawn by the GPU, as DrawBottomAutomap draws it on the CPU: every shown subsector in
+// view as a polygon with its floor texture and light (BottomFloorTextureColor, here at full
+// resolution instead of 2x2 blocks), the collision lines when asked for and the player's
+// arrow, clipped to the map's rectangle.
+// The subsectors' bounding boxes, kept for the level so the view test is four comparisons.
+struct FMapBounds
+{
+	float Left, Right, Bottom, Top;
+};
+
+const std::vector<FMapBounds> &MapBounds()
+{
+	static std::vector<FMapBounds> bounds;
+	static FLevelLocals *level;
+	static FString mapName;
+	static unsigned count;
+	if (level != primaryLevel || mapName.Compare(primaryLevel->MapName) != 0 ||
+		count != primaryLevel->subsectors.Size())
+	{
+		level = primaryLevel;
+		mapName = primaryLevel->MapName;
+		count = primaryLevel->subsectors.Size();
+		bounds.assign(count, FMapBounds{ 1.0f, -1.0f, 1.0f, -1.0f });
+		for (unsigned index = 0; index < count; ++index)
+		{
+			const subsector_t &subsector = primaryLevel->subsectors[index];
+			if (subsector.firstline == nullptr || subsector.numlines < 3) continue;
+			FMapBounds box{ 1e30f, -1e30f, 1e30f, -1e30f };
+			bool complete = true;
+			for (uint32_t i = 0; i < subsector.numlines; ++i)
+			{
+				const vertex_t *vertex = subsector.firstline[i].v1;
+				if (vertex == nullptr)
+				{
+					complete = false;
+					break;
+				}
+				box.Left = std::min(box.Left, static_cast<float>(vertex->fX()));
+				box.Right = std::max(box.Right, static_cast<float>(vertex->fX()));
+				box.Bottom = std::min(box.Bottom, static_cast<float>(vertex->fY()));
+				box.Top = std::max(box.Top, static_cast<float>(vertex->fY()));
+			}
+			if (complete) bounds[index] = box;
+		}
+	}
+	return bounds;
+}
+
+// The lines' end points, kept for the level in one array: testing them against the view walks
+// it instead of every line_t and its two vertices (~4 ms a frame on MAP01 that way).
+struct FMapLine
+{
+	float X0, Y0, X1, Y1;
+};
+
+const std::vector<FMapLine> &MapLines()
+{
+	static std::vector<FMapLine> lines;
+	static FLevelLocals *level;
+	static FString mapName;
+	static unsigned count;
+	if (level != primaryLevel || mapName.Compare(primaryLevel->MapName) != 0 ||
+		count != primaryLevel->lines.Size())
+	{
+		level = primaryLevel;
+		mapName = primaryLevel->MapName;
+		count = primaryLevel->lines.Size();
+		lines.assign(count, FMapLine{ 1.0f, 1.0f, -1.0f, -1.0f });
+		for (unsigned index = 0; index < count; ++index)
+		{
+			const line_t &line = primaryLevel->lines[index];
+			if (line.v1 == nullptr || line.v2 == nullptr) continue;
+			lines[index] = FMapLine{ static_cast<float>(line.v1->fX()),
+				static_cast<float>(line.v1->fY()), static_cast<float>(line.v2->fX()),
+				static_cast<float>(line.v2->fY()) };
+		}
+	}
+	return lines;
+}
+
+void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int mapHeight,
+	double worldUnitsPerPixel)
+{
+	const FBottomMapView view = BottomMapView();
+	if (!view.Valid) return;
+	const int scissor[4] = { mapX, mapY, mapX + mapWidth, mapY + mapHeight };
+	const double halfWidth = mapWidth * 0.5 * worldUnitsPerPixel;
+	const double halfHeight = mapHeight * 0.5 * worldUnitsPerPixel;
+	const double minX = view.CenterX - halfWidth;
+	const double maxX = view.CenterX + halfWidth;
+	const double minY = view.CenterY - halfHeight;
+	const double maxY = view.CenterY + halfHeight;
+	auto toX = [&](double worldX)
+	{
+		return static_cast<float>(mapX + mapWidth * 0.5 + (worldX - view.CenterX) / worldUnitsPerPixel);
+	};
+	auto toY = [&](double worldY)
+	{
+		return static_cast<float>(mapY + mapHeight * 0.5 - (worldY - view.CenterY) / worldUnitsPerPixel);
+	};
+
+	struct FPolygon
+	{
+		F3DSGpuTexture *Texture;
+		FGameTexture *GameTexture;
+		const subsector_t *Subsector;
+	};
+	static std::vector<FPolygon> polygons;
+	polygons.clear();
+	// The floor textures met this frame, so each is looked up once.
+	struct FFloor
+	{
+		int Index;
+		FGameTexture *GameTexture;
+		F3DSGpuTexture *Texture;
+	};
+	static std::vector<FFloor> floors;
+	floors.clear();
+	const std::vector<FMapBounds> &bounds = MapBounds();
+	for (unsigned index = 0; index < bounds.size(); ++index)
+	{
+		const FMapBounds &box = bounds[index];
+		// An empty box (Left > Right) is a subsector the map never draws.
+		if (box.Right < minX || box.Left > maxX || box.Top < minY || box.Bottom > maxY ||
+			box.Left > box.Right)
+		{
+			continue;
+		}
+		const subsector_t &subsector = primaryLevel->subsectors[index];
+		if (!BottomSubsectorShown(&subsector)) continue;
+
+		const FTextureID floorTexture = subsector.render_sector->GetTexture(sector_t::floor);
+		const int textureIndex = floorTexture.isValid() ? floorTexture.GetIndex() : -1;
+		auto found = std::find_if(floors.begin(), floors.end(),
+			[&](const FFloor &floor) { return floor.Index == textureIndex; });
+		if (found == floors.end())
+		{
+			FGameTexture *gameTexture = textureIndex >= 0 ?
+				TexMan.GetGameTexture(floorTexture, true) : nullptr;
+			floors.push_back(FFloor{ textureIndex, gameTexture,
+				gameTexture != nullptr ? I_3DSGpuGameTexture(gameTexture, true) : nullptr });
+			found = floors.end() - 1;
+		}
+		polygons.push_back(FPolygon{ found->Texture, found->GameTexture, &subsector });
+	}
+	std::sort(polygons.begin(), polygons.end(),
+		[](const FPolygon &a, const FPolygon &b) { return a.Texture < b.Texture; });
+
+	for (size_t first = 0; first < polygons.size();)
+	{
+		size_t last = first;
+		int count = 0;
+		while (last < polygons.size() && polygons[last].Texture == polygons[first].Texture)
+		{
+			count += (static_cast<int>(polygons[last].Subsector->numlines) - 2) * 3;
+			++last;
+		}
+		F3DSGpuTexture *texture = polygons[first].Texture;
+		F3DSGpuVertex *out = I_3DSGpuQueueTriangles(screen, texture, count, scissor);
+		if (out == nullptr) break;
+		for (size_t index = first; index < last; ++index)
+		{
+			const subsector_t &subsector = *polygons[index].Subsector;
+			sector_t *sector = subsector.render_sector;
+			FGameTexture *gameTexture = polygons[index].GameTexture;
+			uint32_t color = I_3DSGpuColor(20, 28, 34);
+			double scaleX = 1.0, scaleY = 1.0, offsetX = 0.0, offsetY = 0.0;
+			double textureWidth = 1.0, textureHeight = 1.0;
+			if (texture != nullptr && gameTexture != nullptr)
+			{
+				const double light = 0.50 + 0.50 *
+					std::clamp(sector->GetFloorLight(), 0, 255) / 255.0;
+				const uint8_t shade = static_cast<uint8_t>(std::clamp(light * 255.0, 0.0, 255.0));
+				color = I_3DSGpuColor(shade, shade, shade);
+				scaleX = std::max(0.001, std::abs(sector->GetXScale(sector_t::floor)));
+				scaleY = std::max(0.001, std::abs(sector->GetYScale(sector_t::floor)));
+				offsetX = sector->GetXOffset(sector_t::floor);
+				offsetY = sector->GetYOffset(sector_t::floor);
+				textureWidth = std::max(1, gameTexture->GetTexelWidth());
+				textureHeight = std::max(1, gameTexture->GetTexelHeight());
+			}
+			// Texture coordinates in repeats of the texture, shifted by whole repeats so the
+			// PICA's 24-bit floats stay small.
+			auto u = [&](const vertex_t *v) { return (v->fX() + offsetX) * scaleX / textureWidth; };
+			auto w = [&](const vertex_t *v) { return (-v->fY() + offsetY) * scaleY / textureHeight; };
+			const vertex_t *origin = subsector.firstline[0].v1;
+			const double baseU = std::floor(u(origin));
+			const double baseW = std::floor(w(origin));
+			auto vertex = [&](const vertex_t *v)
+			{
+				return F3DSGpuVertex{ toX(v->fX()), toY(v->fY()),
+					static_cast<float>(u(v) - baseU), static_cast<float>(1.0 - (w(v) - baseW)),
+					color };
+			};
+			const F3DSGpuVertex fanOrigin = vertex(origin);
+			for (uint32_t i = 1; i + 1 < subsector.numlines; ++i)
+			{
+				*out++ = fanOrigin;
+				*out++ = vertex(subsector.firstline[i].v1);
+				*out++ = vertex(subsector.firstline[i + 1].v1);
+			}
+		}
+		first = last;
+	}
+
+	if (lod3ds_map_collisions)
+	{
+		static std::vector<unsigned> shown;
+		shown.clear();
+		const std::vector<FMapLine> &lines = MapLines();
+		for (unsigned index = 0; index < lines.size(); ++index)
+		{
+			const FMapLine &end = lines[index];
+			if (std::max(end.X0, end.X1) < minX || std::min(end.X0, end.X1) > maxX ||
+				std::max(end.Y0, end.Y1) < minY || std::min(end.Y0, end.Y1) > maxY)
+			{
+				continue;
+			}
+			const line_t &line = primaryLevel->lines[index];
+			if (line.v1 == nullptr || line.v2 == nullptr || (line.flags & ML_DONTDRAW) != 0 ||
+				(line.flags & (ML_MAPPED | ML_REVEALED)) == 0)
+			{
+				continue;
+			}
+			shown.push_back(index);
+		}
+		F3DSGpuVertex *out = shown.empty() ? nullptr :
+			I_3DSGpuQueueTriangles(screen, nullptr, static_cast<int>(shown.size()) * 6, scissor);
+		if (out != nullptr)
+		{
+			for (const unsigned index : shown)
+			{
+				const FMapLine &end = lines[index];
+				PushGpuLine(out, toX(end.X0), toY(end.Y0), toX(end.X1), toY(end.Y1),
+					GpuColor(BottomMapLineColor(primaryLevel->lines[index])));
+			}
+		}
+	}
+
+	AActor *camera = view.Camera;
+	if (camera != nullptr && !view.PlayerDetached)
+	{
+		const float playerX = toX(camera->X());
+		const float playerY = toY(camera->Y());
+		const float directionX = static_cast<float>(camera->Angles.Yaw.Cos());
+		const float directionY = static_cast<float>(-camera->Angles.Yaw.Sin());
+		const float tipX = playerX + directionX * 7.0f;
+		const float tipY = playerY + directionY * 7.0f;
+		const float leftX = playerX + (-directionX - directionY) * 3.5f;
+		const float leftY = playerY + (directionX - directionY) * 3.5f;
+		const float rightX = playerX + (-directionX + directionY) * 3.5f;
+		const float rightY = playerY + (-directionX - directionY) * 3.5f;
+		F3DSGpuVertex *out = I_3DSGpuQueueTriangles(screen, nullptr, 18, scissor);
+		if (out != nullptr)
+		{
+			PushGpuLine(out, tipX, tipY, leftX, leftY, GpuColor(OverlayRed));
+			PushGpuLine(out, tipX, tipY, rightX, rightY, GpuColor(OverlayRed));
+			PushGpuLine(out, leftX, leftY, rightX, rightY, GpuColor(OverlayIvory));
+		}
 	}
 }
 
@@ -1424,21 +1761,23 @@ const std::array<FBottomItem, 16> &BottomItems()
 	static constexpr FEmbeddedBottomImage Bracelet = BOTTOM_IMAGE(BottomItemBracelet);
 	static constexpr FEmbeddedBottomImage LionKey = BOTTOM_IMAGE(BottomItemLionKey);
 	static constexpr FEmbeddedBottomImage Triforce = BOTTOM_IMAGE(BottomItemTriforce);
+	// Row 1: the weapons R uses (the NES order after the sword); row 2: the boomerang, which L
+	// throws whatever is equipped, and the items that work by being carried.
 	static const std::array<FBottomItem, 16> Items = {{
 		{ &Sword, "ZeldaSwordWood", "ZeldaSwordSilver", "ZeldaSwordMaster",
 			"ZeldaSwordWood", "ZeldaSwordSilver", "ZeldaSwordMaster" },
-		{ &Boomerang, "Boomerang", "BoomerangBlue", nullptr,
-			"Boomerang", "BoomerangBlue", nullptr },
-		{ &Bow, "Bow", "ZeldaSilverArrow", nullptr, "Bow", nullptr, nullptr },
 		{ &Bomb, "ZeldaBomb", "ZeldaInfiniteBomb", "BombAmmo",
 			"ZeldaBomb", "ZeldaInfiniteBomb", nullptr },
+		{ &Bow, "Bow", "ZeldaSilverArrow", nullptr, "Bow", nullptr, nullptr },
 		{ &Candle, "CandleRed", "CandleBlue", nullptr,
 			"CandleRed", "CandleBlue", nullptr },
 		{ &Whistle, "ZeldaWhistle", nullptr, nullptr, "ZeldaWhistle", nullptr, nullptr },
-		{ &Wand, "ZeldaWand", nullptr, nullptr, "ZeldaWand", nullptr, nullptr },
+		{ &Meat, "ZeldaMeat", nullptr, nullptr, "ZeldaMeat", nullptr, nullptr },
 		{ &Potion, "PotAmmo", "ZeldaUniquePotion", "ZeldaLetter",
 			"ZeldaPotion", nullptr, nullptr },
-		{ &Meat, "ZeldaMeat", nullptr, nullptr, "ZeldaMeat", nullptr, nullptr },
+		{ &Wand, "ZeldaWand", nullptr, nullptr, "ZeldaWand", nullptr, nullptr },
+		{ &Boomerang, "Boomerang", "BoomerangBlue", nullptr,
+			"Boomerang", "BoomerangBlue", nullptr },
 		{ &Ladder, "ZeldaLadder", nullptr, nullptr, nullptr, nullptr, nullptr },
 		{ &Raft, "ZeldaRaft", nullptr, nullptr, nullptr, nullptr, nullptr },
 		{ &Book, "ZeldaBook", nullptr, nullptr, nullptr, nullptr, nullptr },
@@ -1484,69 +1823,189 @@ bool BottomSelectItem(unsigned index)
 	return true;
 }
 
-void DrawBottomItems(unsigned char *framebuffer, AActor *owner, AActor *readyWeapon)
+// The gameplay bottom screen, laid out like the NES Zelda's pause screen (owner, 2026-10-13):
+// on black, INVENTORY with the B item's box and every item in one frame; below, the map with
+// its own zoom button, the rupee, key and bomb counters and -LIFE- with the hearts. No tabs;
+// a touch outside the items and the buttons moves the camera. Debug builds add GOD and ALL.
+// The NES font and the interface's language, from native_menu_3ds.inc further down.
+const char *Tr(const char *english);
+int NesTextWidth(const char *text, int scale);
+void NesText(unsigned char *framebuffer, int x, int y, const char *text, int scale,
+	FOverlayColor color);
+void NesBox(unsigned char *framebuffer, int x, int y, int width, int height, FOverlayColor fill,
+	FOverlayColor border);
+
+namespace BottomLayout
+{
+// The NES palette's colours (as native_menu_3ds.inc's).
+constexpr FOverlayColor Black{ 0, 0, 0 };
+constexpr FOverlayColor White{ 252, 252, 252 };
+constexpr FOverlayColor Red{ 216, 40, 0 };
+constexpr FOverlayColor Blue{ 0, 88, 248 };
+constexpr FOverlayColor Gray{ 116, 116, 116 };
+constexpr FOverlayColor Green{ 0, 168, 0 };
+constexpr FOverlayColor Idle{ 20, 20, 20 };
+
+constexpr int TitleY = 6;
+constexpr int RBoxX = 12, LBoxX = 46, ButtonBoxY = 20, ButtonBoxWidth = 32, ButtonBoxHeight = 40;
+constexpr int GridX = 86, GridY = 20, CellWidth = 28, CellHeight = 36, Columns = 8;
+// The second row (the boomerang, which L throws, and the carried items) is apart, in grey, and
+// cannot be selected: only the first row's weapons are equipped (owner, 2026-10-14).
+constexpr int PassiveRowY = GridY + CellHeight + 6;
+constexpr FOverlayColor PassiveFrame{ 116, 116, 116 };
+constexpr int MapFrameX = 10, MapFrameY = 108, MapFrameWidth = 184, MapFrameHeight = 128;
+constexpr int MapX = 12, MapY = 110, MapWidth = 180, MapHeight = 106;
+constexpr int ZoomX = 12, ZoomY = 218, ZoomWidth = 180, ZoomHeight = 16;
+constexpr int SideX = 204, SideWidth = 108;
+constexpr int CounterY = 112, CounterStep = 18;
+constexpr int LifeY = 172, HeartsY = 186, HeartWidth = 11, HeartHeight = 12, HeartStep = 13;
+constexpr int GodX = 232, AllX = 274, CheatY = 2, CheatWidth = 38, CheatHeight = 13;
+constexpr double MapUnitsNear = 12.0, MapUnitsFar = 32.0;
+
+bool Inside(float x, float y, int left, int top, int width, int height)
+{
+	return x >= left && x < left + width && y >= top && y < top + height;
+}
+}
+
+bool BottomGodMode()
+{
+	return players[consoleplayer].mo != nullptr && (players[consoleplayer].cheats & CF_GODMODE);
+}
+
+#if LOD3DS_DEBUG_TOOLS
+// ALL (debug builds): every item of the game, the counters full and sixteen hearts. Through
+// the console's give, so that it goes as the game's own cheats do; the heart containers raise
+// the maximum only when touched in the world (DoPickupSpecial), so that is set here.
+void BottomGiveEverything()
+{
+	static const char *const Items[] = {
+		"ZeldaSwordWood", "ZeldaSwordSilver", "ZeldaSwordMaster", "Bow", "ZeldaSilverArrow", "ZeldaBomb", "CandleBlue", "CandleRed", "ZeldaWhistle",
+		"ZeldaWand", "ZeldaPotion", "ZeldaLetter", "ZeldaMeat", "ZeldaLadder", "ZeldaRaft",
+		"ZeldaBook", "ZeldaRingBlue", "ZeldaRingRed", "ZeldaPowerBracelet", "ZeldaLionKey",
+	};
+	for (const char *item : Items) AddCommandString(FStringf("give %s", item).GetChars());
+	// The boomerangs refuse a pickup while invisible (Boomerang.CanPickup), and they are spawned
+	// invisible until an enemy drops one: given here visible.
+	AActor *pawn = players[consoleplayer].mo;
+	for (const char *name : { "Boomerang", "BoomerangBlue" })
+	{
+		PClassActor *type = PClass::FindActor(name);
+		if (pawn == nullptr || type == nullptr || pawn->FindInventory(type, false) != nullptr)
+			continue;
+		AActor *item = Spawn(pawn->Level, type, pawn->Pos(), NO_REPLACE);
+		if (item == nullptr) continue;
+		item->renderflags &= ~RF_INVISIBLE;
+		if (!CallTryPickup(item, pawn)) item->Destroy();
+	}
+	AddCommandString("give ZeldaRupee 999");
+	AddCommandString("give ZeldaKey 99");
+	AddCommandString("give BombAmmo 20");
+	AddCommandString("give PotAmmo 2");
+	AActor *owner = players[consoleplayer].mo;
+	if (owner != nullptr)
+	{
+		constexpr int MaximumHealth = 16 * 8;
+		owner->IntVar(FName("MaxHealth")) = MaximumHealth;
+		owner->IntVar(FName("MugShotMaxHealth")) = MaximumHealth;
+		owner->health = players[consoleplayer].health = MaximumHealth;
+	}
+}
+#endif
+
+// The item R uses: the ready weapon's.
+int BottomReadyItem(AActor *readyWeapon)
 {
 	const auto &items = BottomItems();
+	for (unsigned index = 0; index < items.size(); ++index)
+		if (BottomReadyWeaponMatches(readyWeapon, items[index])) return static_cast<int>(index);
+	return -1;
+}
+
+// The boomerang's place in BottomItems (the one L throws).
+constexpr unsigned BottomBoomerangItem = 8;
+
+void DrawBottomButtonBox(unsigned char *framebuffer, int x, const char *label, int item)
+{
+	using namespace BottomLayout;
+	OverlayFrame(framebuffer, x, ButtonBoxY, ButtonBoxWidth, ButtonBoxHeight, 2, Blue);
+	if (item >= 0)
+	{
+		const FEmbeddedBottomImage &image = *BottomItems()[item].Image;
+		DrawEmbeddedBottomImage(framebuffer,
+			x + (ButtonBoxWidth - static_cast<int>(image.Width)) / 2,
+			ButtonBoxY + (ButtonBoxHeight - static_cast<int>(image.Height)) / 2, image);
+	}
+	NesText(framebuffer, x + (ButtonBoxWidth - NesTextWidth(label, 1)) / 2,
+		ButtonBoxY + ButtonBoxHeight + 4, label, 1, White);
+}
+
+void DrawBottomCheatButton(unsigned char *framebuffer, int x, const char *label, bool on)
+{
+	using namespace BottomLayout;
+	NesBox(framebuffer, x, CheatY, CheatWidth, CheatHeight, on ? Green : Idle, Blue);
+	NesText(framebuffer, x + (CheatWidth - NesTextWidth(label, 1)) / 2, CheatY + 3, label, 1,
+		on ? White : Gray);
+}
+
+void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *readyWeapon)
+{
+	using namespace BottomLayout;
+	const auto &items = BottomItems();
+	NesText(framebuffer, RBoxX, TitleY, Tr("INVENTORY"), 1, Red);
+
+	// The buttons' boxes: R uses the equipped weapon, L throws the boomerang.
+	DrawBottomButtonBox(framebuffer, RBoxX, "R", BottomReadyItem(readyWeapon));
+	const FBottomItem &boomerang = items[BottomBoomerangItem];
+	DrawBottomButtonBox(framebuffer, LBoxX, "L",
+		BottomHasAnyInventory(owner, boomerang.Inventory1, boomerang.Inventory2,
+			boomerang.Inventory3) ? static_cast<int>(BottomBoomerangItem) : -1);
+
+	// The weapons R equips, framed in blue (the equipped one outlined); the rest apart, in grey.
+	OverlayFrame(framebuffer, GridX - 3, GridY - 3, Columns * CellWidth + 6, CellHeight + 6, 2,
+		Blue);
+	OverlayFrame(framebuffer, GridX - 3, PassiveRowY - 3, Columns * CellWidth + 6,
+		CellHeight + 6, 2, PassiveFrame);
 	AActor *selectedInventory = owner != nullptr ?
 		owner->PointerVar<AActor>(NAME_InvSel) : nullptr;
-
-	constexpr int GridX = 34;
-	constexpr int GridY = 38;
-	constexpr int CellWidth = 49;
-	constexpr int CellHeight = 41;
 	for (unsigned index = 0; index < items.size(); ++index)
 	{
 		const FBottomItem &item = items[index];
-		const int cellX = GridX + static_cast<int>(index % 4u) * CellWidth;
-		const int cellY = GridY + static_cast<int>(index / 4u) * CellHeight;
-		const bool available = BottomHasAnyInventory(owner, item.Inventory1,
-			item.Inventory2, item.Inventory3);
-		const bool selected = available && (BottomReadyWeaponMatches(readyWeapon, item) ||
-			BottomInventoryMatches(selectedInventory, item));
-		if (available)
+		if (!BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3))
+			continue;
+		const bool equippable = index < static_cast<unsigned>(Columns);
+		const int cellX = GridX + static_cast<int>(index % Columns) * CellWidth;
+		const int cellY = equippable ? GridY : PassiveRowY;
+		if (equippable && (BottomReadyWeaponMatches(readyWeapon, item) ||
+			BottomInventoryMatches(selectedInventory, item)))
 		{
-			if (selected)
-			{
-				DrawBottomRoundedRectOutline(framebuffer, cellX + 3, cellY,
-					37, 35, 5, 2, OverlayIvory);
-			}
-			DrawEmbeddedBottomImage(framebuffer,
-				cellX + (42 - static_cast<int>(item.Image->Width)) / 2,
-				cellY + (35 - static_cast<int>(item.Image->Height)) / 2,
-				*item.Image);
+			DrawBottomRoundedRectOutline(framebuffer, cellX + 1, cellY + 1,
+				CellWidth - 2, CellHeight - 2, 4, 1, White);
 		}
+		DrawEmbeddedBottomImage(framebuffer,
+			cellX + (CellWidth - static_cast<int>(item.Image->Width)) / 2,
+			cellY + (CellHeight - static_cast<int>(item.Image->Height)) / 2, *item.Image);
 	}
+#if LOD3DS_DEBUG_TOOLS
+	DrawBottomCheatButton(framebuffer, GodX, Tr("GOD"), BottomGodMode());
+	DrawBottomCheatButton(framebuffer, AllX, Tr("ALL"), false);
+#endif
 }
 
-void DrawBottomHeartsAndCounters(unsigned char *framebuffer, AActor *owner)
+// -LIFE-: up to sixteen hearts, eight a row, each full, three quarters, half, a quarter or
+// empty (eight health points a heart).
+void DrawBottomHearts(unsigned char *framebuffer, AActor *owner)
 {
+	using namespace BottomLayout;
 	static constexpr FEmbeddedBottomImage HeartEmpty = BOTTOM_IMAGE(BottomHeartEmpty);
 	static constexpr FEmbeddedBottomImage HeartQuarter = BOTTOM_IMAGE(BottomHeartQuarter);
 	static constexpr FEmbeddedBottomImage HeartHalf = BOTTOM_IMAGE(BottomHeartHalf);
 	static constexpr FEmbeddedBottomImage HeartThreeQuarter = BOTTOM_IMAGE(BottomHeartThreeQuarter);
 	static constexpr FEmbeddedBottomImage HeartFull = BOTTOM_IMAGE(BottomHeartFull);
-	static constexpr FEmbeddedBottomImage CounterRupee = BOTTOM_IMAGE(BottomCounterRupee);
-	static constexpr FEmbeddedBottomImage CounterKey = BOTTOM_IMAGE(BottomCounterKey);
-	static constexpr FEmbeddedBottomImage CounterBomb = BOTTOM_IMAGE(BottomCounterBomb);
-
-	if (owner == nullptr) return;
 	const int maximumHealth = std::max(8, owner->GetMaxHealth());
 	int remainingHealth = std::max(0, owner->health);
-	const unsigned hearts = std::min(20u, static_cast<unsigned>((maximumHealth + 7) / 8));
-	constexpr int SideX = 242;
-	constexpr int HeartSideX = 239;
-	constexpr int SideWidth = 64;
-	const unsigned columns = hearts <= 6u ? std::min(3u, std::max(1u, hearts)) :
-		(hearts <= 16u ? std::min(4u, hearts) : std::min(5u, hearts));
-	const int heartWidth = hearts <= 6u ? 14 : (hearts <= 16u ? 11 : 9);
-	const int heartHeight = hearts <= 6u ? 16 : (hearts <= 16u ? 12 : 9);
-	const int heartGap = hearts <= 6u ? 4 : 3;
-	const int heartRowGap = hearts <= 6u ? 4 : (hearts <= 16u ? 3 : 2);
-	const int rowWidth = static_cast<int>(columns) * heartWidth +
-		(static_cast<int>(columns) - 1) * heartGap;
-	const int heartStartX = HeartSideX + (SideWidth - rowWidth) / 2;
-	const int HeartStartY = hearts > 6u && hearts <= 16u ? 31 : 37;
-	for (unsigned index = 0; index < hearts; ++index)
+	const int hearts = std::min(16, (maximumHealth + 7) / 8);
+	for (int index = 0; index < hearts; ++index)
 	{
 		const int points = std::min(8, remainingHealth);
 		remainingHealth -= points;
@@ -1555,115 +2014,70 @@ void DrawBottomHeartsAndCounters(unsigned char *framebuffer, AActor *owner)
 		else if (points >= 5) heart = &HeartThreeQuarter;
 		else if (points >= 3) heart = &HeartHalf;
 		else if (points >= 1) heart = &HeartQuarter;
-		const unsigned rowCount = std::min(columns, hearts - index / columns * columns);
-		const int rowOffset = static_cast<int>(columns - rowCount) * (heartWidth + heartGap) / 2;
-		DrawEmbeddedBottomImageSized(framebuffer,
-			heartStartX + rowOffset + static_cast<int>(index % columns) * (heartWidth + heartGap),
-			HeartStartY + static_cast<int>(index / columns) * (heartHeight + heartRowGap),
-			*heart, heartWidth, heartHeight);
+		DrawEmbeddedBottomImageSized(framebuffer, SideX + 2 + (index % 8) * HeartStep,
+			HeartsY + (index / 8) * (HeartHeight + 4), *heart, HeartWidth, HeartHeight);
 	}
-	const int heartRows = static_cast<int>((hearts + columns - 1u) / columns);
-	const int heartsBottom = HeartStartY + heartRows * heartHeight +
-		std::max(0, heartRows - 1) * heartRowGap;
-	constexpr int FaceWidth = 46;
-	constexpr int FaceHeight = 55;
-	const int counterStartY = std::max(157, heartsBottom + 75);
-	const int faceY = heartsBottom + (counterStartY - heartsBottom - FaceHeight) / 2;
+}
 
-	FGameTexture *face = StatusBar != nullptr && StatusBar->CPlayer != nullptr &&
-		StatusBar->CPlayer->mo != nullptr ?
-		StatusBar->mugshot.GetFace(StatusBar->CPlayer, "STF", 5) : nullptr;
-	if (face != nullptr)
-	{
-		FString faceName = face->GetName();
-		if (BottomInventoryAmount(owner, "ZeldaRingRed") > 0)
-			faceName.Substitute("STF", "RRN");
-		else if (BottomInventoryAmount(owner, "ZeldaRingBlue") > 0)
-			faceName.Substitute("STF", "BRN");
-		const FTextureID faceTexture = TexMan.CheckForTexture(faceName.GetChars(),
-			ETextureType::Any, FTextureManager::TEXMAN_TryAny);
-		if (faceTexture.isValid()) face = TexMan.GetGameTexture(faceTexture, true);
-		DrawBottomGameTextureSized(framebuffer,
-			SideX + (SideWidth - FaceWidth) / 2 - 3, faceY,
-			face, FaceWidth, FaceHeight);
-	}
+void DrawBottomStatus(unsigned char *framebuffer, AActor *owner)
+{
+	using namespace BottomLayout;
+	static constexpr FEmbeddedBottomImage CounterRupee = BOTTOM_IMAGE(BottomCounterRupee);
+	static constexpr FEmbeddedBottomImage CounterKey = BOTTOM_IMAGE(BottomCounterKey);
+	static constexpr FEmbeddedBottomImage CounterBomb = BOTTOM_IMAGE(BottomCounterBomb);
+
+	// The map's frame and its zoom button; the map itself is drawn by the GPU over it.
+	OverlayFrame(framebuffer, MapFrameX, MapFrameY, MapFrameWidth, MapFrameHeight, 2, Blue);
+	OverlayRect(framebuffer, ZoomX, ZoomY - 2, ZoomWidth, 2, Blue);
+	const char *zoom = Tr(BottomMapZoomedOut ? "ZOOM IN" : "ZOOM OUT");
+	NesText(framebuffer, ZoomX + (ZoomWidth - NesTextWidth(zoom, 1)) / 2, ZoomY + 4, zoom, 1,
+		White);
+	if (owner == nullptr) return;
 
 	struct FCounter
 	{
 		const FEmbeddedBottomImage *Image;
 		const char *Inventory;
-		int Y;
 	};
 	const FCounter Counters[] = {
-		{ &CounterRupee, "ZeldaRupee", counterStartY },
-		{ &CounterKey, "ZeldaKey", counterStartY + 18 },
-		{ &CounterBomb, "BombAmmo", counterStartY + 36 },
+		{ &CounterRupee, "ZeldaRupee" },
+		{ &CounterKey, "ZeldaKey" },
+		{ &CounterBomb, "BombAmmo" },
 	};
+	int y = CounterY;
 	for (const auto &counter : Counters)
 	{
-		// v0.27 grows the complete rupee/key/bomb cluster by another 15%.
-		const int iconWidth = std::max(1,
-			static_cast<int>(counter.Image->Width * 132u / 100u));
-		const int iconHeight = std::max(1,
-			static_cast<int>(counter.Image->Height * 132u / 100u));
-		constexpr int textWidth = 3 * 8;
-		constexpr int CounterGap = 3;
-		const int counterX = SideX + (SideWidth - iconWidth - CounterGap - textWidth) / 2 - 5;
-		DrawEmbeddedBottomImageSized(framebuffer, counterX, counter.Y,
-			*counter.Image, iconWidth, iconHeight);
+		DrawEmbeddedBottomImage(framebuffer, SideX + 8, y, *counter.Image);
 		char amount[8] = {};
 		if (std::strcmp(counter.Inventory, "BombAmmo") == 0 &&
 			BottomInventoryAmount(owner, "ZeldaInfiniteBomb") > 0)
 		{
-			std::snprintf(amount, sizeof(amount), "INF");
+			std::snprintf(amount, sizeof(amount), "XINF");
 		}
 		else
 		{
-			std::snprintf(amount, sizeof(amount), "%03d",
+			std::snprintf(amount, sizeof(amount), "X%d",
 				std::clamp(BottomInventoryAmount(owner, counter.Inventory), 0, 999));
 		}
-		OverlayTextSized(framebuffer, counterX + iconWidth + CounterGap,
-			counter.Y + 1, amount, 7, 9, 8, OverlayIvory);
+		NesText(framebuffer, SideX + 24, y + 1, amount, 1, White);
+		y += CounterStep;
 	}
-}
 
-void DrawBottomTabs(unsigned char *framebuffer)
-{
-	// Keep the simple v0.28 tab treatment, but use a slightly smaller clean
-	// pixel face. The blue frame line remains visible behind the two labels and
-	// the selected page gets its own underline instead of a boxed button.
-	constexpr int MapLeft = 31;
-	constexpr int ItemsLeft = 133;
-	constexpr int TabWidth = 100;
-	OverlayRect(framebuffer, 16, 202, 219, 36, OverlayInk);
-	OverlayRect(framebuffer, 16, 219, 288, 2, OverlayBlue);
-	constexpr int GlyphWidth = 7;
-	constexpr int GlyphHeight = 10;
-	constexpr int Advance = 8;
-	auto drawTab = [&](int left, const char *label, bool selected)
-	{
-		const int length = static_cast<int>(std::strlen(label));
-		const int textWidth = length > 0 ? (length - 1) * Advance + GlyphWidth : 0;
-		const int textX = left + (TabWidth - textWidth) / 2;
-		OverlayRect(framebuffer, textX - 5, 207, textWidth + 10, 17, OverlayInk);
-		OverlayTextSized(framebuffer, textX, 209, label,
-			GlyphWidth, GlyphHeight, Advance, OverlayIvory);
-		if (selected)
-			OverlayRect(framebuffer, left + 22, 232, TabWidth - 44, 2, OverlayBlue);
-	};
-	drawTab(MapLeft, "MAP", BottomGameplayTab == EBottomGameplayTab::Map);
-	drawTab(ItemsLeft, "ITEMS", BottomGameplayTab == EBottomGameplayTab::Items);
+	const char *life = Tr("-LIFE-");
+	NesText(framebuffer, SideX + (SideWidth - NesTextWidth(life, 1)) / 2, LifeY, life, 1,
+		Red);
+	DrawBottomHearts(framebuffer, owner);
 }
 
 void DrawBottomGameplay(unsigned char *framebuffer)
 {
-	static constexpr FEmbeddedBottomImage Frame = BOTTOM_IMAGE(BottomGameFrame);
-	DrawEmbeddedBottomImage(framebuffer, 0, 0, Frame);
+	using namespace BottomLayout;
+	OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight, Black);
 	AActor *owner = players[consoleplayer].mo;
-	if (BottomGameplayTab == EBottomGameplayTab::Map) DrawBottomAutomap(framebuffer);
-	else DrawBottomItems(framebuffer, owner, players[consoleplayer].ReadyWeapon);
-	DrawBottomHeartsAndCounters(framebuffer, owner);
-	DrawBottomTabs(framebuffer);
+	DrawBottomAutomap(framebuffer, MapX, MapY, MapWidth, MapHeight,
+		BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear);
+	DrawBottomInventory(framebuffer, owner, players[consoleplayer].ReadyWeapon);
+	DrawBottomStatus(framebuffer, owner);
 }
 
 #undef BOTTOM_IMAGE
@@ -1804,18 +2218,124 @@ void SetOverlayNotification(const char *message, uint64_t durationMilliseconds =
 	std::snprintf(OverlayNotification, sizeof(OverlayNotification), "%s",
 		message != nullptr ? message : "");
 	OverlayNotificationUntilMilliseconds = osGetTime() + durationMilliseconds;
+	++OverlayNotificationSerial;
 }
+
+void ExpireOverlayNotification(uint64_t now)
+{
+	if (OverlayNotification[0] != '\0' && now >= OverlayNotificationUntilMilliseconds)
+	{
+		OverlayNotification[0] = '\0';
+		++OverlayNotificationSerial;
+	}
+}
+
+// The toast: a bar near the bottom of the touch screen, drawn last over whatever
+// presentation is there (gameplay, menus, title, developer overlay).
+// The NES font and the interface's language, from native_menu_3ds.inc further down.
+void LoadNesFont();
+const char *Tr(const char *english);
+int NesTextWidth(const char *text, int scale);
+void NesText(unsigned char *framebuffer, int x, int y, const char *text, int scale,
+	FOverlayColor color);
+
+// Stable builds with dev-ftp.txt: a bar along the bottom of every bottom-screen presentation while
+// the install-only server runs, with its address and CANCEL (as in ../zelda-tmc-3ds). Taps on
+// it reach nothing else; CANCEL stops the server until the game is opened again.
+constexpr int InstallBarHeight = 22;
+constexpr int InstallBarY = static_cast<int>(BottomScreenHeight) - InstallBarHeight;
+// CANCEL is an icon (an X in a box) so that the address fits beside it.
+constexpr int InstallBarCancelWidth = 18;
+constexpr int InstallBarCancelX = static_cast<int>(BottomScreenWidth) - 4 - InstallBarCancelWidth;
+
+bool InstallBarVisible()
+{
+	return !LOD3DS_DEBUG_TOOLS && FtpServer_InstallOnly();
+}
+
+// Changes when the bar appears, goes or shows another address: the bottom screen is drawn again.
+uint64_t InstallBarSignature()
+{
+	if (!InstallBarVisible()) return 0;
+	char address[48];
+	FtpServer_Address(address, sizeof(address));
+	uint64_t hash = 1469598103934665603ull;
+	for (const char *c = address; *c != '\0'; ++c)
+	{
+		hash ^= static_cast<unsigned char>(*c);
+		hash *= 1099511628211ull;
+	}
+	return hash | 1u;
+}
+
+void DrawInstallBar(unsigned char *framebuffer)
+{
+	if (!InstallBarVisible()) return;
+	LoadNesFont();
+	char address[48];
+	FtpServer_Address(address, sizeof(address));
+	char text[96];
+	std::snprintf(text, sizeof(text), "%s %s", Tr("FTP INSTALL ONLY"), address);
+	// Too long for the bar (a longer address, or another language): the port goes, it is
+	// always FTP_SERVER_PORT.
+	if (NesTextWidth(text, 1) > InstallBarCancelX - 8)
+	{
+		if (char *port = std::strrchr(text, ':')) *port = '\0';
+	}
+	OverlayRect(framebuffer, 0, InstallBarY, BottomScreenWidth, InstallBarHeight, OverlayInk);
+	OverlayFrame(framebuffer, 0, InstallBarY, BottomScreenWidth, InstallBarHeight, 1, OverlayBlue);
+	NesText(framebuffer, 4, InstallBarY + 7, text, 1, OverlayIvory);
+	OverlayFrame(framebuffer, InstallBarCancelX, InstallBarY + 3, InstallBarCancelWidth,
+		InstallBarHeight - 6, 1, OverlayRed);
+	NesText(framebuffer, InstallBarCancelX + (InstallBarCancelWidth - NesTextWidth("X", 1)) / 2,
+		InstallBarY + 7, "X", 1, OverlayIvory);
+}
+
+void DrawBottomToast(unsigned char *framebuffer)
+{
+	DrawInstallBar(framebuffer);
+	if (OverlayNotification[0] == '\0') return;
+	LoadNesFont();
+	const char *text = Tr(OverlayNotification);
+	const bool bar = OverlayNotificationProgress >= 0;
+	const int width = std::min(304, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
+	const int height = bar ? 33 : 21;
+	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
+	// Above the install bar when it is there.
+	const int y = (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+	OverlayRect(framebuffer, x, y, width, height, OverlayInk);
+	OverlayFrame(framebuffer, x, y, width, height, 1, OverlayBlue);
+	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
+	if (bar)
+	{
+		const int barWidth = width - 24;
+		OverlayRect(framebuffer, x + 12, y + 20, barWidth, 6, FOverlayColor{ 60, 60, 60 });
+		OverlayRect(framebuffer, x + 12, y + 20,
+			barWidth * std::min(OverlayNotificationProgress, 1000) / 1000, 6, OverlayRed);
+	}
+}
+
+// The STATUS box's FTP button (debug builds), in bottom-screen pixels.
+constexpr int DeveloperFtpButtonX = 258;
+constexpr int DeveloperFtpButtonY = 142;
+constexpr int DeveloperFtpButtonWidth = 48;
+constexpr int DeveloperFtpButtonHeight = 25;
 
 void DrawDeveloperOverlay(unsigned char *framebuffer)
 {
 	OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight, OverlayInk);
-	OverlayText(framebuffer, 8, 7, "LEGEND OF DOOM", 1, OverlayIvory);
+	// Two header rows: name and build ID, then our version (a dev version can
+	// take ~25 characters) and the upstream port's version it is based on.
+	OverlayText(framebuffer, 8, 4, "LEGEND OF DOOM", 1, OverlayIvory);
 	char build[16] = {};
 	std::snprintf(build, sizeof(build), "%.12s", LOD3DS_BUILD_ID);
-	OverlayText(framebuffer, 188, 7, build, 1, OverlayIvory);
-	char version[16] = {};
-	std::snprintf(version, sizeof(version), "V%s", LOD3DS_PORT_VERSION);
-	OverlayText(framebuffer, 278, 7, version, 1, OverlayIvory);
+	OverlayText(framebuffer, 240, 4, build, 1, OverlayIvory);
+	char version[40] = {};
+	std::snprintf(version, sizeof(version), "V%s", LOD3DS_PORT_VERSION_LABEL);
+	OverlayText(framebuffer, 8, 17, version, 1, OverlayIvory);
+	char upstream[24] = {};
+	std::snprintf(upstream, sizeof(upstream), "UPSTREAM %s", LOD3DS_UPSTREAM_VERSION);
+	OverlayText(framebuffer, 312 - LoadingTextWidth(upstream, 1), 17, upstream, 1, OverlayIvory);
 	OverlayRect(framebuffer, 0, 29, BottomScreenWidth, 2, OverlayBlue);
 
 	const double frameMilliseconds = std::clamp(LastFrameMilliseconds, 0.0, 999.9);
@@ -1864,8 +2384,37 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 		OverlayGreen);
 	OverlayText(framebuffer, 146, 145, isNew3DS ? "NEW 3DS 804MHZ" : "OLD 3DS",
 		1, OverlayIvory);
-	OverlayCenteredText(framebuffer, 8, 304, 158,
-		"QUICK DUMP EXCLUDES 136 MB MEMORY IMAGE", 1, OverlayIvory);
+#if LOD3DS_DEBUG_TOOLS
+	// Debug builds: a button that switches FTP SERVER (OPTIONS -> DEVELOPER) from here.
+	constexpr int StatusTextWidth = DeveloperFtpButtonX - 8;
+	OverlayFrame(framebuffer, DeveloperFtpButtonX, DeveloperFtpButtonY, DeveloperFtpButtonWidth,
+		DeveloperFtpButtonHeight, 2, lod3ds_ftp_server ? OverlayGreen : OverlayBlue);
+	OverlayCenteredText(framebuffer, DeveloperFtpButtonX, DeveloperFtpButtonWidth,
+		DeveloperFtpButtonY + 4, "FTP", 1, OverlayIvory);
+	OverlayCenteredText(framebuffer, DeveloperFtpButtonX, DeveloperFtpButtonWidth,
+		DeveloperFtpButtonY + 14, lod3ds_ftp_server ? "STOP" : "START", 1,
+		lod3ds_ftp_server ? OverlayGreen : OverlayIvory);
+#else
+	constexpr int StatusTextWidth = 304;
+#endif
+	if (FtpServer_Running() || lod3ds_ftp_server)
+	{
+		char address[40] = {};
+		char ftp[64] = {};
+		bool connected = false;
+		FtpServer_Address(address, sizeof(address));
+		FtpServer_Stats(nullptr, nullptr, &connected);
+		std::snprintf(ftp, sizeof(ftp), "FTP %s%s%s", address,
+			FtpServer_InstallOnly() ? " INSTALL ONLY" : "", connected ? " LINKED" : "");
+		OverlayCenteredText(framebuffer, 8, StatusTextWidth, 158, ftp, 1,
+			FtpServer_Running() ? OverlayGreen : OverlayIvory);
+	}
+	else
+	{
+		OverlayCenteredText(framebuffer, 8, StatusTextWidth, 158,
+			LOD3DS_DEBUG_TOOLS ? "FTP OFF" : "QUICK DUMP EXCLUDES 136 MB MEMORY IMAGE", 1,
+			OverlayIvory);
+	}
 
 	struct FButton { int X; const char *Title; const char *Chord; };
 	static constexpr FButton Buttons[] = {
@@ -2121,6 +2670,7 @@ bool DrawNativeSaveLoadBottomFrame(unsigned char *framebuffer,
 }
 
 #include "update/menu_view.inc"
+#include "native_menu_3ds.inc"
 
 void DrawNativeMenuBottomFrame(unsigned char *framebuffer,
 	const unsigned char *menuPixels, const unsigned char *basePixels,
@@ -2128,6 +2678,7 @@ void DrawNativeMenuBottomFrame(unsigned char *framebuffer,
 {
 	const unsigned brightness = NativeMenuCurrentBrightness();
 	OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight, OverlayInk);
+	NativeMenuDrawnHere = false;
 	NativeMenuTransformValid = false;
 	NativeMenuTouchRowCount = 0;
 	NativeMenuCustomList = false;
@@ -2702,13 +3253,131 @@ void ComposeNativeSaveLoadTop(unsigned char *pixels, const unsigned char *menuSo
 			savegameManager.SaveCommentString.GetChars(), OverlayIvory);
 }
 
+void FormatFpsLabel(char *label, size_t size)
+{
+	std::snprintf(label, size, "FPS %llu  %.1fMS",
+		static_cast<unsigned long long>(std::min<uint64_t>(LastCount, 999u)),
+		std::clamp(LastFrameMilliseconds, 0.0, 999.9));
+}
+
+// The FPS counter and the crosshair as GPU overlays (gpu_3ds.h): drawn once into small images
+// at the LCD's resolution, whatever the render scale, and redrawn only when they change.
+uint32_t GpuOverlayPixel(FOverlayColor color, unsigned alpha)
+{
+	return (static_cast<uint32_t>(color.Red) << 24) | (static_cast<uint32_t>(color.Green) << 16) |
+		(static_cast<uint32_t>(color.Blue) << 8) | alpha;
+}
+
+void QueueGpuFpsOverlay()
+{
+	if (!vid_fps) return;
+	constexpr int ImageWidth = 128;
+	constexpr int ImageHeight = 13;
+	static F3DSGpuImage *image;
+	static char drawnLabel[32];
+	static int boxWidth;
+	if (image == nullptr) image = I_3DSGpuImageCreate(ImageWidth, ImageHeight);
+	if (image == nullptr) return;
+
+	char label[32] = {};
+	FormatFpsLabel(label, sizeof(label));
+	if (std::strcmp(label, drawnLabel) != 0)
+	{
+		// The same box and text as the menus' counter (ComposeNativeMenuFps).
+		static uint32_t pixels[ImageWidth * ImageHeight];
+		boxWidth = std::min(ImageWidth, LoadingTextWidth(label, 1) + 8);
+		for (int y = 0; y < ImageHeight; ++y)
+			for (int x = 0; x < ImageWidth; ++x)
+				pixels[y * ImageWidth + x] = x < boxWidth ? GpuOverlayPixel(OverlayInk, 210u) : 0u;
+		int textX = 4;
+		for (const char *cursor = label; *cursor != '\0'; ++cursor, textX += 6)
+		{
+			const uint8_t *rows = LoadingFindGlyph(*cursor);
+			if (rows == nullptr) continue;
+			for (int row = 0; row < 7; ++row)
+				for (int column = 0; column < 5; ++column)
+					if ((rows[row] & (1u << (4 - column))) != 0u && textX + column < boxWidth)
+						pixels[(3 + row) * ImageWidth + textX + column] =
+							GpuOverlayPixel(OverlayIvory, 255u);
+		}
+		I_3DSGpuImageUpload(image, pixels, ImageWidth);
+		std::memcpy(drawnLabel, label, sizeof(drawnLabel));
+	}
+	I_3DSGpuOverlayImage(image, static_cast<float>(400 - boxWidth - 4), 4.0f,
+		ImageWidth, ImageHeight);
+}
+
+void QueueGpuCrosshairOverlay()
+{
+	constexpr int ImageSize = 16;
+	static F3DSGpuImage *image;
+	static int drawnSize;
+	if (image == nullptr) image = I_3DSGpuImageCreate(ImageSize, ImageSize);
+	if (image == nullptr) return;
+	const int targetSize = std::clamp(
+		(static_cast<int>(AimCrosshairWidth) * 400 * 7 + 2000) / 4000, 6, 12);
+	if (targetSize != drawnSize)
+	{
+		// The ivory marker over its ink shadow one pixel down-right, composited here once.
+		static float colour[ImageSize * ImageSize][4];
+		std::memset(colour, 0, sizeof(colour));
+		auto over = [&](int x, int y, FOverlayColor source, float alpha)
+		{
+			if (x < 0 || y < 0 || x >= ImageSize || y >= ImageSize || alpha <= 0.0f) return;
+			float *target = colour[y * ImageSize + x];
+			const float outAlpha = alpha + target[3] * (1.0f - alpha);
+			const float channels[] = { static_cast<float>(source.Red),
+				static_cast<float>(source.Green), static_cast<float>(source.Blue) };
+			for (int channel = 0; channel < 3; ++channel)
+				target[channel] = (channels[channel] * alpha +
+					target[channel] * target[3] * (1.0f - alpha)) / outAlpha;
+			target[3] = outAlpha;
+		};
+		for (int y = 0; y < targetSize; ++y)
+		{
+			const int sourceY = y * AimCrosshairHeight / targetSize;
+			for (int x = 0; x < targetSize; ++x)
+			{
+				const int sourceX = x * AimCrosshairWidth / targetSize;
+				const unsigned alpha = AimCrosshairAlpha[sourceY * AimCrosshairWidth + sourceX];
+				if (alpha >= 8u) over(x + 1, y + 1, OverlayInk, alpha * 3u / 5u / 255.0f);
+			}
+		}
+		for (int y = 0; y < targetSize; ++y)
+		{
+			const int sourceY = y * AimCrosshairHeight / targetSize;
+			for (int x = 0; x < targetSize; ++x)
+			{
+				const int sourceX = x * AimCrosshairWidth / targetSize;
+				const unsigned alpha = AimCrosshairAlpha[sourceY * AimCrosshairWidth + sourceX];
+				if (alpha >= 8u) over(x, y, OverlayIvory, alpha / 255.0f);
+			}
+		}
+		static uint32_t pixels[ImageSize * ImageSize];
+		for (int index = 0; index < ImageSize * ImageSize; ++index)
+		{
+			const float *source = colour[index];
+			const FOverlayColor pixel{ static_cast<unsigned char>(source[0] + 0.5f),
+				static_cast<unsigned char>(source[1] + 0.5f),
+				static_cast<unsigned char>(source[2] + 0.5f) };
+			pixels[index] = GpuOverlayPixel(pixel,
+				static_cast<unsigned>(std::clamp(source[3], 0.0f, 1.0f) * 255.0f + 0.5f));
+		}
+		I_3DSGpuImageUpload(image, pixels, ImageSize);
+		drawnSize = targetSize;
+	}
+	// Keep the approved 70% size, raised four pixels from v0.28 (as I_3DSComposeGameplayFrame).
+	const int left = 200 - targetSize / 2;
+	const int top = 120 - targetSize / 2 + 6;
+	I_3DSGpuOverlayImage(image, static_cast<float>(left), static_cast<float>(top),
+		ImageSize, ImageSize);
+}
+
 void ComposeNativeMenuFps(unsigned char *pixels, int pitchBytes, int width, int height)
 {
 	if (!vid_fps) return;
 	char label[32] = {};
-	std::snprintf(label, sizeof(label), "FPS %llu  %.1fMS",
-		static_cast<unsigned long long>(std::min<uint64_t>(LastCount, 999u)),
-		std::clamp(LastFrameMilliseconds, 0.0, 999.9));
+	FormatFpsLabel(label, sizeof(label));
 	const int boxWidth = LoadingTextWidth(label, 1) + 8;
 	const int x = std::max(2, width - boxWidth - 4);
 	NativeTopRect(pixels, pitchBytes, width, height, x, 4, boxWidth, 13,
@@ -2719,7 +3388,8 @@ void ComposeNativeMenuFps(unsigned char *pixels, int pitchBytes, int width, int 
 #include "update/changelog_view.inc"
 
 void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int height,
-	const unsigned char *menuSource = nullptr, const unsigned char *basePixels = nullptr)
+	bool gpuOverlays, const unsigned char *menuSource = nullptr,
+	const unsigned char *basePixels = nullptr)
 {
 	if (DrawUpdateChangelogTop(pixels, pitchBytes, width, height)) return;
 	const unsigned brightness = NativeMenuCurrentBrightness();
@@ -2739,12 +3409,21 @@ void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int 
 		ComposeNativeSaveLoadTop(pixels, menuSource, basePixels,
 			pitchBytes, width, height, brightness);
 	}
-	ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+	if (gpuOverlays) QueueGpuFpsOverlay();
+	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+}
+
+// Outside a level the developer overlay covers the menus too: it is how its STATUS box (the
+// FTP address) is read before a game starts. In a level the menus keep the bottom screen.
+bool DeveloperOverlayCoversMenus()
+{
+	return DeveloperOverlayVisible && gamestate != GS_LEVEL;
 }
 
 EBottomPresentation DesiredBottomPresentation()
 {
 	if (DiagnosticProgressActive) return EBottomPresentation::Progress;
+	if (DeveloperOverlayCoversMenus()) return EBottomPresentation::DeveloperOverlay;
 	if (menuactive != MENU_Off && CurrentMenu != nullptr)
 		return EBottomPresentation::NativeMenu;
 	if (DeveloperOverlayVisible && gamestate == GS_LEVEL)
@@ -2758,13 +3437,11 @@ EBottomPresentation DesiredBottomPresentation()
 		EBottomPresentation::MenuDimmed;
 }
 
-void DrawBottomOverlay(bool force)
+// Where the bottom interface is drawn: the GPU path's buffer while it owns the bottom screen
+// (gpu_3ds.h), the framebuffer otherwise. Both have the framebuffer's layout.
+unsigned char *BeginBottomFrame()
 {
-	const uint64_t now = osGetTime();
-	const EBottomPresentation desired = DesiredBottomPresentation();
-	if (!force && BottomPresentation == desired &&
-		now - OverlayLastDrawMilliseconds < OverlayRefreshMilliseconds) return;
-
+	if (unsigned char *buffer = I_3DSGpuBottomBuffer()) return buffer;
 	u16 physicalWidth = 0;
 	u16 physicalHeight = 0;
 	unsigned char *framebuffer = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT,
@@ -2772,15 +3449,92 @@ void DrawBottomOverlay(bool force)
 	if (framebuffer == nullptr || physicalWidth != BottomScreenHeight ||
 		physicalHeight != BottomScreenWidth)
 	{
+		return nullptr;
+	}
+	return framebuffer;
+}
+
+void EndBottomFrame(unsigned char *framebuffer)
+{
+	if (framebuffer == I_3DSGpuBottomBuffer())
+	{
+		I_3DSGpuBottomChanged();
 		return;
 	}
+	I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
+	gfxScreenSwapBuffers(GFX_BOTTOM, false);
+}
+
+// What the gameplay interface shows besides the map: when it changes, it is drawn again.
+uint64_t BottomGameplaySignature()
+{
+	uint64_t hash = 1469598103934665603ull;
+	auto mix = [&](uint64_t value)
+	{
+		hash ^= value;
+		hash *= 1099511628211ull;
+	};
+	AActor *owner = players[consoleplayer].mo;
+	mix(static_cast<uint64_t>(BottomMapZoomedOut));
+	mix(static_cast<uint64_t>(BottomGodMode()));
+	mix(primaryLevel != nullptr ? primaryLevel->lines.Size() : 0u);
+	mix(reinterpret_cast<uintptr_t>(owner));
+	if (owner == nullptr) return hash;
+	mix(static_cast<uint64_t>(owner->health));
+	mix(static_cast<uint64_t>(owner->GetMaxHealth()));
+	mix(reinterpret_cast<uintptr_t>(players[consoleplayer].ReadyWeapon));
+	mix(reinterpret_cast<uintptr_t>(owner->PointerVar<AActor>(NAME_InvSel)));
+	for (const char *type : { "ZeldaRupee", "ZeldaKey", "BombAmmo", "ZeldaInfiniteBomb",
+		"ZeldaRingRed", "ZeldaRingBlue" })
+	{
+		mix(static_cast<uint64_t>(BottomInventoryAmount(owner, type)));
+	}
+	for (const FBottomItem &item : BottomItems())
+		mix(BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3));
+	return hash;
+}
+
+void DrawBottomOverlay(bool force)
+{
+	const uint64_t now = osGetTime();
+	ExpireOverlayNotification(now);
+	static uint32_t drawnToast = 0;
+	if (drawnToast != OverlayNotificationSerial)
+	{
+		drawnToast = OverlayNotificationSerial;
+		force = true;
+	}
+	static uint64_t drawnInstallBar = 0;
+	const uint64_t installBar = InstallBarSignature();
+	if (drawnInstallBar != installBar)
+	{
+		drawnInstallBar = installBar;
+		force = true;
+	}
+	const EBottomPresentation desired = DesiredBottomPresentation();
+	const bool gpu = I_3DSGpuBottomBuffer() != nullptr;
+	if (gpu && desired == EBottomPresentation::Gameplay)
+	{
+		// The map moves on the GPU every frame; the rest is drawn again only when it changes.
+		static uint64_t drawnSignature;
+		const uint64_t signature = BottomGameplaySignature();
+		if (!force && BottomPresentation == desired && signature == drawnSignature) return;
+		drawnSignature = signature;
+	}
+	else if (!force && BottomPresentation == desired &&
+		now - OverlayLastDrawMilliseconds < OverlayRefreshMilliseconds)
+	{
+		return;
+	}
+
+	unsigned char *framebuffer = BeginBottomFrame();
+	if (framebuffer == nullptr) return;
 	OverlayLastDrawMilliseconds = now;
 	if (desired == EBottomPresentation::Progress)
 	{
 		BottomPresentation = EBottomPresentation::Progress;
 		DrawDiagnosticProgress(framebuffer);
-		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
-		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		EndBottomFrame(framebuffer);
 		return;
 	}
 	if (desired == EBottomPresentation::NativeMenu)
@@ -2793,8 +3547,8 @@ void DrawBottomOverlay(bool force)
 	{
 		BottomPresentation = EBottomPresentation::DeveloperOverlay;
 		DrawDeveloperOverlay(framebuffer);
-		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
-		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		DrawBottomToast(framebuffer);
+		EndBottomFrame(framebuffer);
 		return;
 	}
 
@@ -2814,12 +3568,9 @@ void DrawBottomOverlay(bool force)
 					target == EBottomPresentation::MenuDimmed ? 71u : 255u);
 			if (target == EBottomPresentation::Menu && NewSmallFont != nullptr && (now / 600u) % 2u == 0u)
 			{
-				constexpr const char *Prompt = "PRESS START TO BEGIN";
-				constexpr float Scale = 1.28f;
-				const int x = (320 - std::lround(NativeFontTextWidth(NewSmallFont, Prompt) * Scale)) / 2;
-				const int y = (240 - std::lround(NewSmallFont->GetHeight() * Scale)) / 2;
-				DrawBottomScaledFontText(framebuffer, NewSmallFont, x, y,
-					Prompt, Scale, OverlayIvory);
+				LoadNesFont();
+				const char *prompt = Tr("PRESS START TO BEGIN");
+				NesText(framebuffer, (320 - NesTextWidth(prompt, 1)) / 2, 116, prompt, 1, OverlayIvory);
 			}
 		}
 		else
@@ -2827,21 +3578,19 @@ void DrawBottomOverlay(bool force)
 			OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight,
 				OverlayParchment);
 		}
+		DrawBottomToast(framebuffer);
 		BottomPresentation = target;
-		I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
-		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		EndBottomFrame(framebuffer);
 		return;
 	}
 
 	BottomPresentation = EBottomPresentation::Gameplay;
-	if (OverlayNotification[0] != '\0' && now >= OverlayNotificationUntilMilliseconds)
-	{
-		OverlayNotification[0] = '\0';
-	}
+	BottomMapTerrainOnGpu = gpu;
 	DrawBottomGameplay(framebuffer);
+	BottomMapTerrainOnGpu = false;
+	DrawBottomToast(framebuffer);
 
-	I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
-	gfxScreenSwapBuffers(GFX_BOTTOM, false);
+	EndBottomFrame(framebuffer);
 }
 
 unsigned LoadingProgressForStage(const char *stage)
@@ -3084,6 +3833,7 @@ uint64_t DiagnosticArtifactBudget()
 	return DumpMetadataBudgetBytes +
 		BoundedFileSize(BootLogPath, MaxCopiedLogBytes) +
 		BoundedFileSize(StartupLogPath, MaxCopiedLogBytes) +
+		BoundedFileSize(PreviousStartupLogPath, MaxCopiedLogBytes) +
 		BoundedFileSize(FatalLogPath, MaxCopiedLogBytes) +
 		BoundedFileSize(ConfigPath, MaxConfigInputBytes) +
 		BoundedFileSize(TelemetryPath, MaxCopiedTelemetryBytes) +
@@ -4136,16 +4886,13 @@ void WriteDiagnosticDump(EDiagnosticDumpMode mode)
 	std::fprintf(manifest,
 		"execution=main thread, one-second arm delay, LCDs copied to RAM before progress UI, "
 		"screenshots persisted after progress UI\n");
-	std::fprintf(manifest, "port_version=%s\n", LOD3DS_PORT_VERSION);
+	std::fprintf(manifest, "port_version=%s\n", LOD3DS_PORT_VERSION_LABEL);
+	std::fprintf(manifest, "upstream_version=%s\n", LOD3DS_UPSTREAM_VERSION);
 	std::fprintf(manifest, "engine_version=%s\n", GetVersionString());
 	std::fprintf(manifest, "engine_git_hash=%s\n", GetGitHash());
 	std::fprintf(manifest, "engine_git_time=%s\n", GetGitTime());
 	std::fprintf(manifest, "compiler=%s\n", __VERSION__);
-#ifdef LOD3DS_BUILD_ID
 	std::fprintf(manifest, "build_id=%s\n", LOD3DS_BUILD_ID);
-#else
-	std::fprintf(manifest, "build_id=unavailable\n");
-#endif
 	std::fprintf(manifest, "sky_fallback.calls=%u\n",
 		SkyFallbackCalls.load(std::memory_order_relaxed));
 	std::fprintf(manifest, "sky_fallback.filled_pixels=%u\n",
@@ -4273,6 +5020,9 @@ void WriteDiagnosticDump(EDiagnosticDumpMode mode)
 		"BUILD-MANIFEST.txt", 512u * 1024u);
 	artifactsOk &= CopyDiagnosticArtifact(manifest, directory, "startup_log", StartupLogPath,
 		"startup.log", MaxCopiedLogBytes);
+	if (PathExists(PreviousStartupLogPath))
+		artifactsOk &= CopyDiagnosticArtifact(manifest, directory, "startup_previous_log",
+			PreviousStartupLogPath, "startup-previous.log", MaxCopiedLogBytes);
 	artifactsOk &= CopyDiagnosticArtifact(manifest, directory, "fatal_log", FatalLogPath,
 		"fatal.log", MaxCopiedLogBytes);
 	#if defined(LOD3DS_HARDWARE_DIAGNOSTIC) && LOD3DS_HARDWARE_DIAGNOSTIC
@@ -4328,13 +5078,92 @@ void WriteDiagnosticDump(EDiagnosticDumpMode mode)
 }
 }
 
+const char *I_3DSSystemLanguage()
+{
+	// The interface has English and Spanish (PLAN U3); any other system language is English.
+	static const char *code = nullptr;
+	if (code != nullptr) return code;
+	code = "en";
+	if (R_SUCCEEDED(cfguInit()))
+	{
+		u8 language = 0;
+		if (R_SUCCEEDED(CFGU_GetSystemLanguage(&language)) && language == CFG_LANGUAGE_ES) code = "es";
+		cfguExit();
+	}
+	return code;
+}
+
+bool I_3DSNativeMenuOwnsFrame()
+{
+	return NativeMenuSupported();
+}
+
+bool I_3DSNativeMenuFrozen()
+{
+	if (!NativeMenuSupported())
+	{
+		if (!NativeMenuFrozenTop.empty()) ReleaseNativeMenuFreeze();
+		return false;
+	}
+	return !NativeMenuFrozenTop.empty();
+}
+
+void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, int height,
+	bool gpuOverlays)
+{
+	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0) return;
+	const size_t bytes = static_cast<size_t>(pitchBytes) * static_cast<size_t>(height);
+	if (!NativeMenuFrozenTop.empty() && NativeMenuFrozenWidth == width &&
+		NativeMenuFrozenHeight == height && NativeMenuFrozenPitch == pitchBytes)
+	{
+		std::memcpy(pixels, NativeMenuFrozenTop.data(), bytes);
+	}
+	else
+	{
+		// The first frame of the menu: the game (or title) as it was, dimmed, kept for the
+		// frames that follow, which D_Display does not render (I_3DSNativeMenuFrozen).
+		const unsigned brightness = NativeMenuCurrentBrightness();
+		if (brightness != 255u)
+		{
+			for (int y = 0; y < height; ++y)
+			{
+				unsigned char *row = pixels + static_cast<size_t>(y) * pitchBytes;
+				for (int x = 0; x < width * 4; x += 4)
+				{
+					row[x + 0] = NativeMenuDimChannel(row[x + 0], brightness);
+					row[x + 1] = NativeMenuDimChannel(row[x + 1], brightness);
+					row[x + 2] = NativeMenuDimChannel(row[x + 2], brightness);
+				}
+			}
+		}
+		NativeMenuFrozenTop.assign(pixels, pixels + bytes);
+		NativeMenuFrozenWidth = width;
+		NativeMenuFrozenHeight = height;
+		NativeMenuFrozenPitch = pitchBytes;
+	}
+
+	unsigned char *bottom = DeveloperOverlayCoversMenus() ? nullptr : BeginBottomFrame();
+	if (bottom != nullptr && DrawNativeMenu(bottom))
+	{
+		ExpireOverlayNotification(osGetTime());
+		DrawBottomToast(bottom);
+		EndBottomFrame(bottom);
+		BottomPresentation = EBottomPresentation::NativeMenu;
+		OverlayLastDrawMilliseconds = osGetTime();
+	}
+	DrawNativeMenuTop(pixels, pitchBytes, width, height);
+	if (gpuOverlays) QueueGpuFpsOverlay();
+	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+}
+
 bool I_3DSNativeMenuVisible()
 {
 	return !DiagnosticProgressActive && menuactive != MENU_Off && CurrentMenu != nullptr;
 }
 
 void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
-	const unsigned char *basePixels, int pitchBytes, int width, int height)
+	const unsigned char *basePixels, int pitchBytes, int width, int height,
+	bool gpuOverlays)
 {
 	if (menuPixels == nullptr || basePixels == nullptr || pitchBytes < width * 4 ||
 		width <= 0 || height <= 0)
@@ -4342,17 +5171,14 @@ void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 		return;
 	}
 
-	u16 physicalWidth = 0;
-	u16 physicalHeight = 0;
-	unsigned char *bottom = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT,
-		&physicalWidth, &physicalHeight);
-	if (bottom != nullptr && physicalWidth == BottomScreenHeight &&
-		physicalHeight == BottomScreenWidth)
+	unsigned char *bottom = DeveloperOverlayCoversMenus() ? nullptr : BeginBottomFrame();
+	if (bottom != nullptr)
 	{
 		DrawNativeMenuBottomFrame(bottom, menuPixels, basePixels,
 			pitchBytes, width, height);
-		I_3DSCleanDataCache(bottom, BottomScreenWidth * BottomScreenHeight * 4u);
-		gfxScreenSwapBuffers(GFX_BOTTOM, false);
+		ExpireOverlayNotification(osGetTime());
+		DrawBottomToast(bottom);
+		EndBottomFrame(bottom);
 		BottomPresentation = EBottomPresentation::NativeMenu;
 		OverlayLastDrawMilliseconds = osGetTime();
 	}
@@ -4370,12 +5196,18 @@ void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
 	}
 	std::memcpy(menuPixels, basePixels,
 		static_cast<size_t>(pitchBytes) * static_cast<size_t>(height));
-	ComposeNativeMenuTop(menuPixels, pitchBytes, width, height,
+	ComposeNativeMenuTop(menuPixels, pitchBytes, width, height, gpuOverlays,
 		saveLoadSource.empty() ? nullptr : saveLoadSource.data(), basePixels);
 }
 
+bool I_3DSGpu2DBlocked()
+{
+	if (I_3DSNativeMenuOwnsFrame()) return !I_3DSNativeMenuFrozen();
+	return I_3DSNativeMenuVisible();
+}
+
 void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
-	int width, int height)
+	int width, int height, bool gpuOverlays)
 {
 	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0 ||
 		gamestate != GS_LEVEL || menuactive != MENU_Off)
@@ -4403,6 +5235,14 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 				putPixel(px, py, color);
 	};
 
+	if (automapactive && gpuOverlays)
+	{
+		// The wider terrain overview over everything, as the CPU version below: its 320x192
+		// at 64 units a pixel stretched to the LCD is 51.2 units a pixel.
+		I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 0x000000ffu);
+		QueueGpuMap(E3DSGpuScreen::Top, 0, 0, 400, 240, 51.2);
+		return;
+	}
 	if (automapactive)
 	{
 		// Use a wider terrain overview for the upper automap.
@@ -4429,12 +5269,14 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 		return;
 	}
 
-	if (vid_fps)
+	if (gpuOverlays)
+	{
+		QueueGpuFpsOverlay();
+	}
+	else if (vid_fps)
 	{
 		char label[32] = {};
-		std::snprintf(label, sizeof(label), "FPS %llu  %.1fMS",
-			static_cast<unsigned long long>(std::min<uint64_t>(LastCount, 999u)),
-			std::clamp(LastFrameMilliseconds, 0.0, 999.9));
+		FormatFpsLabel(label, sizeof(label));
 		const bool compactGlyphs = width <= 200;
 		const int glyphWidth = compactGlyphs ? 3 : 5;
 		const int glyphHeight = compactGlyphs ? 5 : 7;
@@ -4467,6 +5309,11 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 	if (!crosshairon || camera == nullptr || camera->health <= 0 ||
 		(players[consoleplayer].cheats & CF_CHASECAM))
 	{
+		return;
+	}
+	if (gpuOverlays)
+	{
+		QueueGpuCrosshairOverlay();
 		return;
 	}
 	const int targetSize = std::clamp(
@@ -4560,6 +5407,11 @@ void I_3DSStartupLog(const char *stage)
 	}
 
 	if (!EnsureDirectory(AppDirectory)) return;
+	if (firstCheckpoint)
+	{
+		std::remove(PreviousStartupLogPath);
+		std::rename(StartupLogPath, PreviousStartupLogPath);
+	}
 	FILE *log = std::fopen(StartupLogPath, firstCheckpoint ? "w" : "a");
 	if (log == nullptr) return;
 	firstCheckpoint = false;
@@ -4586,6 +5438,11 @@ void I_3DSStartupLog(const char *stage)
 	// Startup progress is intentionally log-only on real hardware. Direct CPU
 	// writes to SDL's early VRAM framebuffer caused a permission data abort on a
 	// New 3DS before the renderer opened (Luma dump 00000101).
+}
+
+extern "C" void I_3DSStartupLogLine(const char *line)
+{
+	I_3DSStartupLog(line);
 }
 
 void I_3DSLoadingScreenStart()
@@ -4727,6 +5584,12 @@ void I_3DSWriteFatalLog(const char *message)
 	FILE *log = std::fopen(FatalLogPath, "w");
 	if (log == nullptr) return;
 	std::fprintf(log, "%s\n", message != nullptr ? message : "Unknown fatal error");
+	// Free heap next to a failed request tells exhaustion from fragmentation.
+	const struct mallinfo heap = mallinfo();
+	std::fprintf(log, "heap_used=%d heap_free=%d app_free=%lu linear_free=%lu\n",
+		heap.uordblks, heap.fordblks,
+		static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION)),
+		static_cast<unsigned long>(linearSpaceFree()));
 	std::fflush(log);
 	std::fclose(log);
 }
@@ -4740,8 +5603,10 @@ F3DSDiagnosticButtonResult I_3DSDiagnosticButtonEvent(unsigned int button, bool 
 	if (pressed) HeldButtons |= bit;
 	else HeldButtons &= ~bit;
 
-	if (button == 2u && lod3ds_select_overlay && gamestate == GS_LEVEL &&
-		(menuactive == MENU_Off || DeveloperOverlayVisible))
+	// The developer overlay is a debug tool: a stable build ignores the option even when a
+	// debug build left it on in the shared config.
+	if (LOD3DS_DEBUG_TOOLS && button == 2u && lod3ds_select_overlay &&
+		(gamestate != GS_LEVEL || menuactive == MENU_Off || DeveloperOverlayVisible))
 	{
 		if (pressed)
 		{
@@ -4822,8 +5687,47 @@ void I_3DSRequestCleanDiagnosticDumps()
 bool I_3DSDiagnosticTouch(float x, float y)
 {
 	if (x < 0.0f || x > 1.0f || y < 0.0f || y > 1.0f) return false;
+	if (InstallBarVisible() && y * BottomScreenHeight >= InstallBarY)
+	{
+		if (x * BottomScreenWidth >= InstallBarCancelX - 6) // a little wider than the icon
+		{
+			FtpServer_Cancel();
+			DrawBottomOverlay(true);
+		}
+		return true;
+	}
+	// The overlay, wherever it is on screen (over the menus outside a level), takes the touches.
+	if (DesiredBottomPresentation() == EBottomPresentation::DeveloperOverlay)
+	{
+		const float pixelX = x * BottomScreenWidth;
+		const float pixelY = y * BottomScreenHeight;
+#if LOD3DS_DEBUG_TOOLS
+		if (pixelX >= DeveloperFtpButtonX &&
+			pixelX < DeveloperFtpButtonX + DeveloperFtpButtonWidth &&
+			pixelY >= DeveloperFtpButtonY &&
+			pixelY < DeveloperFtpButtonY + DeveloperFtpButtonHeight)
+		{
+			// The console link starts or stops the server on its next poll.
+			lod3ds_ftp_server = !lod3ds_ftp_server;
+			DrawBottomOverlay(true);
+			return true;
+		}
+#endif
+		if (pixelY >= 178.0f && pixelY < 222.0f)
+		{
+			if (pixelX >= 7.0f && pixelX < 106.0f) I_3DSRequestDiagnosticDump();
+			else if (pixelX >= 110.0f && pixelX < 210.0f)
+				I_3DSRequestFullDiagnosticDump();
+			else if (pixelX >= 214.0f && pixelX < 314.0f)
+				I_3DSRequestCleanDiagnosticDumps();
+			DrawBottomOverlay(true);
+		}
+		return true;
+	}
 	if (I_3DSNativeMenuVisible())
 	{
+		if (NativeMenuTouch(static_cast<int>(x * BottomScreenWidth),
+			static_cast<int>(y * BottomScreenHeight))) return true;
         if (CurrentMenu->IsKindOf("LegendUpdateMenu"))
         {
             if (Updater_Busy())
@@ -4937,25 +5841,9 @@ bool I_3DSDiagnosticTouch(float x, float y)
 		return true;
 	}
 
-	if (DeveloperOverlayVisible && gamestate == GS_LEVEL)
-	{
-		const float pixelX = x * BottomScreenWidth;
-		const float pixelY = y * BottomScreenHeight;
-		if (pixelY >= 178.0f && pixelY < 222.0f)
-		{
-			if (pixelX >= 7.0f && pixelX < 106.0f) I_3DSRequestDiagnosticDump();
-			else if (pixelX >= 110.0f && pixelX < 210.0f)
-				I_3DSRequestFullDiagnosticDump();
-			else if (pixelX >= 214.0f && pixelX < 314.0f)
-				I_3DSRequestCleanDiagnosticDumps();
-			DrawBottomOverlay(true);
-		}
-		return true;
-	}
-
-	// SDL reports touch coordinates normalized to the 320x240 lower LCD. The
-	// bottom strip belongs to the gameplay tabs; the rest remains the relative
-	// look surface so this UI does not take a movement control away from players.
+	// SDL reports touch coordinates normalized to the 320x240 lower LCD. The items, the map's
+	// zoom button and (debug builds) GOD and ALL take a touch; everywhere else, the map
+	// included, remains the relative look surface (BottomLayout).
 	if (gamestate != GS_LEVEL)
 	{
 		return false;
@@ -4963,36 +5851,34 @@ bool I_3DSDiagnosticTouch(float x, float y)
 
 	const float pixelX = x * BottomScreenWidth;
 	const float pixelY = y * BottomScreenHeight;
-	if (BottomGameplayTab == EBottomGameplayTab::Map &&
-		pixelX >= 31.0f && pixelX < 235.0f &&
-		pixelY >= 38.0f && pixelY < 194.0f)
+	using namespace BottomLayout;
+#if LOD3DS_DEBUG_TOOLS
+	if (Inside(pixelX, pixelY, GodX, CheatY, CheatWidth, CheatHeight))
+	{
+		AddCommandString("god");
+		return true;
+	}
+	if (Inside(pixelX, pixelY, AllX, CheatY, CheatWidth, CheatHeight))
+	{
+		BottomGiveEverything();
+		SetOverlayNotification(Tr("ALL ITEMS GIVEN"));
+		return true;
+	}
+#endif
+	if (Inside(pixelX, pixelY, ZoomX, ZoomY, ZoomWidth, ZoomHeight))
 	{
 		BottomMapZoomedOut = !BottomMapZoomedOut;
 		DrawBottomOverlay(true);
 		return true;
 	}
-	if (BottomGameplayTab == EBottomGameplayTab::Items &&
-		pixelX >= 34.0f && pixelX < 230.0f &&
-		pixelY >= 38.0f && pixelY < 202.0f)
+	// Only the first row is equipped; a touch on the second does nothing (nor moves the camera).
+	if (Inside(pixelX, pixelY, GridX, GridY, Columns * CellWidth, CellHeight))
 	{
-		const unsigned column = static_cast<unsigned>((pixelX - 34.0f) / 49.0f);
-		const unsigned row = static_cast<unsigned>((pixelY - 38.0f) / 41.0f);
-		if (BottomSelectItem(row * 4u + column)) DrawBottomOverlay(true);
+		const unsigned column = static_cast<unsigned>((pixelX - GridX) / CellWidth);
+		if (BottomSelectItem(column)) DrawBottomOverlay(true);
 		return true;
 	}
-	if (pixelY < 202.0f) return false;
-	if (pixelX >= 31.0f && pixelX < 133.0f)
-	{
-		BottomGameplayTab = EBottomGameplayTab::Map;
-		DrawBottomOverlay(true);
-		return true;
-	}
-	if (pixelX >= 133.0f && pixelX < 235.0f)
-	{
-		BottomGameplayTab = EBottomGameplayTab::Items;
-		DrawBottomOverlay(true);
-		return true;
-	}
+	if (Inside(pixelX, pixelY, GridX, PassiveRowY, Columns * CellWidth, CellHeight)) return true;
 	return false;
 }
 
@@ -5021,7 +5907,15 @@ void I_3DSServiceDiagnosticDump()
 
 void I_3DSOverlayFrame()
 {
+	// Once a tic (I_StartFrame): this tic's bottom GPU draws replace the last tic's.
+	I_3DSGpuBottomNewTic();
 	DrawBottomOverlay(false);
+	if (I_3DSGpuBottomBuffer() != nullptr && BottomPresentation == EBottomPresentation::Gameplay)
+	{
+		using namespace BottomLayout;
+		QueueGpuMap(E3DSGpuScreen::Bottom, MapX, MapY, MapWidth, MapHeight,
+			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear);
+	}
 }
 
 void I_3DSSetAudioReady(bool ready)
@@ -5049,8 +5943,21 @@ bool I_3DSQuitWithoutSavingRequested()
 	return QuitWithoutSaving;
 }
 
+// LegendUpdateMenu was opened by the start-up check: it shows the offer instead of checking again.
+namespace { bool AutoUpdateOffer = false; }
+
+// The update menu's actions (LODUpdateAction): 0/1 check, 2 switch the channel, 3 download and
+// install, 4 cancel, 5 switch AUTO UPDATE, 6 whether the menu was opened by the start-up check
+// (asked once, in its Init), -1 nothing. Returns the state, | 256 while busy (6: 1 or 0).
 int I_3DSUpdateAction(int action)
 {
+    if (action == 6)
+    {
+        const bool offer = AutoUpdateOffer;
+        AutoUpdateOffer = false;
+        return offer ? 1 : 0;
+    }
+    if (action == 5) lod3ds_auto_update = !lod3ds_auto_update;
     UpdateStatus status;
     Updater_GetStatus(&status);
     if (action == 0 || action == 1) Updater_Check();
@@ -5064,5 +5971,194 @@ int I_3DSUpdateAction(int action)
 
 void I_3DSServiceUpdater()
 {
-    if (Updater_ShouldClose() && !Updater_Busy()) I_3DSQuitWithoutSaving();
+    // Installed: start the new version as the game closes.
+    if (Updater_ShouldClose() && !Updater_Busy())
+    {
+        CiaInstall_RelaunchOnExit();
+        I_3DSQuitWithoutSaving();
+    }
+
+    // AUTO UPDATE: one check per start, a few seconds in (Wi-Fi associates after the game
+    // starts; given up after ~30 s without it). A new version opens the update menu with the
+    // offer, outside a level and with no menu open; anything else (none, no network, a 3DSX
+    // build) is silent. Opening UPDATE by hand meanwhile ends it.
+    enum { Waiting, Checking, Offering, Done };
+    static int stage = Waiting;
+    static uint64_t startedAt = 0;
+    if (stage == Done) return;
+    const uint64_t now = osGetTime();
+    if (startedAt == 0) startedAt = now;
+    const bool updateMenuOpen = CurrentMenu != nullptr && CurrentMenu->IsKindOf("LegendUpdateMenu");
+    if (!lod3ds_auto_update || updateMenuOpen)
+    {
+        stage = Done;
+        return;
+    }
+    if (stage == Waiting)
+    {
+        if (now - startedAt < 3000u || Updater_Busy()) return;
+        if (osGetWifiStrength() == 0)
+        {
+            if (now - startedAt > 30000u) stage = Done;
+            return;
+        }
+        Updater_Check();
+        stage = Checking;
+        return;
+    }
+    if (Updater_Busy()) return;
+    UpdateStatus status;
+    Updater_GetStatus(&status);
+    if (status.state != UPDATE_AVAILABLE)
+    {
+        stage = Done;
+        return;
+    }
+    stage = Offering;
+    if (gamestate == GS_LEVEL || menuactive != MENU_Off) return;
+    AutoUpdateOffer = true;
+    M_StartControlPanel(true);
+    M_SetMenu(FName("LegendUpdateMenu"));
+    stage = Done;
+}
+
+bool I_3DSSaveScreenShots(const char *topPath, const char *bottomPath)
+{
+	bool ok = true;
+	const struct { gfxScreen_t Screen; const char *Path; } shots[] = {
+		{ GFX_TOP, topPath }, { GFX_BOTTOM, bottomPath } };
+	for (const auto &shot : shots)
+	{
+		// The SD card's rename does not replace a file: drop the previous shot first.
+		std::remove(shot.Path);
+		FScreenSnapshot snapshot;
+		if (!CaptureScreenSnapshot(shot.Screen, snapshot) ||
+			!WriteFramebufferBmp(shot.Path, snapshot.Pixels, snapshot.Width,
+				snapshot.Height, snapshot.Format))
+		{
+			ok = false;
+		}
+	}
+	return ok;
+}
+
+bool M_SaveDefaults(const char *filename);
+
+namespace
+{
+// The console and its log only: a notify line would print over the game.
+void ConsoleLinkLog(const char *line)
+{
+	Printf(PRINT_LOG, "%s\n", line);
+}
+}
+
+void I_3DSServiceConsoleLink()
+{
+	FtpServer_Tick(ConsoleLinkLog);
+	// SITE INSTALL put a new build in place: relaunch into it, but not at once. Jumping right
+	// after the install had the system load the title a second time while the new build ran,
+	// and the loader crashed out of memory (3 installs in 4); 10 s later, none did in 4, nor
+	// any of 6 jumps with no install before them (issue #1).
+	constexpr u64 RelaunchDelayMilliseconds = 10000u;
+	static u64 relaunchAt = 0;
+	if (FtpServer_TakeRelaunch())
+	{
+		relaunchAt = osGetTime() + RelaunchDelayMilliseconds;
+		ConsoleLinkLog("new build installed: relaunching in 10 s");
+	}
+	// While an installer arrives, installs or waits to relaunch, a toast on the touch screen
+	// says so, with a bar: the bytes received (of the size build_3ds.py announces with ALLO),
+	// then written to the system, then the countdown. An install over the running game never
+	// happens without a warning.
+	char text[sizeof(OverlayNotification)] = {};
+	int progress = -1;
+	if (relaunchAt != 0)
+	{
+		const u64 now = std::min<u64>(osGetTime(), relaunchAt);
+		const unsigned seconds = static_cast<unsigned>((relaunchAt - now + 999u) / 1000u);
+		std::snprintf(text, sizeof(text), "%s %u S", Tr("RESTARTING IN"), seconds);
+		progress = static_cast<int>(1000u - (relaunchAt - now) * 1000u / RelaunchDelayMilliseconds);
+	}
+	else if (const char *notice = FtpServer_Notice())
+	{
+		unsigned long long done = 0, total = 0;
+		FtpServer_Progress(&done, &total);
+		if (total > 0)
+		{
+			progress = static_cast<int>(std::min<unsigned long long>(done * 1000u / total, 1000u));
+			std::snprintf(text, sizeof(text), "%s %d%%", Tr(notice), progress / 10);
+		}
+		else std::snprintf(text, sizeof(text), "%s", Tr(notice));
+	}
+	static char shownText[sizeof(OverlayNotification)] = {};
+	static int shownProgress = -1;
+	// Drawn again when the text or the bar moves by a percent.
+	if (std::strcmp(text, shownText) != 0 || progress / 10 != shownProgress / 10)
+	{
+		if (text[0] != '\0') SetOverlayNotification(text, 10u * 60u * 1000u);
+		else if (shownText[0] != '\0') SetOverlayNotification(nullptr, 0);
+		OverlayNotificationProgress = progress;
+		std::snprintf(shownText, sizeof(shownText), "%s", text);
+		shownProgress = progress;
+	}
+	if (relaunchAt != 0 && osGetTime() >= relaunchAt)
+	{
+		// Quit through the normal exit path and let libctru start the new build once the process
+		// exits. Save the config first, in case the teardown hangs: FTP SERVER has to be on in
+		// the new build.
+		M_SaveDefaults(nullptr);
+		ConsoleLinkLog("relaunching into the build just installed");
+		CiaInstall_RelaunchOnExit();
+		throw CExitEvent(0);
+	}
+#if LOD3DS_DEBUG_TOOLS
+	// On when the game last ran (or a start found no Wi-Fi): try again every ~2 s (input polls
+	// run at 35 Hz) until it serves or the option goes off.
+	static unsigned retry = 0;
+	if (lod3ds_ftp_server)
+	{
+		if (!FtpServer_Running() && (retry == 0 || ++retry >= 70) &&
+			(retry == 0 || osGetWifiStrength() > 0))
+		{
+			retry = 1;
+			FtpServer_Start();
+		}
+	}
+	else
+	{
+		retry = 0;
+		if (FtpServer_Running()) FtpServer_Stop();
+	}
+#else
+	// Stable builds: the install-only server, for the owner, when dev-ftp.txt is in the data
+	// folder (created over FTP while a debug build was installed; checked once). Tried again
+	// every ~2 s until Wi-Fi is up; after CANCEL FtpServer_StartInstallOnly refuses until the
+	// game is opened again.
+	static int devFtp = -1;
+	static unsigned retry = 0;
+	if (devFtp < 0) devFtp = access(LOD3DS_APP_DIR "/dev-ftp.txt", F_OK) == 0;
+	if (devFtp && !FtpServer_Running() && (retry == 0 || ++retry >= 70) &&
+		(retry == 0 || osGetWifiStrength() > 0))
+	{
+		retry = 1;
+		FtpServer_StartInstallOnly();
+	}
+#endif
+}
+
+void I_3DSStopConsoleLink()
+{
+	if (FtpServer_Running()) FtpServer_Stop();
+}
+
+void I_3DSServiceSettingsSave()
+{
+	// Write the config as soon as the player leaves the option menus: HOME -> Close and the
+	// fast QUIT GAME skip the engine's final save, so this is when the settings stick.
+	static bool inOptions = false;
+	const bool options = menuactive != MENU_Off && CurrentMenu != nullptr &&
+		CurrentMenu->IsKindOf("OptionMenu");
+	if (inOptions && !options) M_SaveDefaults(nullptr);
+	inOptions = options;
 }

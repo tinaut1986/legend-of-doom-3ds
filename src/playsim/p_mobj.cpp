@@ -3571,6 +3571,66 @@ DEFINE_ACTION_FUNCTION(AActor, CheckPortalTransition)
 //
 // P_MobjThinker
 //
+#ifdef __3DS__
+CVAR(Bool, lod3ds_static_thinkers, true, 0)
+
+// A thing that cannot change by itself is not ticked at all (P2.4; FThinkerList::TickThinkers):
+// Actor's own Tick (no class override, ZScript or native), no velocity, a state that never ends,
+// no inventory, effects or player, resting (or weightless) where no sector special or scroller
+// can carry it. Legend of Doom's MAP01 has ~600 of these (bushes, trees, spawn spots, teleport
+// destinations); the call alone, through the VM, cost ~4 microseconds each a tic on the New 3DS.
+// Whatever gives one velocity or a new state (a push, a blast, a scroller) makes it tick again.
+bool P_3DSStaticThinker(DThinker *thinker)
+{
+	if (!lod3ds_static_thinkers || !thinker->IsKindOf(RUNTIME_CLASS(AActor))) return false;
+	static unsigned tickIndex = ~0u;
+	static VMFunction *actorTick = nullptr;
+	static VMFunction *inventoryTick = nullptr;
+	static PClass *inventoryClass = nullptr;
+	static size_t ownerOffset = 0, dropTimeOffset = 0;
+	if (tickIndex == ~0u)
+	{
+		tickIndex = GetVirtualIndex(RUNTIME_CLASS(DThinker), "Tick");
+		actorTick = RUNTIME_CLASS(AActor)->Virtuals[tickIndex];
+		// Inventory's Tick (inventory.zs): an owned item with a state that never ends and no
+		// DropTime does nothing; a loose one only calls Actor's.
+		inventoryClass = PClass::FindClass(NAME_Inventory);
+		auto owner = inventoryClass != nullptr ?
+			dyn_cast<PField>(inventoryClass->FindSymbol(NAME_Owner, true)) : nullptr;
+		auto dropTime = inventoryClass != nullptr ?
+			dyn_cast<PField>(inventoryClass->FindSymbol(NAME_DropTime, true)) : nullptr;
+		if (owner != nullptr && dropTime != nullptr && inventoryClass->Virtuals.Size() > tickIndex)
+		{
+			inventoryTick = inventoryClass->Virtuals[tickIndex];
+			ownerOffset = owner->Offset;
+			dropTimeOffset = dropTime->Offset;
+		}
+	}
+	const PClass *type = thinker->GetClass();
+	if (type->Virtuals.Size() <= tickIndex) return false;
+	VMFunction *tick = type->Virtuals[tickIndex];
+	AActor *actor = static_cast<AActor *>(thinker);
+	if (tick == inventoryTick && inventoryTick != nullptr)
+	{
+		const char *base = reinterpret_cast<const char *>(actor);
+		if (*reinterpret_cast<const int *>(base + dropTimeOffset) != 0 || actor->tics != -1)
+			return false;
+		if (*reinterpret_cast<AActor *const *>(base + ownerOffset) != nullptr) return true;
+	}
+	else if (tick != actorTick)
+	{
+		return false;
+	}
+	return actor->player == nullptr && actor->tics == -1 && actor->state != nullptr &&
+		actor->Inventory == nullptr && actor->effects == 0 && actor->Vel.isZero() &&
+		!(actor->flags & MF_SKULLFLY) && !(actor->flags2 & MF2_FLOATBOB) &&
+		((actor->flags & MF_NOGRAVITY) || actor->Z() <= actor->floorz) &&
+		(!(actor->flags8 & MF8_INSCROLLSEC) || actor->Level->Scrolls.Size() == 0) &&
+		((actor->flags & MF_NOSECTOR) || actor->Sector == nullptr || actor->Sector->special == 0) &&
+		!actor->isFrozen();
+}
+#endif
+
 void AActor::Tick ()
 {
 	// [RH] Data for Heretic/Hexen scrolling sectors

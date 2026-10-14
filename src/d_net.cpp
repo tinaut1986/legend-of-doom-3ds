@@ -28,6 +28,9 @@
 #include <stddef.h>
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
+#ifdef __3DS__
+#include "common/platform/3ds/perf_3ds.h"
+#endif
 
 #include "version.h"
 #include "menu.h"
@@ -1982,16 +1985,27 @@ void TryRunTics (void)
 				D_DoAdvanceDemo ();
 			}
 			if (debugfile) fprintf (debugfile, "run tic %d\n", gametic);
-			C_Ticker ();
-			M_Ticker ();
-			G_Ticker();
+			{
+#ifdef __3DS__
+				F3DSPerfScope perfLogic(E3DSPerfPart::Logic);
+				I_3DSPerfTic();
+#endif
+				C_Ticker ();
+				M_Ticker ();
+				G_Ticker();
+			}
 			gametic++;
 
 			NetUpdate ();	// check for new console commands
 			TicStabilityEnd();
 		}
 		P_PredictPlayer(&players[consoleplayer]);
-		S_UpdateSounds (players[consoleplayer].camera);	// move positional sounds
+		{
+#ifdef __3DS__
+			F3DSPerfScope perfSound(E3DSPerfPart::Sound);
+#endif
+			S_UpdateSounds (players[consoleplayer].camera);	// move positional sounds
+		}
 	}
 	else
 	{

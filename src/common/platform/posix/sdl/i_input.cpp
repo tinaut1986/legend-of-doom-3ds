@@ -49,6 +49,8 @@
 #ifdef __3DS__
 #include "../../3ds/diagnostics_3ds.h"
 #include "../../3ds/i_input_3ds.h"
+#include "../../3ds/debug_link_3ds.h"
+#include "../../3ds/perf_3ds.h"
 #endif
 
 
@@ -514,6 +516,10 @@ void I_GetEvent ()
 {
 	SDL_Event sev;
 	
+	#ifdef __3DS__
+	// The remote control's buttons and taps arrive as ordinary SDL events (debug builds).
+	DebugLink_Poll();
+	#endif
 	while (SDL_PollEvent (&sev))
 	{
 		MessagePump (sev);
@@ -531,6 +537,8 @@ void I_StartTic ()
 	I_GetEvent ();
 	#ifdef __3DS__
 	I_3DSServiceUpdater();
+	I_3DSServiceSettingsSave();
+	I_3DSServiceConsoleLink();
 	I_3DSServiceDiagnosticDump();
 	#endif
 }
@@ -540,6 +548,7 @@ void I_StartFrame ()
 {
 	I_ProcessJoysticks();
 	#ifdef __3DS__
+	F3DSPerfScope perfBottom(E3DSPerfPart::Bottom);
 	I_3DSOverlayFrame();
 	#endif
 }

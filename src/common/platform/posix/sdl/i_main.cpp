@@ -52,18 +52,13 @@
 #include "common/platform/3ds/diagnostics_3ds.h"
 #include "common/platform/3ds/lifecycle_3ds.h"
 #include "common/platform/3ds/memory_3ds.h"
-
-#ifndef LOD3DS_BUILD_ID
-#define LOD3DS_BUILD_ID "untracked"
-#endif
+#include "common/platform/3ds/app_paths_3ds.h"
+#include "lod3ds_version.h"
 
 #ifndef LOD3DS_BUILD_PROFILE_NAME
 #define LOD3DS_BUILD_PROFILE_NAME "release"
 #endif
 
-#ifndef LOD3DS_PORT_VERSION
-#define LOD3DS_PORT_VERSION "dev"
-#endif
 
 extern "C"
 {
@@ -126,8 +121,8 @@ void I_DetectOS()
 {
 #ifdef __3DS__
 	Printf("OS: Nintendo 3DS\n");
-	Printf("[lod3ds] version=%s build_id=%s profile=%s\n",
-		LOD3DS_PORT_VERSION, LOD3DS_BUILD_ID, LOD3DS_BUILD_PROFILE_NAME);
+	Printf("[lod3ds] version=%s upstream=%s build_id=%s profile=%s\n",
+		LOD3DS_PORT_VERSION_LABEL, LOD3DS_UPSTREAM_VERSION, LOD3DS_BUILD_ID, LOD3DS_BUILD_PROFILE_NAME);
 	Printf("[lod3ds] memory app_free=%lu linear_free=%lu bytes\n",
 		static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION)),
 		static_cast<unsigned long>(linearSpaceFree()));
@@ -247,15 +242,15 @@ int main (int argc, char **argv)
 
 #ifdef __3DS__
 	const bool homebrewLaunch = envIsHomebrew();
-	static const char *const SdDataDirectory = "sdmc:/3ds/legend-of-doom/data/";
+	static const char *const SdDataDirectory = LOD3DS_APP_DIR "/data/";
 	static const char *const RomFsDataDirectory = "romfs:/data/";
-	static const char *const SdIWad = "sdmc:/3ds/legend-of-doom/data/freedoom2.wad";
+	static const char *const SdIWad = LOD3DS_APP_DIR "/data/freedoom2.wad";
 	static const char *const RomFsIWad = "romfs:/data/freedoom2.wad";
-	static const char *const SdMod = "sdmc:/3ds/legend-of-doom/data/LegendOfDoom.pk3";
+	static const char *const SdMod = LOD3DS_APP_DIR "/data/LegendOfDoom.pk3";
 	static const char *const RomFsMod = "romfs:/data/LegendOfDoom.pk3";
-	static const char *const SdBase = "sdmc:/3ds/legend-of-doom/data/gzdoom.pk3";
+	static const char *const SdBase = LOD3DS_APP_DIR "/data/gzdoom.pk3";
 	static const char *const RomFsBase = "romfs:/data/gzdoom.pk3";
-	static const char *const SdSupport = "sdmc:/3ds/legend-of-doom/data/game_support.pk3";
+	static const char *const SdSupport = LOD3DS_APP_DIR "/data/game_support.pk3";
 	static const char *const RomFsSupport = "romfs:/data/game_support.pk3";
 	const char *const DataDirectory = homebrewLaunch ? SdDataDirectory : RomFsDataDirectory;
 	const char *const IWadPath = homebrewLaunch ? SdIWad : RomFsIWad;
@@ -289,7 +284,7 @@ int main (int argc, char **argv)
 #ifdef LOD3DS_HARDWARE_DIAGNOSTIC
 	// Capture NovaGL's bounded first-draw diagnostics without requiring a
 	// debugger or spamming Azahar's UI. Release builds compile the probes out.
-	if (freopen("sdmc:/3ds/legend-of-doom/novagl.log", "w", stdout) != nullptr)
+	if (freopen(LOD3DS_APP_DIR "/novagl.log", "w", stdout) != nullptr)
 	{
 		setvbuf(stdout, nullptr, _IOLBF, 0);
 	}
@@ -333,9 +328,25 @@ int main (int argc, char **argv)
 	#endif
 	Args->AppendArg("+vid_rendermode");
 	#ifdef LOD3DS_SAFE_SOFTWARE
+	#if LOD3DS_DEBUG_TOOLS
+	// P2.2 probe: hwrender-probe.txt in the data folder starts this one boot with GZDoom's
+	// hardware renderer on the poly backend, its draws dropped (the poly drawers crash on the
+	// 3DS), so `bench` can time its CPU side (docs/gpu-renderer-design.md). The marker is
+	// deleted first: a boot that hangs is not repeated.
+	static const char *const HwRenderProbe = LOD3DS_APP_DIR "/hwrender-probe.txt";
+	const bool hwRenderProbe = remove(HwRenderProbe) == 0;
+	if (hwRenderProbe)
+	{
+		extern bool I_3DSHwRenderProbeNoDraw;
+		I_3DSHwRenderProbeNoDraw = true;
+		I_3DSStartupLog("hwrender-probe");
+	}
+	Args->AppendArg(hwRenderProbe ? "4" : "1");
+	#else
 	// True-colour software writes the BGRA canvas consumed by the direct scanout
 	// path and avoids a separate per-frame palette conversion.
 	Args->AppendArg("1");
+	#endif
 	// Fix gameplay at 80% of the physical 400x240 LCD: 320x192 is roughly 30%
 	// more detailed in each axis than the previous 240x150 profile. Menus switch
 	// to the native canvas, but no touch control or frame cap changes the game.
@@ -383,6 +394,11 @@ int main (int argc, char **argv)
 	#else
 	Args->AppendArg("0");
 	#endif
+	// GZDoom's tic stability busy-waits, on every frame that runs no tic, as long as the last
+	// tic took (d_net.cpp, TicStabilityWait): ~3 ms a frame of nothing on the New 3DS at 57 fps
+	// with the GPU world, measured 2026-10-14 (other_ms 3.0 -> 0.25, 56.9 -> 60.8 fps).
+	Args->AppendArg("+r_ticstability");
+	Args->AppendArg("0");
 	Args->AppendArg("+r_scene_multithreaded");
 	// Scene traversal retains its audited main-thread ownership. The two-way
 	// split happens inside the drawer where every command is explicitly
@@ -499,7 +515,7 @@ int main (int argc, char **argv)
 	Args->AppendArg("+vid_fps");
 	Args->AppendArg("1");
 	Args->AppendArg("+logfile");
-	Args->AppendArg("sdmc:/3ds/legend-of-doom/boot.log");
+	Args->AppendArg(LOD3DS_APP_DIR "/boot.log");
 	// Exercise the actual world renderer in the same run. The prior title-only
 	// diagnostic could prove startup but could not distinguish a missing 2D
 	// title texture from a broken 3D scene.
@@ -538,6 +554,7 @@ int main (int argc, char **argv)
 	const int result = GameMain();
 	#ifdef __3DS__
 	Updater_Shutdown();
+	I_3DSStopConsoleLink();
 	#endif
 
 	#ifdef __3DS__

@@ -131,6 +131,9 @@
 #ifdef __unix__
 #include "i_system.h"  // for SHARE_DIR
 #endif // __unix__
+#ifdef __3DS__
+#include "common/platform/3ds/perf_3ds.h"
+#endif
 
 EXTERN_CVAR(Bool, hud_althud)
 EXTERN_CVAR(Int, vr_mode)
@@ -1170,23 +1173,45 @@ void D_Display ()
 		wipe = nullptr;
 	}
 	
-	screen->FrameTime = I_msTimeFS();
-	TexAnim.UpdateAnimations(screen->FrameTime);
-	R_UpdateSky(screen->FrameTime);
-	screen->BeginFrame();
+	{
+#ifdef __3DS__
+		F3DSPerfScope perfFrameStart(E3DSPerfPart::FrameStart);
+#endif
+		screen->FrameTime = I_msTimeFS();
+		TexAnim.UpdateAnimations(screen->FrameTime);
+		R_UpdateSky(screen->FrameTime);
+		screen->BeginFrame();
+	}
 	twod->ClearClipRect();
+#ifdef __3DS__
+	// A native menu over a frozen top screen (PLAN U1): nothing to render, only present.
+	if (wipe == nullptr && I_3DSNativeMenuFrozen())
+	{
+		twod->Begin(screen->GetWidth(), screen->GetHeight());
+		End2DAndUpdate();
+		return;
+	}
+#endif
 	if ((gamestate == GS_LEVEL || gamestate == GS_TITLELEVEL) && gametic != 0)
 	{
 		// [ZZ] execute event hook that we just started the frame
 		//E_RenderFrame();
 		//
 		
-		D_Render([&]()
 		{
-			viewsec = RenderView(&players[consoleplayer]);
-		}, true);
+#ifdef __3DS__
+			F3DSPerfScope perfWorld(E3DSPerfPart::World);
+#endif
+			D_Render([&]()
+			{
+				viewsec = RenderView(&players[consoleplayer]);
+			}, true);
+		}
 
 		twod->Begin(screen->GetWidth(), screen->GetHeight());
+#ifdef __3DS__
+		F3DSPerfScope perfHud(E3DSPerfPart::Hud);
+#endif
 		if (!hud_toggled)
 		{
 			V_DrawBlend(viewsec);
@@ -1251,9 +1276,14 @@ void D_Display ()
 				D_PageDrawer();
 				C_DrawConsole ();
 				#ifdef __3DS__
-				if (I_3DSNativeMenuVisible()) screen->CaptureNativeMenuBase();
-				#endif
+				if (!I_3DSNativeMenuOwnsFrame())
+				{
+					if (I_3DSNativeMenuVisible()) screen->CaptureNativeMenuBase();
+					M_Drawer ();
+				}
+				#else
 				M_Drawer ();
+				#endif
 				End2DAndUpdate ();
 				return;
 				
@@ -1338,9 +1368,14 @@ void D_Display ()
 		// draw ZScript UI stuff
 		C_DrawConsole ();	// draw console
 		#ifdef __3DS__
-		if (I_3DSNativeMenuVisible()) screen->CaptureNativeMenuBase();
-		#endif
+		if (!I_3DSNativeMenuOwnsFrame())
+		{
+			if (I_3DSNativeMenuVisible()) screen->CaptureNativeMenuBase();
+			M_Drawer ();			// menu is drawn even on top of everything
+		}
+		#else
 		M_Drawer ();			// menu is drawn even on top of everything
+		#endif
 		if (!hud_toggled)
 			FStat::PrintStat (twod);
 		End2DAndUpdate ();
@@ -1474,9 +1509,19 @@ void D_DoomLoop ()
 				TryRunTics (); // will run at least one tic
 			}
 			// Update display, next frame, with current state.
-			I_StartTic ();
+			{
+#ifdef __3DS__
+				F3DSPerfScope perfInput(E3DSPerfPart::Input);
+#endif
+				I_StartTic ();
+			}
 			D_Display ();
-			S_UpdateMusic();
+			{
+#ifdef __3DS__
+				F3DSPerfScope perfSound(E3DSPerfPart::Sound);
+#endif
+				S_UpdateMusic();
+			}
 			if (wantToRestart)
 			{
 				wantToRestart = false;

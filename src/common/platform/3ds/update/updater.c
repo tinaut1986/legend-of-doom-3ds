@@ -1,4 +1,7 @@
 #include "updater.h"
+#include "../app_paths_3ds.h"
+#include "../net_3ds.h"
+#include "lod3ds_version.h"
 #include <3ds.h>
 #include <curl/curl.h>
 #include <mbedtls/sha256.h>
@@ -14,11 +17,11 @@
 static void UpdateLog(const char *format, ...) {
   char line[256]; va_list args; va_start(args, format);
   vsnprintf(line, sizeof(line), format, args); va_end(args);
-  FILE *f = fopen("sdmc:/3ds/legend-of-doom/update.log", "a");
+  FILE *f = fopen(LOD3DS_APP_DIR "/update.log", "a");
   if (f) { fprintf(f, "%s\n", line); fclose(f); }
 }
 
-#define UPDATE_DIR "sdmc:/3ds/legend-of-doom/update"
+#define UPDATE_DIR LOD3DS_APP_DIR "/update"
 #define UPDATE_PART UPDATE_DIR "/download.part"
 #define CHANNEL_FILE UPDATE_DIR "/channel.txt"
 #define UPDATE_IO_SIZE (128u * 1024u)
@@ -123,7 +126,7 @@ static bool fetch(const char *url, Transfer *t) {
   char error[CURL_ERROR_SIZE] = {0};
   curl_easy_setopt(c, CURLOPT_ERRORBUFFER, error);
   curl_easy_setopt(c, CURLOPT_URL, url);
-  curl_easy_setopt(c, CURLOPT_USERAGENT, "Legend-of-Doom-3DS/" LOD3DS_PORT_VERSION);
+  curl_easy_setopt(c, CURLOPT_USERAGENT, "Legend-of-Doom-3DS-tinaut/" LOD3DS_PORT_VERSION);
   curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(c, CURLOPT_MAXREDIRS, 5L);
   curl_easy_setopt(c, CURLOPT_PROTOCOLS_STR, "https");
@@ -202,10 +205,10 @@ static bool install_cia(void) {
   unsigned char *data = malloc(UPDATE_IO_SIZE);
   if (!data) goto done;
   rc = FSUSER_OpenFileDirectly(&input, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""),
-    fsMakePath(PATH_ASCII, "/3ds/legend-of-doom/update/download.part"), FS_OPEN_READ, 0);
+    fsMakePath(PATH_ASCII, LOD3DS_APP_SD_PATH "/update/download.part"), FS_OPEN_READ, 0);
   if (R_FAILED(rc)) goto done;
   rc = AM_GetCiaFileInfo(MEDIATYPE_SD, &info, input);
-  if (R_FAILED(rc) || info.titleID != 0x0004000005a2d000ull) goto done;
+  if (R_FAILED(rc) || info.titleID != LOD3DS_TITLE_ID) goto done;
   rc = AM_GetCiaRequiredSpace(&required, MEDIATYPE_SD, input);
   if (R_FAILED(rc) || !enough_space(required + 4 * 1024 * 1024ull) || cancelled()) goto done;
   // Overwrite through AM; never delete the installed title first.
@@ -245,19 +248,14 @@ static bool install_3dsx(void) {
   remove(backup); return true;
 }
 static void run_job(void *arg) {
-  void *soc_buffer = NULL; bool soc_ready = false, curl_ready = false, ac_ready = false, ssl_ready = false;
+  bool net_ready = false, curl_ready = false, ssl_ready = false;
   bool ok = false; Transfer t = {0};
   UpdateStatus s; Updater_GetStatus(&s);
-  Result rc = acInit();
-  if (R_FAILED(rc)) { UpdateLog("acInit failed: %08lx", (unsigned long)rc); publish(UPDATE_ERROR, "WI-FI SERVICE FAILED"); goto done; }
-  ac_ready = true; u32 wifi = 0;
-  rc = ACU_GetWifiStatus(&wifi);
-  if (R_FAILED(rc) || !wifi) { UpdateLog("Wi-Fi status: result=%08lx wifi=%lu", (unsigned long)rc, (unsigned long)wifi); publish(UPDATE_ERROR, "NO WI-FI CONNECTION"); goto done; }
-  soc_buffer = memalign(4096, 1024 * 1024);
-  if (!soc_buffer) { publish(UPDATE_ERROR, "NETWORK MEMORY ERROR"); goto done; }
-  rc = socInit(soc_buffer, 1024 * 1024);
-  if (R_FAILED(rc)) { UpdateLog("socInit failed: %08lx errno=%d", (unsigned long)rc, errno); publish(UPDATE_ERROR, "SOCKET SERVICE FAILED"); goto done; }
-  soc_ready = true;
+  Result rc;
+  // Shared with the debug FTP server (net_3ds.h): socInit runs once for both.
+  if (!Net3DS_Acquire()) { UpdateLog("socket service failed errno=%d", errno); publish(UPDATE_ERROR, "SOCKET SERVICE FAILED"); goto done; }
+  net_ready = true;
+  if (!Net3DS_WifiConnected()) { UpdateLog("Wi-Fi status: not connected"); publish(UPDATE_ERROR, "NO WI-FI CONNECTION"); goto done; }
   // The 3DS mbedTLS entropy callback uses sslcGenerateRandomData. Its service
   // must be open before curl seeds its TLS generator, and stay open until cleanup.
   rc = sslcInit(0);
@@ -274,9 +272,14 @@ static void run_job(void *arg) {
     UpdateRelease candidate;
     int result = Update_ParseRelease(t.data, t.size, s.prerelease, homebrew, &candidate);
     if (result < 0) { publish(UPDATE_ERROR, "INVALID RELEASE DATA"); goto done; }
-    if (!result) { publish(UPDATE_EMPTY, s.prerelease ? "NO EXPERIMENTAL RELEASE" : "NO STABLE RELEASE YET"); ok = true; goto done; }
+    if (!result) { publish(UPDATE_EMPTY, s.prerelease ? "NO BETA RELEASE" : "NO STABLE RELEASE YET"); ok = true; goto done; }
     LightLock_Lock(&lock); release = candidate; strcpy(status.version, release.version); LightLock_Unlock(&lock);
-    bool newer = Update_IsNewer(release.version, LOD3DS_PORT_VERSION);
+    // A beta channel tag is the same number as the stable release it leads to,
+    // so it is compared as "-beta"; an installed beta is "-beta" too, so the same
+    // number is not newer, while the stable release of that number is.
+    char candidate_version[64];
+    snprintf(candidate_version, sizeof(candidate_version), "%s%s", release.version, s.prerelease ? "-beta" : "");
+    bool newer = Update_IsNewer(candidate_version, LOD3DS_PORT_IS_BETA ? LOD3DS_PORT_VERSION "-beta" : LOD3DS_PORT_VERSION);
     publish(newer ? UPDATE_AVAILABLE : UPDATE_CURRENT, newer ? "UPDATE AVAILABLE" : "YOU ARE UP TO DATE");
     ok = true;
   } else {
@@ -304,9 +307,7 @@ done:
   if (download_job) remove(UPDATE_PART);
   if (curl_ready) curl_global_cleanup();
   if (ssl_ready) sslcExit();
-  if (soc_ready) socExit();
-  free(soc_buffer);
-  if (ac_ready) acExit();
+  if (net_ready) Net3DS_Release();
   Updater_GetStatus(&s);
   if (!ok && s.state != UPDATE_ERROR)
     publish(UPDATE_ERROR, cancelled() ? "UPDATE CANCELLED" : "CONNECTION FAILED - RETRY");
@@ -355,7 +356,8 @@ void Updater_SetChannel(bool pre) {
 void Updater_Init(const char *path) {
   if (initialized) return;
   LightLock_Init(&lock); initialized = true; homebrew = envIsHomebrew();
-  status.prerelease = strstr(LOD3DS_PORT_VERSION, "-E") != NULL;
+  // Betas and dev builds follow the beta channel until the player picks another.
+  status.prerelease = LOD3DS_PORT_IS_BETA || strstr(LOD3DS_PORT_VERSION, "-dev") != NULL;
   mkdir(UPDATE_DIR, 0777);
   if (homebrew && path && !strncmp(path, "sdmc:/", 6) && strlen(path) < sizeof(launch_file) &&
       strlen(path) > 5 && !strcmp(path + strlen(path) - 5, ".3dsx")) strcpy(launch_file, path);

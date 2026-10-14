@@ -38,6 +38,9 @@
 #include "findfile.h"
 #include "files.h"
 #include "md5.h"
+#ifdef __3DS__
+#include "common/platform/3ds/app_paths_3ds.h"
+#endif
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -876,7 +879,7 @@ FString NicePath(const char *path)
 	{
 		return ExpandEnvVars(path);
 	}
-	FString where("sdmc:/3ds/legend-of-doom");
+	FString where(LOD3DS_APP_DIR);
 	if (path[1] == '/')
 	{
 		where += ExpandEnvVars(path + 1);

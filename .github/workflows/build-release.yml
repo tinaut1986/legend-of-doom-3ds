@@ -1,0 +1,202 @@
+name: Build 3DS Release
+
+# Same release scheme as ../zelda-tmc-3ds, ../mzm and ../sm-3ds (CLAUDE.md,
+# "Releases"): a vX.Y.Z tag builds the CIA and publishes a GitHub Release.
+# Only three-component tags are ours: the upstream port's tags (v0.31, v1.0,
+# v0.8-E3...) live in this repository too and never trigger a build.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-3ds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      # Same pinned image as build-3ds.yml. Bump deliberately, in both files.
+      image: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install host build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates cmake curl git make pkg-config unzip zip \
+            libsdl2-dev python3 qrencode
+
+      - name: Determine release tag and channel
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          case "$GITHUB_REF" in
+            refs/tags/*)
+              TAG="${GITHUB_REF#refs/tags/}"
+              ;;
+            *)
+              # A manual run on a branch publishes that build as a beta named
+              # after its dev version. '+' would end up in asset URLs, so the
+              # hash is joined with '.' instead (still a valid -dev version
+              # for the updater).
+              TAG="v$(sh platform/3ds/tools/version.sh | tr '+' '.')"
+              ;;
+          esac
+          VERSION="${TAG#v}"
+
+          # Stable vs beta is decided by whether main can reach this commit,
+          # NOT by "was this a tag push":
+          #   - Tag on an unmerged release/* branch  -> Beta (prerelease).
+          #   - Tag on (or merged into) main         -> Release.
+          #   - Manual workflow_dispatch on a branch -> Beta.
+          #   - Re-running this workflow ON THE TAG for a tag that shipped as
+          #     a beta and is now merged promotes that same page to stable.
+          # Push main BEFORE the tag. If the fetch fails we fall through to
+          # Beta: mislabelling stable as beta is recoverable, not the reverse.
+          git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main || true
+          if git merge-base --is-ancestor HEAD refs/remotes/origin/main 2>/dev/null; then
+            PRERELEASE=false
+            CHANNEL=Release
+          else
+            PRERELEASE=true
+            CHANNEL=Beta
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "prerelease=$PRERELEASE"
+            echo "channel=$CHANNEL"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify clean source and patch stacks
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git diff --check
+          # No game data, ROM or build output is ever part of the repository.
+          if git ls-files | \
+            grep -Ei '(^|/)[^/]*\.(nes|rom|wad|pk3|dmp|dump|sav|cia|3dsx|elf|3ds|cci|cxi|gb|gbc|gba|z64|n64|v64|7z|rar)$'; then
+            echo "Game data, ROM or build output tracked by git"; exit 1
+          fi
+          ./platform/3ds/test-patches.sh
+
+      - name: Build the published profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Betas carry the debug tools for playtesting; stable releases do
+          # not. The channel is also baked into the binary: a beta shows
+          # "X.Y.Z BETA", and its updater offers the stable build of its number.
+          if [ "${{ steps.vars.outputs.channel }}" = "Release" ]; then CH=release; else CH=beta; fi
+          echo "channel ${{ steps.vars.outputs.channel }}: LOD3DS_CHANNEL=$CH"
+          LOD3DS_VERSION="${{ steps.vars.outputs.version }}" LOD3DS_CHANNEL=$CH \
+            LOD3DS_JOBS=$(nproc) ./platform/3ds/build.sh hardware-hybrid
+
+      - name: Collect assets, release notes and QR code
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.vars.outputs.tag }}"
+          V="${{ steps.vars.outputs.version }}"
+          REPO="${{ github.repository }}"
+          BASE="https://github.com/${REPO}/releases/download/${TAG}"
+          PRERELEASE="${{ steps.vars.outputs.prerelease }}"
+          MANIFEST="build-3ds/dist/BUILD-MANIFEST.txt"
+          STEM="$(sed -n 's/^artifact_stem=//p' "$MANIFEST")"
+          grep -qx "port_version=${V}" "$MANIFEST"
+          grep -qx 'git_status=clean' "$MANIFEST"
+
+          # The updater accepts exactly this asset name (update_manifest.c).
+          mkdir -p release
+          cp "build-3ds/dist/${STEM}.cia" "release/legend-of-doom-3ds-v${V}.cia"
+          cp "build-3ds/dist/${STEM}-debug-symbols.zip" "release/legend-of-doom-3ds-v${V}-debug-symbols.zip"
+          cp "$MANIFEST" release/BUILD-MANIFEST.txt
+          (cd release && sha256sum * > SHA256SUMS.txt)
+
+          # The previous tag of ours (three components only; upstream's v1.0,
+          # v0.8-E3... also match the glob, so filter them out).
+          PREV=$(git tag --merged "HEAD^" --list 'v[0-9]*.[0-9]*.[0-9]*' | \
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+          # First release of the fork: the changelog starts at upstream's last
+          # commit before the fork (b1f6c09, upstream v1.0 docs).
+          RANGE="${PREV:-b1f6c09}..HEAD"
+
+          if [ ! -f "docs/release-notes/${TAG}.md" ]; then
+            echo "::warning::docs/release-notes/${TAG}.md is missing: the updater will show the commit list for ${TAG}"
+          fi
+
+          {
+            if [ "$PRERELEASE" = "true" ]; then
+              echo "> **Beta build.** This comes off a \`release/*\` branch that has not"
+              echo "> been merged into \`main\` yet, so it is not a stable version."
+              echo
+            fi
+            echo "![QR code for the ${TAG} CIA](${BASE}/QR-${TAG}.png)"
+            echo
+            # The updater on the console shows this block (update_manifest.c,
+            # Update_FormatNotes). Keep the markers identical.
+            NOTES="docs/release-notes/${TAG}.md"
+            if [ -f "$NOTES" ]; then
+              echo "<!-- lod-notes -->"
+              echo "## What's new"
+              echo
+              cat "$NOTES"
+              echo
+              echo "<!-- /lod-notes -->"
+              echo
+            fi
+            echo "## Downloads"
+            echo
+            echo "- [legend-of-doom-3ds-v${V}.cia](${BASE}/legend-of-doom-3ds-v${V}.cia): install with FBI (or scan the QR code)."
+            echo "  New Nintendo 3DS family. Audio needs your console's DSP firmware at \`sdmc:/3ds/dspfirm.cdc\`."
+            echo "- Debug symbols and the build manifest, to read diagnostic dumps."
+            echo
+            echo "Installs as its own app, next to the original port; its files live in"
+            echo "\`sdmc:/3ds/Legend of Doom 3DS/\`."
+            echo "Based on [EstebanPdN/legend-of-doom-3ds](https://github.com/EstebanPdN/legend-of-doom-3ds) $(tr -d '\r\n' < platform/3ds/upstream_version.txt)."
+            echo
+            echo "## Changelog"
+            echo
+            git log ${RANGE} --no-merges --pretty='- %s (%h)' 2>/dev/null || true
+          } > release_notes.md
+
+          qrencode -s 10 -o "release/QR-${TAG}.png" "${BASE}/legend-of-doom-3ds-v${V}.cia"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: legend-of-doom-3ds-${{ steps.vars.outputs.tag }}
+          if-no-files-found: error
+          path: release/
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: ${{ steps.vars.outputs.channel }} ${{ steps.vars.outputs.tag }}
+          draft: false
+          prerelease: ${{ steps.vars.outputs.prerelease == 'true' }}
+          # A beta promoted in place stays behind the previous stable as "latest"
+          # unless asked: /releases/latest must be the stable one.
+          make_latest: ${{ steps.vars.outputs.prerelease == 'true' && 'false' || 'true' }}
+          body_path: release_notes.md
+          files: |
+            release/legend-of-doom-3ds-v${{ steps.vars.outputs.version }}.cia
+            release/legend-of-doom-3ds-v${{ steps.vars.outputs.version }}-debug-symbols.zip
+            release/BUILD-MANIFEST.txt
+            release/SHA256SUMS.txt
+            release/QR-${{ steps.vars.outputs.tag }}.png
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

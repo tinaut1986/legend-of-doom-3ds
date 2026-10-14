@@ -1,6 +1,9 @@
 Legend of Doom 3DS
 =================
 
+tinaut1986's fork of Esteban PDN's port. It installs as its own app, next to
+the original one, and keeps its files in its own folder.
+
 Use BUILD-MANIFEST.txt from the same package to identify its version, build ID
 and renderer profile.
 
@@ -8,7 +11,7 @@ INSTALLATION
 
 For the Homebrew Launcher, copy the included "3ds" folder to the root of the
 SD card, then start:
-  sdmc:/3ds/legend-of-doom/legend-of-doom-3ds.3dsx
+  sdmc:/3ds/Legend of Doom 3DS/legend-of-doom-3ds.3dsx
 
 Keep the matching data folder with the executable. Downloading only a 3DSX
 does not provide the required engine and game data.
@@ -16,7 +19,7 @@ does not provide the required engine and game data.
 For the CIA build, install with FBI. The CIA embeds Freedoom, Legend of Doom
 and the matching GZDoom resources. Configuration, saves, logs and diagnostic
 files are stored separately under:
-  sdmc:/3ds/legend-of-doom/
+  sdmc:/3ds/Legend of Doom 3DS/
 
 Supported consoles: New Nintendo 3DS, New Nintendo 3DS XL and New Nintendo
 2DS XL. The Old Nintendo 3DS and Nintendo 2DS families are not supported.
@@ -35,7 +38,7 @@ With Luma3DS, open Rosalina, choose "Miscellaneous options...", then
 
 RENDERER AND DISPLAY
 
-The published v1.0 uses profile=hardware-hybrid: SoftPoly renders the world on
+Releases use profile=hardware-hybrid: SoftPoly renders the world on
 CPU0/CPU2 and PICA200 scales the completed image to the 400x240 top screen.
 Gameplay defaults to 320x192; Display adjusts render scale from 50% to 100%.
 Menus use native 400x240. NovaGL does not render world geometry in this profile.
@@ -69,7 +72,7 @@ and a control reference. The bottom-screen map and item panel support touch.
 UPDATES
 
 The CIA build has Update in the title and pause menus. Choose Stable for
-stable releases. Save progress before installing: installation closes the game.
+stable releases, Beta for test builds. Save progress before installing: installation closes the game.
 Saves and configuration remain on the SD card.
 
 The 3DSX build does not install in-game updates. Replace its executable and
@@ -79,19 +82,19 @@ BUG REPORTS
 
 Press L + R + A while the issue is visible. Attach the complete quick folder
 from:
-  sdmc:/3ds/legend-of-doom/dumps/
+  sdmc:/3ds/Legend of Doom 3DS/dumps/
 
 For updater errors, also attach:
-  sdmc:/3ds/legend-of-doom/update.log
+  sdmc:/3ds/Legend of Doom 3DS/update.log
 
 L + R + X makes a full dump including process memory; use it only when needed
 and review its contents before sharing. L + R + Y deletes diagnostic folders
 only. It does not delete saves or configuration.
 
 Downloads and reports:
+  https://github.com/tinaut1986/legend-of-doom-3ds
+Original port:
   https://github.com/EstebanPdN/legend-of-doom-3ds
-Community:
-  https://discord.gg/zy8BqH5ss
 
 Legend of Doom was created by DeTwelve Games. See CREDITS.md and
 THIRD-PARTY-LICENSES.md; component notices are preserved under licenses/.

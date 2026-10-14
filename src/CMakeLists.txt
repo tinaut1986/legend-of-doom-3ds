@@ -475,10 +475,17 @@ if( CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS" )
 	list( REMOVE_ITEM PLAT_SDL_SOURCES common/platform/posix/sdl/st_start.cpp )
 	list( APPEND PLAT_SDL_SOURCES
 		common/platform/3ds/cache_3ds.cpp
+		common/platform/3ds/cia_install_3ds.c
+		common/platform/3ds/debug_link_3ds.cpp
 		common/platform/3ds/diagnostics_3ds.cpp
+		common/platform/3ds/ftp_server_3ds.c
+		common/platform/3ds/gpu_3ds.cpp
+		common/platform/3ds/gpu_world_3ds.cpp
 		common/platform/3ds/i_input_3ds.cpp
 		common/platform/3ds/lifecycle_3ds.cpp
 		common/platform/3ds/memory.cpp
+		common/platform/3ds/net_3ds.c
+		common/platform/3ds/perf_3ds.cpp
 		common/platform/3ds/update/updater.c
 		common/platform/3ds/update/update_manifest.c
 		common/platform/3ds/st_start.cpp )
@@ -1301,9 +1308,13 @@ if( CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS" )
 	target_compile_definitions( zdoom PRIVATE
 		NOVAGL_GZDOOM_COMPAT=1
 		NO_RENDER_BUFFER=1
-		LOD3DS_BUILD_PROFILE_NAME="${LOD3DS_BUILD_PROFILE}"
-		LOD3DS_BUILD_ID="${LOD3DS_BUILD_ID}"
-		LOD3DS_PORT_VERSION="${LOD3DS_PORT_VERSION}" )
+		LOD3DS_BUILD_PROFILE_NAME="${LOD3DS_BUILD_PROFILE}" )
+	# Version, channel and build ID live in a generated header (lod3ds_version.h)
+	# rather than in compile definitions, so changing them rebuilds only its users.
+	if( NOT LOD3DS_GENERATED_DIR OR NOT EXISTS "${LOD3DS_GENERATED_DIR}/lod3ds_version.h" )
+		message( FATAL_ERROR "LOD3DS_GENERATED_DIR must hold lod3ds_version.h (platform/3ds/build.sh writes it)" )
+	endif()
+	target_include_directories( zdoom PRIVATE "${LOD3DS_GENERATED_DIR}" )
 	if( LOD3DS_HARDWARE_DIAGNOSTIC )
 		target_compile_definitions( zdoom PRIVATE LOD3DS_HARDWARE_DIAGNOSTIC=1 )
 	endif()
@@ -1318,6 +1329,31 @@ if( CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS" )
 	endif()
 	if( LOD3DS_HYBRID_PERFORMANCE )
 		target_compile_definitions( zdoom PRIVATE LOD3DS_HYBRID_PERFORMANCE=1 )
+		# The GPU 2D path's vertex shader (common/platform/3ds/gpu_3ds.v.pica): assembled by
+		# picasso, embedded by bin2s and assembled like the start file below, so the project
+		# does not need the ASM language.
+		find_program( LOD3DS_PICASSO picasso HINTS "$ENV{DEVKITPRO}/tools/bin" REQUIRED )
+		find_program( LOD3DS_BIN2S bin2s HINTS "$ENV{DEVKITPRO}/tools/bin" REQUIRED )
+		set( LOD3DS_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/lod3ds-shaders" )
+		# Two programs in one binary: the 2D path's (DVLE 0) and the 3D world's (DVLE 1).
+		set( LOD3DS_SHADER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/common/platform/3ds/gpu_3ds.v.pica" )
+		set( LOD3DS_WORLD_SHADER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/common/platform/3ds/gpu_world_3ds.v.pica" )
+		add_custom_command(
+			OUTPUT "${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.o" "${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.h"
+			COMMAND "${CMAKE_COMMAND}" -E make_directory "${LOD3DS_SHADER_DIR}"
+			COMMAND "${LOD3DS_PICASSO}" -o "${LOD3DS_SHADER_DIR}/gpu_3ds.shbin" "${LOD3DS_SHADER_SOURCE}" "${LOD3DS_WORLD_SHADER_SOURCE}"
+			COMMAND sh -c "\"${LOD3DS_BIN2S}\" -a 4 -H \"${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.h\" \"${LOD3DS_SHADER_DIR}/gpu_3ds.shbin\" > \"${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.s\""
+			COMMAND "${CMAKE_C_COMPILER}" -march=armv6k -mfloat-abi=hard -c
+				"${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.s" -o "${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.o"
+			DEPENDS "${LOD3DS_SHADER_SOURCE}" "${LOD3DS_WORLD_SHADER_SOURCE}"
+			VERBATIM )
+		add_custom_target( lod3ds_gpu_shader DEPENDS
+			"${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.o" "${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.h" )
+		add_dependencies( zdoom lod3ds_gpu_shader )
+		set_source_files_properties( "${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.o" PROPERTIES
+			EXTERNAL_OBJECT TRUE GENERATED TRUE )
+		target_sources( zdoom PRIVATE "${LOD3DS_SHADER_DIR}/gpu_3ds_shbin.o" )
+		target_include_directories( zdoom PRIVATE "${LOD3DS_SHADER_DIR}" )
 	endif()
 	set(LOD3DS_UPDATE_DEPS "" CACHE PATH "Updater static library prefix")
 	target_include_directories(zdoom PRIVATE "${LOD3DS_UPDATE_DEPS}/include")

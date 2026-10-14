@@ -397,6 +397,11 @@ void CheckUpdate(FFlatVertexBuffer* fvb, sector_t* sector)
 void CreateVBO(FFlatVertexBuffer* fvb, TArray<sector_t>& sectors)
 {
 	fvb->vbo_shadowdata.Resize(fvb->mNumReserved);
+#ifdef __3DS__
+	// The index data was only ever appended to: every map load (savegames included)
+	// added the new map's indices after the old ones, ~400 KB a load on the overworld.
+	fvb->ibo_data.Clear();
+#endif
 	CreateVertices(fvb, sectors);
 	fvb->mCurIndex = fvb->mIndex = fvb->vbo_shadowdata.Size();
 	fvb->Copy(0, fvb->mIndex);

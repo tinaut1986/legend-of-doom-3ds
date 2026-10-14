@@ -52,6 +52,8 @@
 #ifdef __3DS__
 #include "common/platform/3ds/diagnostics_3ds.h"
 #include "common/platform/3ds/memory_3ds.h"
+#include "common/platform/3ds/perf_3ds.h"
+#include "common/platform/3ds/gpu_3ds.h"
 #endif
 
 void Draw2D(F2DDrawer *drawer, FRenderState &state);
@@ -199,7 +201,12 @@ void PolyFrameBuffer::Update()
 
 	Flush3D.Clock();
 
-	Draw2D();
+	{
+		#ifdef __3DS__
+		F3DSPerfScope perfTwoD(E3DSPerfPart::TwoD);
+		#endif
+		Draw2D();
+	}
 	twod->Clear();
 
 	Flush3D.Unclock();
@@ -213,28 +220,50 @@ void PolyFrameBuffer::Update()
 		int pixelsize = 4;
 		#ifdef __3DS__
 		// Retire workers before composing the native HUD.
-		DrawerThreads::WaitForWorkers();
-		I_3DSComposeGameplayFrame(
-			static_cast<unsigned char *>(mCanvas->GetPixels()),
-			mCanvas->GetPitch() * pixelsize, w, h);
-		if (!mNativeMenuBase.empty() && I_3DSNativeMenuVisible() &&
-			mNativeMenuBaseWidth == w && mNativeMenuBaseHeight == h &&
-			mNativeMenuBasePitch == mCanvas->GetPitch() * pixelsize)
 		{
-			I_3DSRouteNativeMenuFrame(
-				static_cast<unsigned char *>(mCanvas->GetPixels()),
-				mNativeMenuBase.data(), mNativeMenuBasePitch, w, h);
+			F3DSPerfScope perfRaster(E3DSPerfPart::RasterWait);
+			DrawerThreads::WaitForWorkers();
 		}
-		mNativeMenuBase.clear();
-		mNativeMenuBasePitch = 0;
-		mNativeMenuBaseWidth = 0;
-		mNativeMenuBaseHeight = 0;
+		#ifdef LOD3DS_HYBRID_PERFORMANCE
+		const bool gpuOverlays = Gpu3DSPresentable();
+		#else
+		const bool gpuOverlays = false;
+		#endif
+		if (I_3DSNativeMenuOwnsFrame())
+		{
+			F3DSPerfScope perfCompose(E3DSPerfPart::Compose);
+			I_3DSPresentNativeMenu(static_cast<unsigned char *>(mCanvas->GetPixels()),
+				mCanvas->GetPitch() * pixelsize, w, h, gpuOverlays);
+			mNativeMenuBase.clear();
+		}
+		else
+		{
+			F3DSPerfScope perfCompose(E3DSPerfPart::Compose);
+			I_3DSComposeGameplayFrame(
+				static_cast<unsigned char *>(mCanvas->GetPixels()),
+				mCanvas->GetPitch() * pixelsize, w, h, gpuOverlays);
+			if (!mNativeMenuBase.empty() && I_3DSNativeMenuVisible() &&
+				mNativeMenuBaseWidth == w && mNativeMenuBaseHeight == h &&
+				mNativeMenuBasePitch == mCanvas->GetPitch() * pixelsize)
+			{
+				I_3DSRouteNativeMenuFrame(
+					static_cast<unsigned char *>(mCanvas->GetPixels()),
+					mNativeMenuBase.data(), mNativeMenuBasePitch, w, h, gpuOverlays);
+			}
+			mNativeMenuBase.clear();
+			mNativeMenuBasePitch = 0;
+			mNativeMenuBaseWidth = 0;
+			mNativeMenuBaseHeight = 0;
+		}
 		#endif
 		const uint8_t *src = (const uint8_t*)mCanvas->GetPixels();
 		const bool neutralColorTransform = vid_gamma == 1.0f &&
 			vid_contrast == 1.0f && vid_brightness == 0.0f &&
 			vid_saturation == 1.0f;
 		bool presented = false;
+		#ifdef __3DS__
+		const uint64_t perfPresent = I_3DSPerfNow();
+		#endif
 		#if defined(__3DS__) && (!defined(LOD3DS_SAFE_SOFTWARE) || defined(LOD3DS_HYBRID_PERFORMANCE))
 		if (neutralColorTransform)
 		{
@@ -308,7 +337,17 @@ void PolyFrameBuffer::Update()
 				#endif
 			}
 		}
+		#ifdef __3DS__
+		// Whatever the GPU path recorded for a frame it did not present is dropped here.
+		I_3DSGpuDiscard2D();
+		I_3DSPerfSince(E3DSPerfPart::Present, perfPresent);
+		const uint64_t perfLimit = I_3DSPerfNow();
+		#endif
 		FPSLimit();
+		#ifdef __3DS__
+		I_3DSPerfSince(E3DSPerfPart::Limit, perfLimit);
+		I_3DSPerfFrameDone(w, h);
+		#endif
 	}
 
 	DrawerThreads::WaitForWorkers();
@@ -340,6 +379,9 @@ void PolyFrameBuffer::RenderTextureView(FCanvasTexture* tex, std::function<void(
 	FlushDrawCommands();
 	DrawerThreads::WaitForWorkers();
 	mRenderState->SetRenderTarget(GetCanvas(), GetDepthStencil(), true);
+	#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	BaseLayer->MarkContentChanged();
+	#endif
 
 	tex->SetUpdated(true);
 }
@@ -465,13 +507,33 @@ FTexture *PolyFrameBuffer::WipeStartScreen()
 	auto systex = static_cast<PolyHardwareTexture*>(tex->GetSystemTexture());
 
 	systex->CreateWipeTexture(mScreenViewport.width, mScreenViewport.height, "WipeStartScreen");
+	#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	// The last frame's 2D was drawn by the GPU and is not in the canvas: take the image the
+	// LCD shows instead.
+	if (Gpu3DSPresentable())
+	{
+		DCanvas *image = systex->GetImage(nullptr, 0, 0);
+		if (image != nullptr && I_3DSGpuReadTop(image->GetPixels(), image->GetPitch(),
+			image->GetWidth(), image->GetHeight(), true))
+		{
+			systex->MarkContentChanged();
+		}
+	}
+	#endif
 
 	return tex;
 }
 
 FTexture *PolyFrameBuffer::WipeEndScreen()
 {
+	#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	// The new frame is captured from the canvas, so its 2D must be drawn there.
+	mForceSoftware2D = true;
 	Draw2D();
+	mForceSoftware2D = false;
+	#else
+	Draw2D();
+	#endif
 	twod->Clear();
 
 	auto tex = new FWrapperTexture(mScreenViewport.width, mScreenViewport.height, 1);
@@ -620,8 +682,31 @@ void PolyFrameBuffer::BeginFrame()
 
 void PolyFrameBuffer::Draw2D()
 {
+	#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+	if (UseGpu2D3DS())
+	{
+		if (I_3DSGpuRecord2D(twod)) return;
+		I_3DSGpuCountSoftware2D();
+	}
+	#endif
 	::Draw2D(twod, *mRenderState);
 }
+
+#if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
+CVAR(Bool, lod3ds_gpu_2d, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+
+bool PolyFrameBuffer::Gpu3DSPresentable() const
+{
+	// Update presents through the GPU only with a neutral colour transform.
+	return I_3DSGpuReady() && vid_gamma == 1.0f && vid_contrast == 1.0f &&
+		vid_brightness == 0.0f && vid_saturation == 1.0f;
+}
+
+bool PolyFrameBuffer::UseGpu2D3DS() const
+{
+	return lod3ds_gpu_2d && !mForceSoftware2D && Gpu3DSPresentable() && !I_3DSGpu2DBlocked();
+}
+#endif
 
 #ifdef __3DS__
 void PolyFrameBuffer::CaptureNativeMenuBase()
@@ -632,7 +717,13 @@ void PolyFrameBuffer::CaptureNativeMenuBase()
 	// M_Drawer can then use the ordinary engine canvas without any special-case
 	// rendering code, while this exact pre-menu image remains available for the
 	// upper LCD restoration and menu-pixel extraction.
+	#ifdef LOD3DS_HYBRID_PERFORMANCE
+	mForceSoftware2D = true;
 	Draw2D();
+	mForceSoftware2D = false;
+	#else
+	Draw2D();
+	#endif
 	twod->Clear();
 	FlushDrawCommands();
 	DrawerThreads::WaitForWorkers();

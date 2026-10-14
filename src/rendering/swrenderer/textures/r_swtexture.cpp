@@ -41,6 +41,10 @@
 #include "texturemanager.h"
 #include <mutex>
 
+#ifdef __3DS__
+EXTERN_CVAR(Bool, r_mipmap)
+#endif
+
 inline EUpscaleFlags scaleFlagFromUseType(ETextureType useType)
 {
 	switch (useType)
@@ -160,7 +164,13 @@ const uint8_t *FSoftwareTexture::GetPixelsLocked(int style)
 
 const uint32_t *FSoftwareTexture::GetPixelsBgraLocked()
 {
+#ifdef __3DS__
+	// A texture built while r_mipmap was off has no chain; rebuild it if the
+	// cvar is turned on (between frames, so no drawer holds the old pointer).
+	if (PixelsBgra.Size() == 0 || CheckModified(2) || (r_mipmap && !BgraMipmapped))
+#else
 	if (PixelsBgra.Size() == 0 || CheckModified(2))
+#endif
 	{
 		if (mPhysicalScale == 1)
 		{
@@ -360,7 +370,12 @@ void FSoftwareTexture::GenerateBgraFromBitmap(const FBitmap &bitmap)
 
 void FSoftwareTexture::CreatePixelsBgraWithMipmaps()
 {
+#ifdef __3DS__
+	BgraMipmapped = r_mipmap;
+	int levels = BgraMipmapped ? MipmapLevels() : 1;
+#else
 	int levels = MipmapLevels();
+#endif
 	int buffersize = 0;
 	for (int i = 0; i < levels; i++)
 	{
@@ -403,6 +418,9 @@ void FSoftwareTexture::GenerateBgraMipmaps()
 		Color4f operator-(float s) const { return Color4f{ a - s, r - s, g - s, b - s }; }
 	};
 
+#ifdef __3DS__
+	if (!BgraMipmapped) return;
+#endif
 	int levels = MipmapLevels();
 	std::vector<Color4f> image(PixelsBgra.Size());
 

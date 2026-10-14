@@ -1,0 +1,58 @@
+# GZDoom 'bench' output, hwrenderer on the poly backend with its draws dropped (P2.2 probe),
+# New 3DS, 2026-10-13. Runs in order: MAP01 (no distance cull), MAP02, MAP01 with the probe's
+# distance cull at Map01DistanceFogEnd (1536). Times in ms for one frame.
+
+Map MAP01: "Hyrule",
+x = -1239.9998, y = -3321.9034, z = 41.0001, angle = 90.0000, pitch = 0.0000
+8 fps
+
+Walls: 2580 (0 splits, 19 t-splits, 7496 vertices)
+Flats: 129 (129 primitives, 10716 vertices)
+Sprites: 195, Decals=0, Portals: 2, Command buffers: 0
+BSP = 11.585, Clip=36.482
+W: Render=29.039, Setup=20.435
+F: Render=2.213, Setup=1.679
+S: Render=3.481, Setup=1.465
+2D: 0.000 Finish3D: 0.007
+Main thread total=48.067, Main thread waiting=0.000 Worker thread total=0.000, Worker thread waiting=-23.579
+All=92.904, Render=43.304, Setup=48.223, Portal=0.134, Drawcalls=20.809, Postprocess=0.053, Finish=0.000
+DLight - Walls: 0 processed, 0 rendered - Flats: 0 processed, 0 rendered
+
+
+
+Map MAP02: "Eagle",
+x = 256.0000, y = -320.0000, z = 33.0000, angle = 90.0000, pitch = 0.0000
+91 fps
+
+Walls: 88 (0 splits, 0 t-splits, 348 vertices)
+Flats: 38 (38 primitives, 3108 vertices)
+Sprites: 1, Decals=0, Portals: 0, Command buffers: 0
+BSP = 0.515, Clip=1.280
+W: Render=1.486, Setup=0.749
+F: Render=0.548, Setup=0.118
+S: Render=0.025, Setup=0.039
+2D: 0.000 Finish3D: 0.003
+Main thread total=1.795, Main thread waiting=0.000 Worker thread total=0.000, Worker thread waiting=-0.906
+All=4.376, Render=2.274, Setup=1.886, Portal=0.000, Drawcalls=1.343, Postprocess=0.032, Finish=0.000
+DLight - Walls: 0 processed, 0 rendered - Flats: 0 processed, 0 rendered
+
+
+
+Map MAP01: "Hyrule",
+x = -1216.0000, y = -3328.0000, z = 41.0000, angle = 90.0000, pitch = 0.0000
+21 fps
+
+Walls: 106 (0 splits, 1 t-splits, 352 vertices)
+Flats: 127 (127 primitives, 10674 vertices)
+Sprites: 195, Decals=0, Portals: 0, Command buffers: 0
+BSP = 11.326, Clip=10.747
+W: Render=1.550, Setup=0.924
+F: Render=2.050, Setup=1.630
+S: Render=3.075, Setup=1.478
+2D: 0.000 Finish3D: 0.008
+Main thread total=22.073, Main thread waiting=0.000 Worker thread total=0.000, Worker thread waiting=-4.032
+All=30.589, Render=8.153, Setup=22.176, Portal=0.000, Drawcalls=3.964, Postprocess=0.046, Finish=0.000
+DLight - Walls: 0 processed, 0 rendered - Flats: 0 processed, 0 rendered
+
+
+

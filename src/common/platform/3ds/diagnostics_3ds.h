@@ -10,6 +10,8 @@ struct F3DSDiagnosticButtonResult
 // intentionally independent from GZDoom's logfile so a crash or hang during
 // early engine/video initialization still leaves a precise last-known stage.
 void I_3DSStartupLog(const char *stage);
+// The same for the C side (ftp_server_3ds.c): `line` is logged as the stage. Main thread only.
+extern "C" void I_3DSStartupLogLine(const char *line);
 void I_3DSWriteFatalLog(const char *message);
 
 // The 3DS video service is brought up before the expensive WAD/ZScript load.
@@ -64,14 +66,31 @@ bool I_3DSDiagnosticTouch(float x, float y);
 // pixels for the lower LCD, then restores the upper canvas with only the
 // translucent live/title background.
 bool I_3DSNativeMenuVisible();
+
+// Native menus (PLAN U1, native_menu_3ds.inc). OwnsFrame: the open menu is one drawn
+// straight on the touch screen, so the engine does not draw it (no M_Drawer).
+// Frozen: and the top screen of its first frame is kept, so D_Display renders nothing.
+// Present: from PolyFrameBuffer::Update instead of the compositor and the menu route.
+bool I_3DSNativeMenuOwnsFrame();
+bool I_3DSNativeMenuFrozen();
+// gpuOverlays: the frame is presented by the GPU path (gpu_3ds.h), so the FPS counter and the
+// crosshair go there, at the LCD's resolution, instead of into the canvas.
+void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, int height,
+	bool gpuOverlays);
 void I_3DSRouteNativeMenuFrame(unsigned char *menuPixels,
-	const unsigned char *basePixels, int pitchBytes, int width, int height);
+	const unsigned char *basePixels, int pitchBytes, int width, int height,
+	bool gpuOverlays);
+
+// The engine 2D cannot go to the GPU this frame: the port needs it inside the canvas pixels
+// (a native menu's first frame, which is kept; a menu routed to the touch screen; the top
+// automap, which the compositor draws over everything).
+bool I_3DSGpu2DBlocked();
 
 // Final CPU-canvas compositor. It makes FPS and the supplied crosshair
 // independent of gameplay render scale and replaces the classic brown
 // automap with an enlarged copy of the textured lower-screen map.
 void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
-	int width, int height);
+	int width, int height, bool gpuOverlays);
 
 // Called from the main thread after input polling, before the next frame is
 // rendered. A pending request is consumed at most once per chord press.
@@ -104,3 +123,14 @@ bool I_3DSQuitWithoutSavingRequested();
 
 int I_3DSUpdateAction(int action);
 void I_3DSServiceUpdater();
+
+// The in-game FTP server and remote control (ftp_server_3ds.h, debug_link_3ds.h). Service runs
+// once per input poll on the game thread: starts or stops the server with OPTIONS -> DEVELOPER ->
+// FTP SERVER, logs its lines and relaunches after a SITE INSTALL. Stop before exiting.
+void I_3DSServiceConsoleLink();
+void I_3DSStopConsoleLink();
+
+// Both LCDs as 24-bit BMPs (the remote control's SITE SHOT).
+bool I_3DSSaveScreenShots(const char *topPath, const char *bottomPath);
+// Once per input poll: saves the config when the player leaves the option menus.
+void I_3DSServiceSettingsSave();

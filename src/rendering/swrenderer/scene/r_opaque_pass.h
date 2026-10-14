@@ -78,6 +78,11 @@ namespace swrenderer
 
 		RenderThread *Thread = nullptr;
 
+#ifdef __3DS__
+		// The subsectors the last pass found visible, front to back (gpu_world_3ds.cpp).
+		const std::vector<uint32_t> &VisibleSubsectors() const { return PvsSubsectors; }
+#endif
+
 	private:
 		void RenderBSPNode(void *node);
 		void RenderSubsector(subsector_t *sub);

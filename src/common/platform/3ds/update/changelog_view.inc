@@ -1,38 +1,3 @@
-// Match the Controls font's shaded pixels, including its dark outline. Painting
-// every opaque pixel white fills the outline and closes the counters in letters.
-void DrawUpdateTopText(unsigned char *pixels, int pitch, int width, int height,
-    FFont *font, int x, int y, const char *text, FOverlayColor color)
-{
-    constexpr float scale = 1.28f;
-    float pen = 0;
-    for (const unsigned char *c = reinterpret_cast<const unsigned char *>(text); *c; ++c)
-    {
-        int advance = font->GetSpaceWidth();
-        auto *glyph = font->GetChar(*c, CR_UNTRANSLATED, &advance);
-        if (glyph && glyph->GetTexture())
-        {
-            FBitmap bitmap = glyph->GetTexture()->GetBgraBitmap(nullptr);
-            for (int py = 0; bitmap.GetPixels() && py < bitmap.GetHeight(); ++py)
-            for (int px = 0; px < bitmap.GetWidth(); ++px)
-            {
-                const auto *pixel = bitmap.GetPixels() + py * bitmap.GetPitch() + px * 4;
-                if (pixel[3] < 32) continue;
-                const unsigned shade = std::max({pixel[0], pixel[1], pixel[2]});
-                const FOverlayColor ink{
-                    static_cast<unsigned char>(color.Red * shade / 255u),
-                    static_cast<unsigned char>(color.Green * shade / 255u),
-                    static_cast<unsigned char>(color.Blue * shade / 255u)};
-                const int left = std::lround((pen + px) * scale);
-                const int top = std::lround(py * scale);
-                NativeTopRect(pixels, pitch, width, height, x + left, y + top,
-                    std::lround((pen + px + 1) * scale) - left,
-                    std::lround((py + 1) * scale) - top, ink, 255);
-            }
-        }
-        pen += advance + font->GetDefaultKerning();
-    }
-}
-
 void DrawUpdateTopBackground(unsigned char *pixels, int pitch, int width, int height)
 {
     // Select the title artwork explicitly, even when the idle sequence is on
@@ -56,8 +21,10 @@ void DrawUpdateTopBackground(unsigned char *pixels, int pitch, int width, int he
 bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int height)
 {
     if (!CurrentMenu || !CurrentMenu->IsKindOf("LegendUpdateMenu")) return false;
-    auto font = NewSmallFont;
-    if (!font) return false;
+    // The NES font of the native menus (native_menu_3ds.inc), x1: 8 pixels a character.
+    LoadNesFont();
+    if (!NesFont.Valid) return false;
+    const size_t columns = static_cast<size_t>(std::min(42, (width - 32) / 8));
     static char bundled[12289] = {}, cached[12289] = {}, lines[768][43];
     static bool loaded = false;
     static unsigned count = 0;
@@ -82,8 +49,6 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
         static char formatted[384][43];
         const unsigned formattedCount = Update_FormatNotes(cached, formatted, 384);
         count = 0;
-        // Measure the proportional font at its actual drawing scale. A fixed
-        // character count alone can push wide glyphs beyond the LCD edge.
         for (unsigned row = 0; row < formattedCount && count < 768; ++row)
         {
             const char *remaining = formatted[row];
@@ -92,7 +57,7 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
                 size_t take = std::strlen(remaining);
                 char candidate[43];
                 std::strcpy(candidate, remaining);
-                while (take > 1 && std::lround(NativeFontTextWidth(font, candidate)*1.28f) > width-32)
+                while (take > 1 && take > columns)
                     candidate[--take] = 0;
                 if (take < std::strlen(remaining))
                 {
@@ -111,7 +76,7 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
     unsigned first = 0;
     if (count && !std::strcmp(lines[0], "Changelog"))
         while (++first < count && !lines[first][0]) {}
-    const unsigned rowHeight = std::lround(font->GetHeight()*1.28f) + 5;
+    const unsigned rowHeight = 11;
     const unsigned rows = std::max(1, (height - 78) / int(rowHeight));
     const unsigned pages = std::max(1u, (count-first+rows-1)/rows);
     int &page = CurrentMenu->IntVar(FName("NativeUpdatePage"));
@@ -120,19 +85,18 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
     DrawUpdateTopBackground(pixels, pitch, width, height);
     auto centered = [&](int y, const char *text, FOverlayColor color)
     {
-        DrawUpdateTopText(pixels, pitch, width, height, font,
-            (width-std::lround(NativeFontTextWidth(font, text)*1.28f))/2, y, text, color);
+        NesTopText(pixels, pitch, width, height, (width - NesTextWidth(text, 1)) / 2, y, text, 1, color);
     };
-    centered(10, "CHANGELOG", OverlayRed);
+    centered(10, Tr("CHANGELOG"), NesRed);
     UpdateStatus status;
     Updater_GetStatus(&status);
-    const char *version = onlineNotes && status.version[0] ? status.version : LOD3DS_PORT_VERSION;
+    const char *version = onlineNotes && status.version[0] ? status.version : LOD3DS_PORT_VERSION_LABEL;
     centered(29, version, OverlayIvory);
     for (unsigned i = first + page*rows; i < count && i < first+(page+1)*rows; ++i)
-        DrawUpdateTopText(pixels, pitch, width, height, font, 16,
-            52+(i-first-page*rows)*rowHeight, lines[i], OverlayIvory);
+        NesTopText(pixels, pitch, width, height, 16,
+            52+(i-first-page*rows)*rowHeight, lines[i], 1, NesWhite);
     char footer[64];
-    std::snprintf(footer, sizeof(footer), "L / R: PAGE %d / %u", page+1, pages);
+    std::snprintf(footer, sizeof(footer), "%s %d / %u", Tr("L R PAGE"), page+1, pages);
     centered(height-20, footer, OverlayIvory);
     return true;
 }

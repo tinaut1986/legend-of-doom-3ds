@@ -1,9 +1,10 @@
 #include "cmdlib.h"
 #include "i_system.h"
+#include "app_paths_3ds.h"
 
 namespace
 {
-const char *const DataRoot = "sdmc:/3ds/legend-of-doom/";
+const char *const DataRoot = LOD3DS_APP_DIR "/";
 
 FString EnsureDirectory(const char *suffix)
 {

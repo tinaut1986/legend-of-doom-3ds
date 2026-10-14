@@ -37,6 +37,9 @@
 #include "templates.h"
 #include "m_joy.h"
 #include "keydef.h"
+#ifdef __3DS__
+#include "../../3ds/debug_link_3ds.h"
+#endif
 
 // Physical 3DS sticks need a real center dead zone. Desktop joystick behavior
 // remains unchanged.
@@ -184,7 +187,14 @@ public:
 		{
 			buttonstate = 0;
 
+#ifdef __3DS__
+			// The remote control can hold a stick (debug builds, debug_link_3ds.h).
+			int injected = 0;
+			Axes[i].Value = (DebugLink_Axis(i, &injected) ? injected :
+				SDL_JoystickGetAxis(Device, i))/32767.0;
+#else
 			Axes[i].Value = SDL_JoystickGetAxis(Device, i)/32767.0;
+#endif
 			Axes[i].Value = Joy_RemoveDeadZone(Axes[i].Value, Axes[i].DeadZone, &buttonstate);
 
 			// Map button to axis

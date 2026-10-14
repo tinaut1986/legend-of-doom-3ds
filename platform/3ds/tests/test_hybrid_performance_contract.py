@@ -48,39 +48,70 @@ class HybridPerformanceContractTests(unittest.TestCase):
         video = (
             ROOT / "src/common/platform/posix/sdl/sdlglvideo.cpp"
         ).read_text(encoding="utf-8")
+        gpu = (ROOT / "src/common/platform/3ds/gpu_3ds.cpp").read_text(
+            encoding="utf-8"
+        )
         framebuffer = (
             ROOT
             / "src/common/rendering/polyrenderer/backend/poly_framebuffer.cpp"
         ).read_text(encoding="utf-8")
-        self.assertIn("C3D_TexInitVRAM(&hybridTexture", video)
-        self.assertIn("C3D_SyncDisplayTransfer(hybridUpload", video)
-        self.assertIn("C2D_DrawImage(image, &params", video)
-        self.assertIn("HybridMaximumCanvasWidth = 400", video)
-        self.assertIn("GPU_LINEAR, GPU_LINEAR", video)
+        self.assertIn("C3D_TexInitVRAM(&CanvasTexture", gpu)
+        self.assertIn("C3D_SyncDisplayTransfer(CanvasUpload", gpu)
+        self.assertIn("constexpr int TopWidth = 400", gpu)
+        self.assertIn("GPU_LINEAR, GPU_LINEAR", gpu)
+        canvas = gpu[gpu.index("case EMode::Canvas:") :]
+        canvas = canvas[: canvas.index("case EMode::Image:")]
         self.assertLess(
-            video.index(
-                "ConfigureHybridBgraTexture();",
-                video.index("bool I_PolyPresentDirect3DS("),
-            ),
-            video.index(
-                "C2D_DrawImage(image, &params",
-                video.index("bool I_PolyPresentDirect3DS("),
-            ),
-        )
-        configure = video[video.index("void ConfigureHybridBgraTexture()") :]
-        configure = configure[: configure.index("void DeinitHybridPresenter()")]
-        self.assertLess(
-            configure.index("GPU_TEVOP_RGB_SRC_G"),
-            configure.index("GPU_TEVOP_RGB_SRC_B"),
+            canvas.index("GPU_TEVOP_RGB_SRC_G"), canvas.index("GPU_TEVOP_RGB_SRC_B")
         )
         self.assertLess(
-            configure.index("GPU_TEVOP_RGB_SRC_B"),
-            configure.index("GPU_TEVOP_RGB_SRC_ALPHA"),
+            canvas.index("GPU_TEVOP_RGB_SRC_B"),
+            canvas.index("GPU_TEVOP_RGB_SRC_ALPHA"),
         )
-        self.assertIn("C3D_FrameEnd(GX_CMDLIST_FLUSH)", video)
-        self.assertIn("hybridC2DFlushSize", video)
+        self.assertIn("C3D_FrameEnd(GX_CMDLIST_FLUSH)", gpu)
+        self.assertIn("GSPGPU_FlushDataCache(arena.Vertices", gpu)
+        self.assertIn("I_3DSGpuPresentTop(pixels, pitch, width, height)", video)
         self.assertIn("hybrid-presenter-sdl-fallback", video)
         self.assertIn("defined(LOD3DS_HYBRID_PERFORMANCE)", framebuffer)
+
+    def test_engine_2d_goes_to_the_gpu_with_a_software_fallback(self):
+        framebuffer = (
+            ROOT
+            / "src/common/rendering/polyrenderer/backend/poly_framebuffer.cpp"
+        ).read_text(encoding="utf-8")
+        draw = framebuffer[framebuffer.index("void PolyFrameBuffer::Draw2D()") :]
+        draw = draw[: draw.index("::Draw2D(twod, *mRenderState);")]
+        self.assertIn("I_3DSGpuRecord2D(twod)", draw)
+        # The wipe's new screen and the menu base are read from the canvas pixels.
+        wipe = framebuffer[framebuffer.index("FTexture *PolyFrameBuffer::WipeEndScreen()") :]
+        self.assertLess(wipe.index("mForceSoftware2D = true;"), wipe.index("Draw2D();"))
+        start = framebuffer[framebuffer.index("FTexture *PolyFrameBuffer::WipeStartScreen()") :]
+        self.assertIn("I_3DSGpuReadTop(", start[: start.index("return tex;")])
+        self.assertIn("I_3DSGpuDiscard2D();", framebuffer)
+
+    def test_bottom_screen_transfers_never_overlap_the_frame(self):
+        gpu = (ROOT / "src/common/platform/3ds/gpu_3ds.cpp").read_text(
+            encoding="utf-8"
+        )
+        present = gpu[gpu.index("bool I_3DSGpuPresentTop(") :]
+        present = present[: present.index("\n}\n")]
+        # The bottom layer is copied alone in the GX queue, before the frame starts: inside it,
+        # libctru runs it alongside the frame's drawing and the queue hung on the console.
+        self.assertLess(
+            present.index("PrepareBottom()"), present.index("C3D_FrameBegin(0)")
+        )
+        prepare = gpu[gpu.index("bool PrepareBottom()") :]
+        prepare = prepare[: prepare.index("\n}\n")]
+        self.assertIn("C3D_SyncDisplayTransfer(", prepare)
+        # Draws keep their own copy of the texture descriptor (the engine may free it first).
+        draw = gpu[gpu.index("struct FDraw") :]
+        self.assertIn("C3D_Tex Texture;", draw[: draw.index("};")])
+        # Without a presented frame the bottom screen goes out through the CPU, never through
+        # an empty citro3d frame (one with no draw is never submitted).
+        changed = gpu[gpu.index("void I_3DSGpuBottomChanged()") :]
+        changed = changed[: changed.index("\n}\n")]
+        self.assertNotIn("C3D_FrameBegin", changed)
+        self.assertIn("gfxScreenSwapBuffers(GFX_BOTTOM", changed)
 
     def test_manifest_and_overlay_identify_the_real_hybrid_path(self):
         build = (ROOT / "platform/3ds/build.sh").read_text(encoding="utf-8")
@@ -96,7 +127,7 @@ class HybridPerformanceContractTests(unittest.TestCase):
         self.assertIn("pica200-bilinear", build)
         self.assertIn("bgra-to-rgb-tev-g-b-alpha-before-draw", build)
         self.assertIn(
-            "gsp-active-upload-rows-plus-bounded-citro2d-vertex-range", build
+            "gsp-active-upload-rows-plus-frame-vertex-arena", build
         )
         self.assertIn("I_3DSGameplayResolutionTenths() * 10", diagnostics)
         self.assertIn('"QUICK DUMP"', diagnostics)
