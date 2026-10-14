@@ -24,10 +24,9 @@ change (what goes where: the table in `CLAUDE.md`).
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.1.1` (on origin). Published: **`v0.1.0`** (2026-10-12, **beta**,
-not on `main`): GitHub release with the CIA, QR, debug symbols, manifest and checksums, built by
-`build-release.yml` on its first run. `main` is still upstream's v1.0: nothing stable published.
-The 2026-10-13 merges below are pushed to origin (no tag yet).
+**Release line:** `release/v0.2.1` (on origin). Published: **`v0.2.0`** (2026-10-14, **stable**,
+the first: `main` merged and tagged), with the GPU world, stereo 3D, the NES bottom screen, the
+languages, AUTO UPDATE and the memory fix; before it **`v0.1.0`** (2026-10-12, beta).
 
 **Branches:**
 
@@ -46,8 +45,7 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 | _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
 | _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
-**Priority** (2026-10-14, owner, later the same day): publish **v0.2.0** as the first stable release
-(this line, with the GPU world in every build), then **P4 the 2DS**: boot it and aim for 60 fps
+**Priority** (2026-10-14, owner, later the same day): v0.2.0 published; next **P4 the 2DS**: boot it and aim for 60 fps
 mono there (P4.1, P4.2), since CPU savings for the Old 3DS help everything; then P3.2 / P2.4
 (stereo at 60 on the New 3DS) and #5 (title and menus at 35 fps). P2.3's parity (light, sky) for
 cost along the way.
