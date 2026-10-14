@@ -2000,7 +2000,12 @@ void TryRunTics (void)
 			TicStabilityEnd();
 		}
 		P_PredictPlayer(&players[consoleplayer]);
-		S_UpdateSounds (players[consoleplayer].camera);	// move positional sounds
+		{
+#ifdef __3DS__
+			F3DSPerfScope perfSound(E3DSPerfPart::Sound);
+#endif
+			S_UpdateSounds (players[consoleplayer].camera);	// move positional sounds
+		}
 	}
 	else
 	{

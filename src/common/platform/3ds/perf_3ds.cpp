@@ -149,7 +149,8 @@ int I_3DSPerfStop()
 			LOD3DS_PORT_VERSION_LABEL, LOD3DS_UPSTREAM_VERSION, LOD3DS_BUILD_ID,
 			isNew3DS ? "New 3DS" : "Old 3DS");
 		std::fprintf(file, "frame,t_ms,interval_ms,logic_ms,tics,world_ms,raster_wait_ms,twod_ms,"
-			"compose_ms,present_ms,limit_ms,bottom_ms,other_ms,state,menu,canvas_w,canvas_h\n");
+			"compose_ms,present_ms,limit_ms,bottom_ms,input_ms,sound_ms,framestart_ms,hud_ms,"
+			"other_ms,state,menu,canvas_w,canvas_h\n");
 		uint64_t previous = StartTick;
 		for (unsigned i = 0; i < RowCount; ++i)
 		{
@@ -163,7 +164,8 @@ int I_3DSPerfStop()
 				covered += parts[part];
 			}
 			const double other = interval > covered ? interval - covered : 0.0;
-			std::fprintf(file, "%u,%.2f,%.2f,%.2f,%u,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%u,%u,%u\n",
+			std::fprintf(file, "%u,%.2f,%.2f,%.2f,%u,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,"
+				"%.2f,%.2f,%s,%u,%u,%u\n",
 				i, (row.EndTick - StartTick) * ms, interval,
 				parts[static_cast<unsigned>(E3DSPerfPart::Logic)], row.Tics,
 				parts[static_cast<unsigned>(E3DSPerfPart::World)],
@@ -173,6 +175,10 @@ int I_3DSPerfStop()
 				parts[static_cast<unsigned>(E3DSPerfPart::Present)],
 				parts[static_cast<unsigned>(E3DSPerfPart::Limit)],
 				parts[static_cast<unsigned>(E3DSPerfPart::Bottom)],
+				parts[static_cast<unsigned>(E3DSPerfPart::Input)],
+				parts[static_cast<unsigned>(E3DSPerfPart::Sound)],
+				parts[static_cast<unsigned>(E3DSPerfPart::FrameStart)],
+				parts[static_cast<unsigned>(E3DSPerfPart::Hud)],
 				other, StateName(row.GameState), row.Menu, row.CanvasWidth, row.CanvasHeight);
 			previous = row.EndTick;
 		}

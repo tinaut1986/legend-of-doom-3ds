@@ -20,6 +20,10 @@ enum class E3DSPerfPart
 	Present,    // upload of the canvas and the PICA200 scale to 400x240
 	Limit,      // the frame limiter (vid_maxfps)
 	Bottom,     // the bottom-screen interface (map, items, overlay)
+	Input,      // I_StartTic: input, the console link and FTP server, updater, settings save
+	Sound,      // positional sounds and music (S_UpdateSounds, S_UpdateMusic)
+	FrameStart, // texture animations, the sky, PolyFrameBuffer::BeginFrame (the canvas clear)
+	Hud,        // the view border, the status bar / HUD, messages (engine 2D recording)
 	Count
 };
 

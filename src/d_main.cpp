@@ -1173,10 +1173,15 @@ void D_Display ()
 		wipe = nullptr;
 	}
 	
-	screen->FrameTime = I_msTimeFS();
-	TexAnim.UpdateAnimations(screen->FrameTime);
-	R_UpdateSky(screen->FrameTime);
-	screen->BeginFrame();
+	{
+#ifdef __3DS__
+		F3DSPerfScope perfFrameStart(E3DSPerfPart::FrameStart);
+#endif
+		screen->FrameTime = I_msTimeFS();
+		TexAnim.UpdateAnimations(screen->FrameTime);
+		R_UpdateSky(screen->FrameTime);
+		screen->BeginFrame();
+	}
 	twod->ClearClipRect();
 #ifdef __3DS__
 	// A native menu over a frozen top screen (PLAN U1): nothing to render, only present.
@@ -1193,15 +1198,20 @@ void D_Display ()
 		//E_RenderFrame();
 		//
 		
-		D_Render([&]()
 		{
 #ifdef __3DS__
 			F3DSPerfScope perfWorld(E3DSPerfPart::World);
 #endif
-			viewsec = RenderView(&players[consoleplayer]);
-		}, true);
+			D_Render([&]()
+			{
+				viewsec = RenderView(&players[consoleplayer]);
+			}, true);
+		}
 
 		twod->Begin(screen->GetWidth(), screen->GetHeight());
+#ifdef __3DS__
+		F3DSPerfScope perfHud(E3DSPerfPart::Hud);
+#endif
 		if (!hud_toggled)
 		{
 			V_DrawBlend(viewsec);
@@ -1499,9 +1509,19 @@ void D_DoomLoop ()
 				TryRunTics (); // will run at least one tic
 			}
 			// Update display, next frame, with current state.
-			I_StartTic ();
+			{
+#ifdef __3DS__
+				F3DSPerfScope perfInput(E3DSPerfPart::Input);
+#endif
+				I_StartTic ();
+			}
 			D_Display ();
-			S_UpdateMusic();
+			{
+#ifdef __3DS__
+				F3DSPerfScope perfSound(E3DSPerfPart::Sound);
+#endif
+				S_UpdateMusic();
+			}
 			if (wantToRestart)
 			{
 				wantToRestart = false;
