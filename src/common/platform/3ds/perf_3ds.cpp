@@ -164,7 +164,8 @@ int I_3DSPerfStop()
 				covered += parts[part];
 			}
 			const double other = interval > covered ? interval - covered : 0.0;
-			std::fprintf(file, "%u,%.2f,%.2f,%.2f,%u,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%s,%u,%u,%u\n",
+			std::fprintf(file, "%u,%.2f,%.2f,%.2f,%u,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,"
+				"%.2f,%.2f,%s,%u,%u,%u\n",
 				i, (row.EndTick - StartTick) * ms, interval,
 				parts[static_cast<unsigned>(E3DSPerfPart::Logic)], row.Tics,
 				parts[static_cast<unsigned>(E3DSPerfPart::World)],
@@ -174,6 +175,10 @@ int I_3DSPerfStop()
 				parts[static_cast<unsigned>(E3DSPerfPart::Present)],
 				parts[static_cast<unsigned>(E3DSPerfPart::Limit)],
 				parts[static_cast<unsigned>(E3DSPerfPart::Bottom)],
+				parts[static_cast<unsigned>(E3DSPerfPart::Input)],
+				parts[static_cast<unsigned>(E3DSPerfPart::Sound)],
+				parts[static_cast<unsigned>(E3DSPerfPart::FrameStart)],
+				parts[static_cast<unsigned>(E3DSPerfPart::Hud)],
 				other, StateName(row.GameState), row.Menu, row.CanvasWidth, row.CanvasHeight);
 			previous = row.EndTick;
 		}
