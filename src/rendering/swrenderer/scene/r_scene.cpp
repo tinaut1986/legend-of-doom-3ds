@@ -185,11 +185,9 @@ namespace swrenderer
 		if (r_modelscene)
 			MainThread()->Viewport->SetupPolyViewport(MainThread());
 
-		#ifdef __3DS__
-		if (renderPlayerSprites && !I_3DSGpuWorldActive())
-		#else
+		// With the GPU world too: the weapon then comes out as engine 2D (accelerated player
+		// sprites, RenderPlayerSprites::RenderRemaining), drawn by the GPU over the world.
 		if (renderPlayerSprites)
-		#endif
 			RenderPSprites();
 
 		MainThread()->Viewport->viewpoint.camera->renderflags = savedflags;
@@ -291,6 +289,9 @@ namespace swrenderer
 		if (thread->X2 < viewwidth)
 			thread->ClipSegments->Clip(thread->X2, viewwidth, true, &visitor);
 
+		#ifdef __3DS__
+		I_3DSGpuWorldBeginScene(thread);
+		#endif
 		thread->OpaquePass->RenderScene(thread->Viewport->Level());
 		#ifdef __3DS__
 		I_3DSGpuWorldCapture(thread);

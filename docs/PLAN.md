@@ -33,7 +33,7 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 
 | Branch | What | State |
 |---|---|---|
-| `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) | Open, pushed, not merged: what each holds, what was measured and the merge order are in [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md); the local `test/stereo-bottom` combines them and is what the New 3DS runs | Wait for the owner's check on the console |
+| _(merged)_ | `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS (stereo depth, sprites, trees and weapon; the bottom screen; nothing static stuck; the FTP button; the game as usual); what each holds and what was measured: [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md). The local `test/stereo-bottom` is now redundant | |
 | _(merged)_ | `fix/texture-memory` (#4: the out-of-memory close after the first dungeon; texture mipmaps skipped while `r_mipmap` is off, the `ibo_data` leak on every map load, lighter map loading, heap logs) merged into `release/v0.1.1` 2026-10-14 after the owner finished the first dungeon and went back to the overworld on the New 3DS with no close (MAP01 at 62.2 MB on both returns) | |
 | _(merged)_ | `feat/gpu-world-spike` (P2.3 first step: walls and flats of the swrenderer's visible set drawn by the PICA200, `lod3ds_gpu_world`, debug builds, off by default; and the bottom map's flicker above 35 fps) merged into `release/v0.1.1` 2026-10-13 after the owner's look on the New 3DS ("60 fuera y 110 en mazmorra", no flicker) | |
 | _(merged)_ | `docs/gpu-path` (P2.1 note, P2.2 decision, the one-shot hwrenderer probe for debug builds) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead | |
@@ -220,7 +220,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* the owner switches the language on the console and finds no English left
   in the interface in Spanish (and none Spanish in English).
 
-- [ ] **U4** The gameplay bottom screen like the NES Zelda's pause screen, with debug cheats.
+- [x] **U4** The gameplay bottom screen like the NES Zelda's pause screen, with debug cheats.
   *Spec:* owner 2026-10-13: the MAP / ITEMS tabs look bolted on, their text scaled, the layout
   and style clash, and a touch on the map both zoomed it and moved the camera. One screen with
   no tabs, on black with the NES palette and font: INVENTORY with the B item's box and every
@@ -416,6 +416,9 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   already ruled out by upstream's history. The poly backend's drawers crash on the 3DS in mode 4
   (not investigated, unused by (c)). First step: a timed spike on MAP01 (walls and flats from
   load-time buffers, the swrenderer's visible set, no lighting).
+- **2026-10-13** Priority set by the owner after the GPU world spike (60 fps on MAP01): stereo 3D
+  (P3) next, then the 2DS (P4), before finishing P2.3's parity (light, sky, sprites). Stereo comes
+  almost for free from the GPU world (two submissions of one visible set).
 - **2026-10-14** P2.4 measured on the New 3DS with the GPU world: GZDoom's tic stability
   busy-wait (~3 ms a frame) is off on the 3DS (`r_ticstability 0`), and things that cannot change
   by themselves are no longer ticked (MAP01's ~490 bushes, spawn spots, teleport destinations):

@@ -4,7 +4,9 @@
 // takes the subsectors it found visible (front to back, PvsSubsectors) and builds their walls
 // and flats as triangles for the GPU (gpu_3ds.cpp draws them with depth in place of the canvas).
 // The swrenderer still draws its canvas meanwhile: this spike measures what the GPU side costs.
-// Not yet: light, sprites, sky, masked mid-textures, 3D floors, portals.
+// Sprites come from the walk itself (RenderSprite::Project hands them over instead of keeping
+// them for the swrenderer's translucent pass), drawn as masked billboards.
+// Not yet: light, sky, translucency, masked mid-textures, 3D floors, portals.
 //
 // lod3ds_gpu_world (debug builds, not saved) turns it on; lod3ds_gpu_world_stats reads the CPU
 // time of the capture, the draws and vertices, and the GPU's drawing time.
@@ -38,20 +40,44 @@
 
 CVAR(Bool, lod3ds_gpu_world, false, 0)
 CVAR(String, lod3ds_gpu_world_stats, "", CVAR_NOSAVE)
+// Stereo 3D with the 3D slider (P3); off draws one image whatever the slider says.
+CVAR(Bool, lod3ds_stereo, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 
 namespace
 {
 using FVertex = F3DSGpuWorldVertex;
 
-// Triangles waiting for their texture's draw, so that each texture is one draw.
+// Stereo: the distance in map units that sits on the screen (zero parallax), and how far behind
+// it infinity goes per eye at full slider, in top-screen pixels. The convergence is the
+// player's radius, the nearest a wall or a thing can be: the whole world stays behind the
+// screen, so the weapon and the HUD, drawn at the screen's depth, are never in front of
+// something that looks nearer (owner, 2026-10-13: at 128 near enemies came out over them).
+constexpr double StereoConvergence = 16.0;
+constexpr double StereoMaxPixels = 5.0;
+
+// Triangles waiting for their texture's draw, so that each texture is one draw (masked ones,
+// the sprites, apart).
 struct FBatch
 {
 	F3DSGpuTexture *Texture;
+	bool Masked;
 	std::vector<FVertex> Vertices;
 };
-std::unordered_map<F3DSGpuTexture *, size_t> BatchIndex;
+std::unordered_map<uintptr_t, size_t> BatchIndex;
+
+// The sprites the walk projected this frame (I_3DSGpuWorldAddSprite).
+struct FSprite
+{
+	FGameTexture *Texture;
+	float Ax, Ay, Bx, By;
+	float Bottom, Top;
+	bool FlipX;
+	uint8_t Light;
+};
+std::vector<FSprite> Sprites;
 // This frame's GPU copies of the textures met, as I_3DSGpuGameTexture finds them.
 std::unordered_map<FGameTexture *, F3DSGpuTexture *> TextureCache;
+std::unordered_map<FGameTexture *, F3DSGpuTexture *> SpriteTextureCache;
 std::vector<FBatch> Batches;
 size_t BatchesUsed;
 
@@ -64,15 +90,17 @@ uint64_t StatLastPublish;
 // Set by the capture for the frame being rendered.
 bool Active;
 
-std::vector<FVertex> &BatchFor(F3DSGpuTexture *texture)
+std::vector<FVertex> &BatchFor(F3DSGpuTexture *texture, bool masked = false)
 {
-	auto found = BatchIndex.find(texture);
+	const uintptr_t key = reinterpret_cast<uintptr_t>(texture) | (masked ? 1u : 0u);
+	auto found = BatchIndex.find(key);
 	if (found != BatchIndex.end()) return Batches[found->second].Vertices;
 	if (BatchesUsed == Batches.size()) Batches.push_back(FBatch{});
 	FBatch &batch = Batches[BatchesUsed];
 	batch.Texture = texture;
+	batch.Masked = masked;
 	batch.Vertices.clear();
-	BatchIndex.emplace(texture, BatchesUsed++);
+	BatchIndex.emplace(key, BatchesUsed++);
 	return batch.Vertices;
 }
 
@@ -83,6 +111,39 @@ F3DSGpuTexture *GpuTexture(FGameTexture *gameTexture)
 	F3DSGpuTexture *texture = I_3DSGpuGameTexture(gameTexture, true);
 	TextureCache.emplace(gameTexture, texture);
 	return texture;
+}
+
+// Sprites: the copy padded to powers of two, not stretched (no wrap).
+F3DSGpuTexture *SpriteTexture(FGameTexture *gameTexture)
+{
+	auto found = SpriteTextureCache.find(gameTexture);
+	if (found != SpriteTextureCache.end()) return found->second;
+	F3DSGpuTexture *texture = I_3DSGpuGameTexture(gameTexture, false);
+	SpriteTextureCache.emplace(gameTexture, texture);
+	return texture;
+}
+
+void AddSpriteQuad(const FSprite &sprite)
+{
+	F3DSGpuTexture *texture = SpriteTexture(sprite.Texture);
+	if (texture == nullptr) return;
+	float scaleS = 1.0f, scaleT = 1.0f;
+	I_3DSGpuTextureScale(texture, scaleS, scaleT);
+	const float s0 = sprite.FlipX ? scaleS : 0.0f;
+	const float s1 = sprite.FlipX ? 0.0f : scaleS;
+	const float tTop = 1.0f, tBottom = 1.0f - scaleT;
+	const uint32_t color = I_3DSGpuColor(sprite.Light, sprite.Light, sprite.Light);
+	const FVertex topLeft{ sprite.Ax, sprite.Ay, sprite.Top, s0, tTop, color };
+	const FVertex bottomLeft{ sprite.Ax, sprite.Ay, sprite.Bottom, s0, tBottom, color };
+	const FVertex topRight{ sprite.Bx, sprite.By, sprite.Top, s1, tTop, color };
+	const FVertex bottomRight{ sprite.Bx, sprite.By, sprite.Bottom, s1, tBottom, color };
+	std::vector<FVertex> &out = BatchFor(texture, true);
+	out.push_back(topLeft);
+	out.push_back(bottomLeft);
+	out.push_back(topRight);
+	out.push_back(topRight);
+	out.push_back(bottomLeft);
+	out.push_back(bottomRight);
 }
 
 uint32_t LightColor(const sector_t *sector)
@@ -103,7 +164,7 @@ FGameTexture *PartTexture(const side_t *side, int part)
 // top at topRef (map z where v = 0), u from u0 at the first end.
 void AddWall(FGameTexture *gameTexture, const DVector2 &a, const DVector2 &b,
 	double bottomA, double bottomB, double topA, double topB, double topRef,
-	double u0, const side_t *side, int part, uint32_t color)
+	double u0, const side_t *side, int part, uint32_t color, bool masked = false)
 {
 	if (topA <= bottomA && topB <= bottomB) return;
 	F3DSGpuTexture *texture = GpuTexture(gameTexture);
@@ -117,7 +178,7 @@ void AddWall(FGameTexture *gameTexture, const DVector2 &a, const DVector2 &b,
 	const double yOffset = side->GetTextureYOffset(part);
 	auto t = [&](double z) { return static_cast<float>(1.0 - (topRef - z + yOffset) / height); };
 
-	std::vector<FVertex> &out = BatchFor(texture);
+	std::vector<FVertex> &out = BatchFor(texture, masked);
 	const FVertex bottomLeft{ float(a.X), float(a.Y), float(bottomA), float(s0), t(bottomA), color };
 	const FVertex topLeft{ float(a.X), float(a.Y), float(topA), float(s0), t(topA), color };
 	const FVertex bottomRight{ float(b.X), float(b.Y), float(bottomB), float(s1), t(bottomB), color };
@@ -181,6 +242,29 @@ void AddSeg(const seg_t *seg, const DVector2 &eye)
 				along + side->GetTextureXOffset(side_t::top), side, side_t::top, color);
 		}
 	}
+	// A middle texture on a two-sided line: masked, one texture high unless it wraps, inside
+	// the opening. MAP01 builds its bushes, rocks, statues and graves from these.
+	if (FGameTexture *texture = PartTexture(side, side_t::mid))
+	{
+		const double height = texture->GetDisplayHeight() / side->GetTextureYScale(side_t::mid);
+		const double ref = (line->flags & ML_DONTPEGBOTTOM) ?
+			std::max(front->GetPlaneTexZ(sector_t::floor), back->GetPlaneTexZ(sector_t::floor)) + height :
+			std::min(front->GetPlaneTexZ(sector_t::ceiling), back->GetPlaneTexZ(sector_t::ceiling));
+		double bottomA = std::max(frontFloorA, backFloorA), bottomB = std::max(frontFloorB, backFloorB);
+		double topA = std::min(frontCeilA, backCeilA), topB = std::min(frontCeilB, backCeilB);
+		const bool wrap = (line->flags & ML_WRAP_MIDTEX) || (side->Flags & WALLF_WRAP_MIDTEX);
+		if (!wrap)
+		{
+			const double textureTop = ref + side->GetTextureYOffset(side_t::mid);
+			const double textureBottom = textureTop - height;
+			topA = std::min(topA, textureTop);
+			topB = std::min(topB, textureTop);
+			bottomA = std::max(bottomA, textureBottom);
+			bottomB = std::max(bottomB, textureBottom);
+		}
+		AddWall(texture, a, b, bottomA, bottomB, topA, topB, ref,
+			along + side->GetTextureXOffset(side_t::mid), side, side_t::mid, color, true);
+	}
 	if (backFloorA > frontFloorA || backFloorB > frontFloorB)
 	{
 		if (FGameTexture *texture = PartTexture(side, side_t::bottom))
@@ -210,10 +294,20 @@ void AddFlat(const subsector_t *sub, const sector_t *sector, int which, const DV
 	const double height = gameTexture->GetDisplayHeight();
 	if (width <= 0 || height <= 0) return;
 	const uint32_t color = LightColor(sector);
+	// The hardware renderer's flat mapping (hw_SetPlaneTextureRotation): (x / 64, -y / 64)
+	// rotated, scaled to the texture, offset, scaled by the sector's scale; t is minus v.
+	const double angle = -sector->GetAngle(which).Radians();
+	const double cosine = std::cos(angle), sine = std::sin(angle);
+	const double offsetU = sector->GetXOffset(which) / width;
+	const double offsetV = sector->GetYOffset(which) / height;
+	const double scaleU = sector->GetXScale(which), scaleV = sector->GetYScale(which);
 	auto vertex = [&](const vertex_t *v)
 	{
+		const double u0 = v->fX() / 64.0, v0 = -v->fY() / 64.0;
+		const double u = ((cosine * u0 - sine * v0) * 64.0 / width + offsetU) * scaleU;
+		const double vv = ((sine * u0 + cosine * v0) * 64.0 / height + offsetV) * scaleV;
 		return FVertex{ float(v->fX()), float(v->fY()), float(plane.ZatPoint(v)),
-			float(v->fX() / width), float(-v->fY() / height), color };
+			float(u), float(-vv), color };
 	};
 	std::vector<FVertex> &out = BatchFor(texture);
 	const FVertex first = vertex(sub->firstline[0].v1);
@@ -229,10 +323,13 @@ void PublishStats()
 {
 	const uint64_t now = osGetTime();
 	if (now - StatLastPublish < 1000 || StatFrames == 0) return;
-	char text[160];
+	char text[192];
 	const double ms = static_cast<double>(StatTicks) / StatFrames / (SYSCLOCK_ARM11 / 1000.0);
-	std::snprintf(text, sizeof(text), "capture %.2f ms, %u draws, %u vertices, gpu %.2f ms",
-		ms, StatDraws / StatFrames, StatVertices / StatFrames, I_3DSGpuLastDrawingTime());
+	const F3DSGpuStats gpu = I_3DSGpuGetStats();
+	std::snprintf(text, sizeof(text),
+		"capture %.2f ms, %u draws, %u vertices, gpu %.2f ms, 2d gpu %u sw %u",
+		ms, StatDraws / StatFrames, StatVertices / StatFrames, I_3DSGpuLastDrawingTime(),
+		static_cast<unsigned>(gpu.Recorded2D), static_cast<unsigned>(gpu.Software2D));
 	lod3ds_gpu_world_stats = text;
 	StatTicks = 0;
 	StatFrames = StatVertices = StatDraws = 0;
@@ -240,11 +337,24 @@ void PublishStats()
 }
 }
 
-void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
+void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *thread)
 {
 	if (thread == nullptr || !thread->MainThread) return;
-	Active = false;
-	if (!LOD3DS_DEBUG_TOOLS || !lod3ds_gpu_world || !I_3DSGpuReady()) return;
+	Active = LOD3DS_DEBUG_TOOLS && lod3ds_gpu_world && I_3DSGpuReady();
+	Sprites.clear();
+}
+
+void I_3DSGpuWorldAddSprite(FGameTexture *texture, double ax, double ay, double bx, double by,
+	double bottom, double top, bool flipX, int lightLevel)
+{
+	if (!Active || texture == nullptr) return;
+	Sprites.push_back(FSprite{ texture, float(ax), float(ay), float(bx), float(by),
+		float(bottom), float(top), flipX, uint8_t(std::clamp(lightLevel, 0, 255)) });
+}
+
+void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
+{
+	if (thread == nullptr || !thread->MainThread || !Active) return;
 	const uint64_t start = svcGetSystemTick();
 	swrenderer::RenderViewport *viewport = thread->Viewport.get();
 	FLevelLocals *level = viewport->Level();
@@ -262,22 +372,41 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 	const double ax = 2 * viewport->CenterX / w, bx = 2 * viewport->CenterX / w - 1;
 	const double ay = 2 * viewport->InvZtoScale / h, by = 1 - 2 * viewport->CenterY / h;
 	// Depth: z/w = -1 at near, 0 at far (citro3d's range; greater = nearer after its mapping).
-	const double nearZ = 4.0 * viewport->viewwindow.FocalTangent, farZ = 8192.0 * viewport->viewwindow.FocalTangent;
+	const double focalTangent = viewport->viewwindow.FocalTangent;
+	const double nearZ = 4.0 * focalTangent, farZ = 8192.0 * focalTangent;
 	const double az = nearZ / (farZ - nearZ), bz = -nearZ * farZ / (farZ - nearZ);
-	float matrix[16];
-	for (int i = 0; i < 4; ++i)
+	// Stereo (P3): each eye moved half the separation sideways (eye = -1 left, +1 right), its
+	// image shifted back so that StereoConvergence sits on the screen; nearer pops out, farther
+	// goes in, up to StereoMaxPixels per eye at infinity with the slider up. The visible set is
+	// the centre eye's.
+	const float slider = lod3ds_stereo ? osGet3DSliderState() : 0.0f;
+	const double screenPixelsPerNdc = 200.0; // the top screen's half width
+	const double halfSeparation = slider * StereoMaxPixels / screenPixelsPerNdc *
+		StereoConvergence * focalTangent / ax;
+	auto build = [&](float matrix[16], double eye)
 	{
-		matrix[i] = float(ax * right[i] + bx * depth[i]);
-		matrix[4 + i] = float(ay * up[i] + by * depth[i]);
-		matrix[8 + i] = float(az * depth[i] + (i == 3 ? bz : 0.0));
-		matrix[12 + i] = float(depth[i]);
-	}
+		const double shift = eye * halfSeparation;
+		const double shear = shift * ax / (StereoConvergence * focalTangent);
+		for (int i = 0; i < 4; ++i)
+		{
+			const double moved = right[i] - (i == 3 ? shift : 0.0);
+			matrix[i] = float(ax * moved + (bx + shear) * depth[i]);
+			matrix[4 + i] = float(ay * up[i] + by * depth[i]);
+			matrix[8 + i] = float(az * depth[i] + (i == 3 ? bz : 0.0));
+			matrix[12 + i] = float(depth[i]);
+		}
+	};
+	float matrix[16];
+	float rightMatrix[16];
+	const bool stereo = halfSeparation > 0.0;
+	build(matrix, stereo ? -1.0 : 0.0);
+	if (stereo) build(rightMatrix, 1.0);
 	// The NES overworld's sky blue until the sky has its own pass.
-	I_3DSGpuWorldBegin(matrix, 0x5c94fcff);
-	Active = true;
+	I_3DSGpuWorldBegin(matrix, stereo ? rightMatrix : nullptr, 0x5c94fcff);
 
 	BatchIndex.clear();
 	TextureCache.clear();
+	SpriteTextureCache.clear();
 	BatchesUsed = 0;
 	const DVector2 eye2(ex, ey);
 	const DVector3 eye3(ex, ey, ez);
@@ -291,13 +420,15 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		AddFlat(sub, sector, sector_t::floor, eye3);
 		AddFlat(sub, sector, sector_t::ceiling, eye3);
 	}
+	for (const FSprite &sprite : Sprites) AddSpriteQuad(sprite);
 
 	uint32_t vertices = 0;
 	for (size_t i = 0; i < BatchesUsed; ++i)
 	{
 		const FBatch &batch = Batches[i];
 		if (batch.Vertices.empty()) continue;
-		FVertex *out = I_3DSGpuWorldQueue(batch.Texture, static_cast<int>(batch.Vertices.size()));
+		FVertex *out = I_3DSGpuWorldQueue(batch.Texture, static_cast<int>(batch.Vertices.size()),
+			batch.Masked);
 		if (out == nullptr) break;
 		std::memcpy(out, batch.Vertices.data(), batch.Vertices.size() * sizeof(FVertex));
 		vertices += static_cast<uint32_t>(batch.Vertices.size());
@@ -317,6 +448,9 @@ bool I_3DSGpuWorldActive()
 
 #else
 
+void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *) {}
+void I_3DSGpuWorldAddSprite(FGameTexture *, double, double, double, double, double, double, bool,
+	int) {}
 void I_3DSGpuWorldCapture(swrenderer::RenderThread *) {}
 bool I_3DSGpuWorldActive() { return false; }
 

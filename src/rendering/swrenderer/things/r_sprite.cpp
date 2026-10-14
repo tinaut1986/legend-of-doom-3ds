@@ -66,6 +66,9 @@
 #include "swrenderer/r_renderthread.h"
 #include "a_dynlight.h"
 #include "r_data/r_vanillatrans.h"
+#ifdef __3DS__
+#include "common/platform/3ds/gpu_world_3ds.h"
+#endif
 
 EXTERN_CVAR(Bool, gl_light_sprites)
 EXTERN_CVAR(Int, gl_texture_hqresizemult)
@@ -133,6 +136,21 @@ namespace swrenderer
 		// [SP] SpriteFlip
 		if (thing->renderflags & RF_SPRITEFLIP)
 			renderflags ^= RF_XFLIP;
+
+#ifdef __3DS__
+		// The GPU draws the world (gpu_world_3ds.cpp): hand it the billboard instead.
+		if (I_3DSGpuWorldActive())
+		{
+			if (!isSpriteShadow)
+			{
+				const DVector2 origin = viewport->viewpoint.Pos.XY();
+				I_3DSGpuWorldAddSprite(tex->GetTexture(), origin.X + pt1.X, origin.Y + pt1.Y,
+					origin.X + pt2.X, origin.Y + pt2.Y, gzb, gzt, (renderflags & RF_XFLIP) != 0,
+					lightlevel);
+			}
+			return;
+		}
+#endif
 
 		double yscale, origyscale;
 		int resizeMult = gl_texture_hqresizemult;

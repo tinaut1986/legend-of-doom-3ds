@@ -108,16 +108,21 @@ void I_3DSGpuOverlayRect(float x, float y, float width, float height, uint32_t r
 // The 3D world drawn by the PICA200 (P2.3 spike, docs/gpu-renderer-design.md): when a frame has
 // world draws, they are drawn with depth in place of the canvas, under the 2D and the overlays.
 // Matrix: world (x, y, z, 1) to clip space for an upright 400x240 screen, row-major, depth z/w
-// in [-1, 0] from near to far; the LCD's rotation is applied here.
+// in [-1, 0] from near to far; the LCD's rotation is applied here. With rightMatrix (the right
+// eye's; matrix is then the left eye's) the frame is drawn in stereo: the top screen switches
+// to 3D for it and the 2D is drawn at the screen's depth in both eyes.
 struct F3DSGpuWorldVertex
 {
 	float X, Y, Z;
 	float S, T; // PICA convention: t = 1 at the image top
 	uint32_t Color; // bytes R, G, B, A
 };
-void I_3DSGpuWorldBegin(const float matrix[16], uint32_t clearColor);
+void I_3DSGpuWorldBegin(const float matrix[16], const float *rightMatrix, uint32_t clearColor);
 // Room for count vertices of a triangle list textured with texture (nullptr: vertex colour);
-// nullptr when the frame's world arena is full.
-F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count);
+// nullptr when the frame's world arena is full. Masked: fully transparent texels are dropped
+// (sprites).
+F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool masked = false);
+// The part of a texture's copy the image fills (it is padded to powers of two unless wrapped).
+void I_3DSGpuTextureScale(const F3DSGpuTexture *texture, float &scaleS, float &scaleT);
 // GPU time of the last frame (citro3d's drawing time), in ms.
 float I_3DSGpuLastDrawingTime();
