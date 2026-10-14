@@ -555,9 +555,8 @@ def main():
                          profile=args.profile, install=install and bool(ftp_host))
 
     install = args.install is not None
-    if install and not debug:
-        print(f"{RED}--install needs a debug build: the game's FTP server is a debug tool.{RESET}")
-        return 1
+    # Either mode: a debug build on the console serves --install, and so does a stable one with
+    # dev-ftp.txt in its data folder (the install-only server; CLAUDE.md, "The console in the loop").
     send_ftp = args.ftp is not None or args.ip is not None or install
     ftp_host, ftp_port = parse_ftp_argument(args.install if install else args.ftp, explicit_ip=args.ip,
                                             default_port=args.port)

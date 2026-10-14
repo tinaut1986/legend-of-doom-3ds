@@ -287,6 +287,7 @@ index c7c6d33..9ddcbc3 100644
 +    Option "TOP HUD", "lod3ds_top_hud", "OnOff"
 +    Option "AIM CROSS", "crosshairon", "OnOff"
 +    Option "MAP COLLISIONS", "lod3ds_map_collisions", "OnOff"
++    Option "SHOW FPS", "vid_fps", "OnOff"
 +}
 +
 +OPTIONMENU "LegendControllerOptions"
@@ -309,7 +310,6 @@ index c7c6d33..9ddcbc3 100644
 +{
 +    Class "LegendSplitOptionMenu"
 +    Title "DEVELOPER"
-+    Option "SHOW FPS", "vid_fps", "OnOff"
 +    Command "QUICK DUMP", "lod3ds_dump"
 +    Command "FULL DUMP", "lod3ds_fulldump"
 +    Option "OVERLAY WITH SELECT", "lod3ds_select_overlay", "OnOff"
@@ -458,7 +458,7 @@ new file mode 100644
 index 0000000..5364849
 --- /dev/null
 +++ b/actors/LegendPauseMenu.zs
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,178 @@
 +class ListMenuItemResume : ListMenuItemTextItem
 +{
 +    override bool Activate()
@@ -479,8 +479,15 @@ index 0000000..5364849
 +    override int GetSplitValueLeft() { return screen.GetWidth() * 55 / 100; }
 +    override int GetSplitValueRight() { return screen.GetWidth() * 76 / 100; }
 +
-+    // OPTIONS is one screen with tabs (PLAN U1): L and R move between these four
-+    // menus, which the 3DS draws on the touch screen with the tabs on top.
++    // OPTIONS is one screen with tabs (PLAN U1): L and R move between these
++    // menus, which the 3DS draws on the touch screen with the tabs on top. The
++    // last one (DEBUG) only in debug builds: lod3ds_debug_tools, set by the engine.
++    static int TabCount()
++    {
++        let debug = CVar.FindCVar('lod3ds_debug_tools');
++        return debug != null && debug.GetBool() ? 4 : 3;
++    }
++
 +    int TabIndex()
 +    {
 +        Name n = mDesc.mMenuName;
@@ -505,9 +512,10 @@ index 0000000..5364849
 +    override bool MenuEvent(int mkey, bool fromcontroller)
 +    {
 +        int tab = TabIndex();
-+        if (tab >= 0 && (mkey == MKEY_PageUp || mkey == MKEY_PageDown))
++        int count = TabCount();
++        if (tab >= 0 && tab < count && (mkey == MKEY_PageUp || mkey == MKEY_PageDown))
 +        {
-+            Name next = TabMenu((tab + (mkey == MKEY_PageUp ? 3 : 1)) % 4);
++            Name next = TabMenu((tab + (mkey == MKEY_PageUp ? count - 1 : 1)) % count);
 +            MenuSound("menu/change");
 +            Close();
 +            Menu.SetMenu(next);
@@ -670,7 +678,7 @@ new file mode 100644
 index 0000000..1111111
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,160 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -738,6 +746,7 @@ index 0000000..1111111
 +DUMP INCOMPLETE,LOD_DUMP_INCOMPLETE,,,CAPTURA INCOMPLETA
 +EASIEST,LOD_EASIEST,,,MUY FÁCIL
 +EASY,LOD_EASY,,,FÁCIL
++FTP INSTALL ONLY,LOD_FTP_INSTALL_ONLY,,,FTP SOLO INSTALAR
 +FTP SERVER,LOD_FTP_SERVER,,,SERVIDOR FTP
 +FULL DUMP,LOD_FULL_DUMP,,,CAPTURA COMPLETA
 +FULL DUMP COMPLETE,LOD_FULL_DUMP_COMPLETE,,,CAPTURA COMPLETA HECHA
