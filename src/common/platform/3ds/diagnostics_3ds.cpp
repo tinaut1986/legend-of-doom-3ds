@@ -70,6 +70,9 @@ EXTERN_CVAR(Bool, lod3ds_top_hud)
 EXTERN_CVAR(Bool, crosshairon)
 
 CVAR(Bool, lod3ds_select_overlay, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+// UPDATE -> AUTO UPDATE: at start, look for a new version on the update channel and offer it
+// (I_3DSServiceUpdater). On by default (owner 2026-10-14, as in ../mzm and ../sm-3ds).
+CVAR(Bool, lod3ds_auto_update, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 CVAR(Bool, lod3ds_map_collisions, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 // OPTIONS -> DEVELOPER -> FTP SERVER (debug builds): the in-game FTP server and remote control
 // (ftp_server_3ds.h, debug_link_3ds.h). Archived, so it comes back after a relaunch.
@@ -5853,8 +5856,21 @@ bool I_3DSQuitWithoutSavingRequested()
 	return QuitWithoutSaving;
 }
 
+// LegendUpdateMenu was opened by the start-up check: it shows the offer instead of checking again.
+namespace { bool AutoUpdateOffer = false; }
+
+// The update menu's actions (LODUpdateAction): 0/1 check, 2 switch the channel, 3 download and
+// install, 4 cancel, 5 switch AUTO UPDATE, 6 whether the menu was opened by the start-up check
+// (asked once, in its Init), -1 nothing. Returns the state, | 256 while busy (6: 1 or 0).
 int I_3DSUpdateAction(int action)
 {
+    if (action == 6)
+    {
+        const bool offer = AutoUpdateOffer;
+        AutoUpdateOffer = false;
+        return offer ? 1 : 0;
+    }
+    if (action == 5) lod3ds_auto_update = !lod3ds_auto_update;
     UpdateStatus status;
     Updater_GetStatus(&status);
     if (action == 0 || action == 1) Updater_Check();
@@ -5868,7 +5884,55 @@ int I_3DSUpdateAction(int action)
 
 void I_3DSServiceUpdater()
 {
-    if (Updater_ShouldClose() && !Updater_Busy()) I_3DSQuitWithoutSaving();
+    // Installed: start the new version as the game closes.
+    if (Updater_ShouldClose() && !Updater_Busy())
+    {
+        CiaInstall_RelaunchOnExit();
+        I_3DSQuitWithoutSaving();
+    }
+
+    // AUTO UPDATE: one check per start, a few seconds in (Wi-Fi associates after the game
+    // starts; given up after ~30 s without it). A new version opens the update menu with the
+    // offer, outside a level and with no menu open; anything else (none, no network, a 3DSX
+    // build) is silent. Opening UPDATE by hand meanwhile ends it.
+    enum { Waiting, Checking, Offering, Done };
+    static int stage = Waiting;
+    static uint64_t startedAt = 0;
+    if (stage == Done) return;
+    const uint64_t now = osGetTime();
+    if (startedAt == 0) startedAt = now;
+    const bool updateMenuOpen = CurrentMenu != nullptr && CurrentMenu->IsKindOf("LegendUpdateMenu");
+    if (!lod3ds_auto_update || updateMenuOpen)
+    {
+        stage = Done;
+        return;
+    }
+    if (stage == Waiting)
+    {
+        if (now - startedAt < 3000u || Updater_Busy()) return;
+        if (osGetWifiStrength() == 0)
+        {
+            if (now - startedAt > 30000u) stage = Done;
+            return;
+        }
+        Updater_Check();
+        stage = Checking;
+        return;
+    }
+    if (Updater_Busy()) return;
+    UpdateStatus status;
+    Updater_GetStatus(&status);
+    if (status.state != UPDATE_AVAILABLE)
+    {
+        stage = Done;
+        return;
+    }
+    stage = Offering;
+    if (gamestate == GS_LEVEL || menuactive != MENU_Off) return;
+    AutoUpdateOffer = true;
+    M_StartControlPanel(true);
+    M_SetMenu(FName("LegendUpdateMenu"));
+    stage = Done;
 }
 
 bool I_3DSSaveScreenShots(const char *topPath, const char *bottomPath)

@@ -48,11 +48,12 @@ struct FNesFont
 };
 FNesFont NesFont;
 
-// Shapes the NES font does not have (its '<', '>' and '%' are other symbols).
+// Shapes the NES font does not have (its '<', '>' and '%' are other symbols, ':' is absent).
 const struct { char Character; uint8_t Rows[8]; } NesExtraAscii[] = {
 	{ '<', { 0x0c, 0x18, 0x30, 0x60, 0x30, 0x18, 0x0c, 0x00 } },
 	{ '>', { 0x60, 0x30, 0x18, 0x0c, 0x18, 0x30, 0x60, 0x00 } },
 	{ '%', { 0xc6, 0xcc, 0x18, 0x30, 0x60, 0xcc, 0x8c, 0x00 } },
+	{ ':', { 0x00, 0x30, 0x30, 0x00, 0x00, 0x30, 0x30, 0x00 } }, // missing: drawn as a dot
 };
 
 // Spanish capitals: a letter of the font with a mark above it, or a shape of their own.
@@ -855,16 +856,78 @@ void DrawNativeControlsMenu(unsigned char *framebuffer)
 	NesHint(framebuffer, "B BACK");
 }
 
+// The start-up offer (AUTO UPDATE): the versions, YES / NO, and WHAT'S NEW below them
+// (NativeUpdateChoice 0, 1, 2).
+void DrawNativeUpdateOffer(unsigned char *framebuffer, const UpdateStatus &status)
+{
+	const int choice = CurrentMenu->IntVar(FName("NativeUpdateChoice"));
+	NesBox(framebuffer, 16, 44, 288, 160, NesTabIdle, NesBlue);
+	NesCenteredText(framebuffer, 58, Tr("UPDATE AVAILABLE"), 1, NesGold);
+	FString line;
+	line.Format("%s -> %s", LOD3DS_PORT_VERSION_LABEL, status.version[0] ? status.version : "--");
+	NesCenteredText(framebuffer, 78, line.GetChars(), 1, NesWhite);
+	NesCenteredText(framebuffer, 98, Tr("INSTALL AND RESTART?"), 1, NesWhite);
+	const char *labels[] = { Tr("YES"), Tr("NO"), Tr("WHAT'S NEW") };
+	const struct { int X, Y, Width; } boxes[] = { { 52, 122, 96 }, { 172, 122, 96 }, { 52, 158, 216 } };
+	for (int i = 0; i < 3; ++i)
+	{
+		const bool active = i == choice;
+		NesBox(framebuffer, boxes[i].X, boxes[i].Y, boxes[i].Width, 24,
+			active ? NesPanel : NesTabIdle, active ? NesBlue : NesGray);
+		NesText(framebuffer, boxes[i].X + (boxes[i].Width - NesTextWidth(labels[i], 1)) / 2,
+			boxes[i].Y + 8, labels[i], 1, active ? NesGold : NesWhite);
+		AddNativeTouchZone(boxes[i].X, boxes[i].Y, boxes[i].X + boxes[i].Width, boxes[i].Y + 24,
+			ENativeTouch::Choice, i);
+	}
+	NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
+}
+
+// The new version's notes on the touch screen (the offer's WHAT'S NEW); A or B goes back.
+void DrawNativeUpdateNotes(unsigned char *framebuffer)
+{
+	NesCenteredText(framebuffer, 8, Tr("WHAT'S NEW"), 2, NesRed);
+	static char notes[4096];
+	Updater_GetNotes(notes, sizeof(notes));
+	int y = 40;
+	for (char *line = notes; line != nullptr && *line != '\0' && y < 186;)
+	{
+		char *next = std::strchr(line, '\n');
+		if (next != nullptr) *next++ = '\0';
+		for (const auto &text : NesWrap(line, 38, 4))
+		{
+			if (y >= 186) break;
+			NesText(framebuffer, 8, y, text.GetChars(), 1, NesWhite);
+			y += 12;
+		}
+		line = next;
+	}
+	NesBox(framebuffer, 112, 192, 96, 24, NesPanel, NesBlue);
+	const char *back = Tr("BACK");
+	NesText(framebuffer, 112 + (96 - NesTextWidth(back, 1)) / 2, 200, back, 1, NesGold);
+	AddNativeTouchZone(112, 192, 208, 216, ENativeTouch::Back, 0);
+}
+
 void DrawNativeUpdateMenu(unsigned char *framebuffer)
 {
 	UpdateStatus status;
 	Updater_GetStatus(&status);
+	const int confirm = CurrentMenu->IntVar(FName("NativeUpdateConfirm"));
+	if (confirm == 3)
+	{
+		DrawNativeUpdateNotes(framebuffer);
+		return;
+	}
 	NesCenteredText(framebuffer, 8, Tr("UPDATE"), 2, NesRed);
+	if (confirm == 2 && !Updater_Busy())
+	{
+		DrawNativeUpdateOffer(framebuffer, status);
+		return;
+	}
 
-	if (CurrentMenu->IntVar(FName("NativeUpdateConfirm")))
+	if (confirm == 1)
 	{
 		FString message;
-		message.Format("%s %s", Tr("INSTALL AND CLOSE?"), Tr("UNSAVED PROGRESS WILL BE LOST"));
+		message.Format("%s %s", Tr("INSTALL AND RESTART?"), Tr("UNSAVED PROGRESS WILL BE LOST"));
 		DrawNesDialog(framebuffer, message.GetChars(), Tr("YES"), Tr("NO"),
 			CurrentMenu->IntVar(FName("NativeUpdateChoice")));
 		NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
@@ -908,13 +971,14 @@ void DrawNativeUpdateMenu(unsigned char *framebuffer)
 	}
 
 	auto *descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
-	const char *labels[] = { status.prerelease ? "CHANNEL: BETA" : "CHANNEL: STABLE",
+	const char *labels[] = { lod3ds_auto_update ? "AUTO UPDATE: ON" : "AUTO UPDATE: OFF",
+		status.prerelease ? "CHANNEL: BETA" : "CHANNEL: STABLE",
 		"CHECK FOR UPDATES", "INSTALL UPDATE", "BACK" };
-	for (int row = 0; row < 4; ++row)
+	for (int row = 0; row < 5; ++row)
 	{
-		const int y = 108 + row * 25;
+		const int y = 104 + row * 22;
 		const bool selected = descriptor != nullptr && descriptor->mSelectedItem == row;
-		const bool disabled = row == 2 && status.state != UPDATE_AVAILABLE;
+		const bool disabled = row == 3 && status.state != UPDATE_AVAILABLE;
 		if (selected) NesBox(framebuffer, 40, y - 6, 240, 20, NesPanel, NesBlue);
 		NesCenteredText(framebuffer, y, Tr(labels[row]), 1,
 			disabled ? NesGray : selected ? NesGold : NesWhite);
