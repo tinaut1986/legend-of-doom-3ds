@@ -51,6 +51,9 @@
 #include "s_sndseq.h"
 #include "sbar.h"
 #include "p_setup.h"
+#ifdef __3DS__
+#include "m_alloc.h"
+#endif
 #include "r_data/r_interpolate.h"
 #include "r_sky.h"
 #include "cmdlib.h"
@@ -342,6 +345,22 @@ void FLevelLocals::ClearLevelData()
 	loadsectors.Clear();
 	loadlines.Clear();
 	loadsides.Clear();
+#ifdef __3DS__
+	// MapLoader::InitVertexData allocates these with new[] on every map load and
+	// nothing freed them (a few hundred KB a load on the overworld).
+	// Only vertices with numsectors > 1 own them (see InitVertexData).
+	for (auto &vert : vertexes)
+	{
+		if (vert.numsectors > 1)
+		{
+			delete[] vert.sectors;
+			delete[] vert.heightlist;
+		}
+		vert.sectors = nullptr;
+		vert.heightlist = nullptr;
+		vert.numsectors = 0;
+	}
+#endif
 	vertexes.Clear();
 	nodes.Clear();
 	gamenodes.Reset();
@@ -448,6 +467,12 @@ void P_SetupLevel(FLevelLocals *Level, int position, bool newGame)
 
 	// Free all level data from the previous map
 	P_FreeLevelData();
+#ifdef __3DS__
+	// Collect the old map's objects before the new one allocates, so its blocks are
+	// free (and can merge) first; the heap here is the baseline between two maps.
+	GC::FullGC();
+	M_3DSLogHeap(FStringf("level-freed gc=%zu", GC::AllocBytes).GetChars());
+#endif
 
 	MapData *map = P_OpenMapData(Level->MapName, true);
 	if (map == nullptr)
@@ -472,6 +497,9 @@ void P_SetupLevel(FLevelLocals *Level, int position, bool newGame)
 	MapLoader loader(Level);
 	loader.LoadLevel(map, Level->MapName.GetChars(), position);
 	delete map;
+#ifdef __3DS__
+	M_3DSLogHeap(FStringf("level-built gc=%zu", GC::AllocBytes).GetChars());
+#endif
 
 	// if deathmatch, randomly spawn the active players
 	if (deathmatch)

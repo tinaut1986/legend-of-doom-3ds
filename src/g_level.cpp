@@ -94,6 +94,9 @@
 #include "fragglescript/t_script.h"
 
 #include "texturemanager.h"
+#ifdef __3DS__
+#include "m_alloc.h"
+#endif
 
 void STAT_StartNewGame(const char *lev);
 void STAT_ChangeLevel(const char *newl, FLevelLocals *Level);
@@ -1255,6 +1258,13 @@ void FLevelLocals::DoLoadLevel(const FString &nextmapname, int position, bool au
 	}
 
 	StatusBar->AttachToPlayer (&players[consoleplayer]);
+#ifdef __3DS__
+	// Heap after each map load in startup.log, to see memory creep over a play session;
+	// gc= is what the garbage collector counts as live, before and after a full collection.
+	M_3DSLogHeap(FStringf("level-loaded %s gc=%zu", MapName.GetChars(), GC::AllocBytes).GetChars());
+	GC::FullGC();
+	M_3DSLogHeap(FStringf("level-loaded-gc %s gc=%zu", MapName.GetChars(), GC::AllocBytes).GetChars());
+#endif
 	//      unsafe world load
 	staticEventManager.WorldLoaded();
 	//      regular world load (savegames are handled internally)

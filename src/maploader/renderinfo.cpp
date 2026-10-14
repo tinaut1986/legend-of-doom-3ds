@@ -448,6 +448,10 @@ void MapLoader::InitVertexData()
 		else
 		{
 			vert.numsectors=0;
+#ifdef __3DS__
+			vert.sectors = nullptr;
+			vert.heightlist = nullptr;
+#endif
 		}
 	}
 }

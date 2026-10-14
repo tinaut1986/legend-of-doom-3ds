@@ -68,9 +68,16 @@ const uint32_t *FWarpTexture::GetPixelsBgraLocked()
 			resizeMult = 1;
 
 		auto otherpix = FSoftwareTexture::GetPixelsBgraLocked();
+#ifdef __3DS__
+		// No mipmap chain when the base texture has none (r_mipmap off).
+		WarpedPixelsRgba.Resize(unsigned(GetWidth() * GetHeight() * resizeMult * resizeMult * (BgraMipmapped ? 4 : 3) / 3 + 1));
+		WarpBuffer(WarpedPixelsRgba.Data(), otherpix, int(GetWidth() * resizeMult), int(GetHeight() * resizeMult), WidthOffsetMultiplier, HeightOffsetMultiplier, time, mTexture->GetShaderSpeed(), bWarped);
+		if (BgraMipmapped) GenerateBgraMipmapsFast();
+#else
 		WarpedPixelsRgba.Resize(unsigned(GetWidth() * GetHeight() * resizeMult * resizeMult * 4 / 3 + 1));
 		WarpBuffer(WarpedPixelsRgba.Data(), otherpix, int(GetWidth() * resizeMult), int(GetHeight() * resizeMult), WidthOffsetMultiplier, HeightOffsetMultiplier, time, mTexture->GetShaderSpeed(), bWarped);
 		GenerateBgraMipmapsFast();
+#endif
 		FreeAllSpans();
 		GenTime[2] = time;
 	}

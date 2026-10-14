@@ -87,6 +87,8 @@ constexpr const char *AppDirectory = LOD3DS_APP_DIR;
 constexpr const char *DumpDirectory = LOD3DS_APP_DIR "/dumps";
 constexpr const char *BootLogPath = LOD3DS_APP_DIR "/boot.log";
 constexpr const char *StartupLogPath = LOD3DS_APP_DIR "/startup.log";
+// The run before this one; kept so a crash's log survives the relaunch.
+constexpr const char *PreviousStartupLogPath = LOD3DS_APP_DIR "/startup-previous.log";
 constexpr const char *FatalLogPath = LOD3DS_APP_DIR "/fatal.log";
 constexpr const char *ConfigPath = LOD3DS_APP_DIR "/legend-of-doom.ini";
 constexpr const char *TelemetryPath = LOD3DS_APP_DIR "/frame-telemetry.csv";
@@ -3685,6 +3687,7 @@ uint64_t DiagnosticArtifactBudget()
 	return DumpMetadataBudgetBytes +
 		BoundedFileSize(BootLogPath, MaxCopiedLogBytes) +
 		BoundedFileSize(StartupLogPath, MaxCopiedLogBytes) +
+		BoundedFileSize(PreviousStartupLogPath, MaxCopiedLogBytes) +
 		BoundedFileSize(FatalLogPath, MaxCopiedLogBytes) +
 		BoundedFileSize(ConfigPath, MaxConfigInputBytes) +
 		BoundedFileSize(TelemetryPath, MaxCopiedTelemetryBytes) +
@@ -4871,6 +4874,9 @@ void WriteDiagnosticDump(EDiagnosticDumpMode mode)
 		"BUILD-MANIFEST.txt", 512u * 1024u);
 	artifactsOk &= CopyDiagnosticArtifact(manifest, directory, "startup_log", StartupLogPath,
 		"startup.log", MaxCopiedLogBytes);
+	if (PathExists(PreviousStartupLogPath))
+		artifactsOk &= CopyDiagnosticArtifact(manifest, directory, "startup_previous_log",
+			PreviousStartupLogPath, "startup-previous.log", MaxCopiedLogBytes);
 	artifactsOk &= CopyDiagnosticArtifact(manifest, directory, "fatal_log", FatalLogPath,
 		"fatal.log", MaxCopiedLogBytes);
 	#if defined(LOD3DS_HARDWARE_DIAGNOSTIC) && LOD3DS_HARDWARE_DIAGNOSTIC
@@ -5255,6 +5261,11 @@ void I_3DSStartupLog(const char *stage)
 	}
 
 	if (!EnsureDirectory(AppDirectory)) return;
+	if (firstCheckpoint)
+	{
+		std::remove(PreviousStartupLogPath);
+		std::rename(StartupLogPath, PreviousStartupLogPath);
+	}
 	FILE *log = std::fopen(StartupLogPath, firstCheckpoint ? "w" : "a");
 	if (log == nullptr) return;
 	firstCheckpoint = false;
@@ -5427,6 +5438,12 @@ void I_3DSWriteFatalLog(const char *message)
 	FILE *log = std::fopen(FatalLogPath, "w");
 	if (log == nullptr) return;
 	std::fprintf(log, "%s\n", message != nullptr ? message : "Unknown fatal error");
+	// Free heap next to a failed request tells exhaustion from fragmentation.
+	const struct mallinfo heap = mallinfo();
+	std::fprintf(log, "heap_used=%d heap_free=%d app_free=%lu linear_free=%lu\n",
+		heap.uordblks, heap.fordblks,
+		static_cast<unsigned long>(osGetMemRegionFree(MEMREGION_APPLICATION)),
+		static_cast<unsigned long>(linearSpaceFree()));
 	std::fflush(log);
 	std::fclose(log);
 }

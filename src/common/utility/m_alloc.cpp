@@ -60,11 +60,13 @@ void M_3DSLogHeap(const char *stage)
 	I_3DSStartupLog(stage);
 }
 
-static void M_FatalOutOfMemory(const char *operation, size_t size)
+// caller: the return address in M_Malloc/M_Realloc, for addr2line on the build's ELF.
+static void M_FatalOutOfMemory(const char *operation, size_t size, void *caller)
 {
 	const struct mallinfo heap = mallinfo();
-	I_FatalError("Could not %s %zu bytes (heap %d/%d free %d, app %lu/%lu, linear %lu)",
-		operation, size, heap.uordblks, heap.arena, heap.fordblks,
+	I_FatalError("Could not %s %zu bytes (caller 0x%08lx; heap %d/%d free %d, app %lu/%lu, linear %lu)",
+		operation, size, (unsigned long)(uintptr_t)caller,
+		heap.uordblks, heap.arena, heap.fordblks,
 		(unsigned long)osGetMemRegionFree(MEMREGION_APPLICATION),
 		(unsigned long)osGetMemRegionSize(MEMREGION_APPLICATION),
 		(unsigned long)linearSpaceFree());
@@ -85,7 +87,7 @@ void *M_Malloc(size_t size)
 
 	if (block == NULL)
 #ifdef __3DS__
-		M_FatalOutOfMemory("malloc", size);
+		M_FatalOutOfMemory("malloc", size, __builtin_return_address(0));
 #else
 		I_FatalError("Could not malloc %zu bytes", size);
 #endif
@@ -101,10 +103,21 @@ void *M_Realloc(void *memblock, size_t size)
 		GC::AllocBytes -= _msize(memblock);
 	}
 	void *block = realloc(memblock, size);
+#ifdef __3DS__
+	// Large array growth in startup.log with its caller (addr2line on the ELF): these
+	// multi-megabyte blocks are what a fragmented heap fails to find.
+	if (size >= 256u * 1024u && block != NULL)
+	{
+		char stage[64];
+		snprintf(stage, sizeof(stage), "realloc %zu caller 0x%08lx", size,
+			(unsigned long)(uintptr_t)__builtin_return_address(0));
+		I_3DSStartupLog(stage);
+	}
+#endif
 	if (block == NULL)
 	{
 #ifdef __3DS__
-		M_FatalOutOfMemory("realloc", size);
+		M_FatalOutOfMemory("realloc", size, __builtin_return_address(0));
 #else
 		I_FatalError("Could not realloc %zu bytes", size);
 #endif

@@ -34,6 +34,7 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 | Branch | What | State |
 |---|---|---|
 | `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) | Open, pushed, not merged: what each holds, what was measured and the merge order are in [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md); the local `test/stereo-bottom` combines them and is what the New 3DS runs | Wait for the owner's check on the console |
+| `fix/texture-memory` | The out-of-memory close after the first dungeon (issue in GitHub): texture mipmaps skipped while `r_mipmap` is off, the index-data leak on every map load, the map loader's big copies, heap logs (`platform/3ds/README.md`, "Diagnostics"). Measured: 10 reloads of MAP01 flat at 58.9 MB (was 55 -> 67 MB and a close). Also merged into the local `test/stereo-bottom` | Waits for the owner's check: finish the first dungeon, go in and out of caves; then merge into `release/v0.1.1` |
 | _(merged)_ | `feat/gpu-world-spike` (P2.3 first step: walls and flats of the swrenderer's visible set drawn by the PICA200, `lod3ds_gpu_world`, debug builds, off by default; and the bottom map's flicker above 35 fps) merged into `release/v0.1.1` 2026-10-13 after the owner's look on the New 3DS ("60 fuera y 110 en mazmorra", no flicker) | |
 | _(merged)_ | `docs/gpu-path` (P2.1 note, P2.2 decision, the one-shot hwrenderer probe for debug builds) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead | |
 | _(merged)_ | `feat/overlay-anywhere` (the developer overlay with SELECT also over the title and its menus, owner 2026-10-13) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead after Claude saw it work on the New 3DS | |
@@ -409,3 +410,12 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   by themselves are no longer ticked (MAP01's ~490 bushes, spawn spots, teleport destinations):
   logic 7.35 -> ~5 ms a tic; with the walk trimmed and no canvas copy MAP01 runs at ~95 fps mono
   and ~64 stereo (GPU-bound). Details and the next steps: `docs/handoff-2026-10-14.md`.
+- **2026-10-14** Memory before speed where they compete: the Old 3DS/2DS has at most 96 MB for
+  the application, so every byte saved now is headroom for P4. The close after the first dungeon
+  was a fragmented heap (a 2.7 MB request failing with 23 MB free), fed by two things: GZDoom
+  4.7.1's `CreateVBO` never clearing `ibo_data` (every map load, savegames included, appended
+  ~400 KB for MAP01) and the true-colour textures building a mipmap chain that `r_mipmap 0` (forced
+  on the 3DS) never uses. Large transient blocks are the risk, so map loading now avoids them
+  (one TEXTMAP copy, parsed arrays sized once). Still open: MAP01 holds its 2.5 MB of sides twice
+  while loading (`ParsedSides` and `Level->sides`), and `CreateVBO`'s vertex data is built for the
+  swrenderer too; whether anything on this path reads it is not checked yet.

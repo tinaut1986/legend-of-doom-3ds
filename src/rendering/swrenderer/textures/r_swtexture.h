@@ -32,6 +32,12 @@ protected:
 	int mPhysicalWidth, mPhysicalHeight;
 	int mPhysicalScale;
 	int mBufferFlags;
+#ifdef __3DS__
+	// Whether PixelsBgra holds the mipmap chain after level 0. The port runs with
+	// r_mipmap off, and the chain costs a third more memory a texture plus a
+	// transient 32 bytes a pixel to build it (out of memory on 512x256 textures).
+	bool BgraMipmapped = false;
+#endif
 
 	void FreeAllSpans();
 	template<class T> FSoftwareTextureSpan **CreateSpans(const T *pixels);
@@ -99,6 +105,9 @@ public:
 	{
 		Pixels.Reset();
 		PixelsBgra.Reset();
+#ifdef __3DS__
+		BgraMipmapped = false;
+#endif
 		for (auto& d : Unlockeddata) d = {};
 	}
 	
@@ -113,7 +122,11 @@ public:
 	int MipmapLevels();
 	
 	// Returns true if GetPixelsBgra includes mipmaps
+#ifdef __3DS__
+	virtual bool Mipmapped() { return BgraMipmapped; }
+#else
 	virtual bool Mipmapped() { return true; }
+#endif
 
 	// Returns a single column of the texture
 	const uint8_t* GetColumn(int style, unsigned int column, const FSoftwareTextureSpan** spans_out)
