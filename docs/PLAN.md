@@ -33,6 +33,7 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 
 | Branch | What | State |
 |---|---|---|
+| `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) | Open, pushed, not merged: what each holds, what was measured and the merge order are in [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md); the local `test/stereo-bottom` combines them and is what the New 3DS runs | Wait for the owner's check on the console |
 | _(merged)_ | `feat/gpu-world-spike` (P2.3 first step: walls and flats of the swrenderer's visible set drawn by the PICA200, `lod3ds_gpu_world`, debug builds, off by default; and the bottom map's flicker above 35 fps) merged into `release/v0.1.1` 2026-10-13 after the owner's look on the New 3DS ("60 fuera y 110 en mazmorra", no flicker) | |
 | _(merged)_ | `docs/gpu-path` (P2.1 note, P2.2 decision, the one-shot hwrenderer probe for debug builds) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead | |
 | _(merged)_ | `feat/overlay-anywhere` (the developer overlay with SELECT also over the title and its menus, owner 2026-10-13) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead after Claude saw it work on the New 3DS | |
@@ -42,9 +43,9 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 | _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
 | _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
-**Priority** (2026-10-13): P2 GPU world renderer and 60 fps on New 3DS (next; the frame is now the 3D view, ~23 ms, and logic, ~7 ms) → P3 stereo 3D
-and P4 Old 3DS (order between these two to be set once P2.2 decides the renderer). P0.3
-goes on alongside, with the P1.3 recorder.
+**Priority** (2026-10-14, owner): P3 stereo 3D and P2.4 (60 fps stable in stereo on the New 3DS,
+with the Old 3DS in mind: 30 fps minimum there), then P4 the 2DS, with P2.3's parity (light, sky)
+done for cost along the way. Start from [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md).
 
 
 
@@ -403,3 +404,8 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   already ruled out by upstream's history. The poly backend's drawers crash on the 3DS in mode 4
   (not investigated, unused by (c)). First step: a timed spike on MAP01 (walls and flats from
   load-time buffers, the swrenderer's visible set, no lighting).
+- **2026-10-14** P2.4 measured on the New 3DS with the GPU world: GZDoom's tic stability
+  busy-wait (~3 ms a frame) is off on the 3DS (`r_ticstability 0`), and things that cannot change
+  by themselves are no longer ticked (MAP01's ~490 bushes, spawn spots, teleport destinations):
+  logic 7.35 -> ~5 ms a tic; with the walk trimmed and no canvas copy MAP01 runs at ~95 fps mono
+  and ~64 stereo (GPU-bound). Details and the next steps: `docs/handoff-2026-10-14.md`.
