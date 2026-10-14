@@ -53,6 +53,7 @@
 #include "p_setup.h"
 #ifdef __3DS__
 #include "m_alloc.h"
+#include "common/platform/3ds/memory_3ds.h"
 #endif
 #include "r_data/r_interpolate.h"
 #include "r_sky.h"
@@ -471,6 +472,7 @@ void P_SetupLevel(FLevelLocals *Level, int position, bool newGame)
 	// Collect the old map's objects before the new one allocates, so its blocks are
 	// free (and can merge) first; the heap here is the baseline between two maps.
 	GC::FullGC();
+	I_3DSReleaseMapLoadMemory();
 	M_3DSLogHeap(FStringf("level-freed gc=%zu", GC::AllocBytes).GetChars());
 #endif
 

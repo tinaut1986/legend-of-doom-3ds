@@ -200,6 +200,8 @@ int main (int argc, char **argv)
 	// makes the New 3DS-only performance policy explicit.
 	osSetSpeedupEnable(true);
 	I_3DSStartupLog("main-enter");
+	I_3DSStartupLog(I_3DSReserveMapLoadMemory()
+		? "map-load-reserve-ready" : "map-load-reserve-unavailable");
 	#ifdef LOD3DS_SAFE_SOFTWARE
 	I_3DSStartupLog(I_3DSReserveRendererMemory()
 		? "renderer-reserve-ready" : "renderer-reserve-unavailable");

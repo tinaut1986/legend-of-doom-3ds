@@ -67,6 +67,24 @@ void I_3DSReleaseRendererMemory()
 }
 #endif
 
+namespace
+{
+constexpr size_t MapLoadReserveBytes = 5 * 1024 * 1024; // 8 MB: ZScript ran out on the 2DS
+void *MapLoadReserve;
+}
+
+bool I_3DSReserveMapLoadMemory()
+{
+	if (MapLoadReserve == nullptr) MapLoadReserve = std::malloc(MapLoadReserveBytes);
+	return MapLoadReserve != nullptr;
+}
+
+void I_3DSReleaseMapLoadMemory()
+{
+	std::free(MapLoadReserve);
+	MapLoadReserve = nullptr;
+}
+
 static void *AllocateWithNewHandler(size_t size, uintptr_t caller)
 {
 	if (size == 0) size = 1;

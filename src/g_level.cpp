@@ -96,6 +96,7 @@
 #include "texturemanager.h"
 #ifdef __3DS__
 #include "m_alloc.h"
+#include "common/platform/3ds/memory_3ds.h"
 #endif
 
 void STAT_StartNewGame(const char *lev);
@@ -1264,6 +1265,7 @@ void FLevelLocals::DoLoadLevel(const FString &nextmapname, int position, bool au
 	M_3DSLogHeap(FStringf("level-loaded %s gc=%zu", MapName.GetChars(), GC::AllocBytes).GetChars());
 	GC::FullGC();
 	M_3DSLogHeap(FStringf("level-loaded-gc %s gc=%zu", MapName.GetChars(), GC::AllocBytes).GetChars());
+	M_3DSLogHeap(I_3DSReserveMapLoadMemory() ? "map-load-reserve-ready" : "map-load-reserve-unavailable");
 #endif
 	//      unsafe world load
 	staticEventManager.WorldLoaded();
