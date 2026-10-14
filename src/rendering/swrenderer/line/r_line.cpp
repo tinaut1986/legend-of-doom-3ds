@@ -60,6 +60,9 @@
 #include "swrenderer/plane/r_visibleplanelist.h"
 #include "swrenderer/things/r_decal.h"
 #include "swrenderer/r_renderthread.h"
+#ifdef __3DS__
+#include "common/platform/3ds/gpu_world_3ds.h"
+#endif
 
 CVAR(Bool, r_fogboundary, true, 0)
 CVAR(Bool, r_drawmirrors, true, 0)
@@ -285,6 +288,13 @@ namespace swrenderer
 	// A wall segment will be drawn between start and stop pixels (inclusive).
 	bool SWRenderLine::RenderWallSegment(int start, int stop)
 	{
+#ifdef __3DS__
+		// The GPU draws the world (gpu_world_3ds.cpp): the walk is wanted for its visibility
+		// only, which RenderClipSegment::Clip keeps (the solid ranges); nothing of the wall's
+		// projection, texturing, plane marking or draw segments is.
+		if (I_3DSGpuWorldActive())
+			return true;
+#endif
 		if (!rw_prepped)
 		{
 			rw_prepped = true;

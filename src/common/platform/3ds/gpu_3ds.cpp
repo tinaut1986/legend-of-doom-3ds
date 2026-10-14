@@ -49,7 +49,6 @@ using FVertex = F3DSGpuVertex;
 enum class EMode : uint8_t
 {
 	Canvas,       // the BGRA canvas texture, swizzled back to RGB, opaque
-	CanvasMasked, // the same with the canvas's own alpha (over the GPU world: the weapon)
 	Image,        // overlay images: texture * vertex colour
 	NoTexture,
 	Normal,
@@ -280,23 +279,13 @@ void ApplyMode(EMode mode, uint32_t overlay)
 	switch (mode)
 	{
 	case EMode::Canvas:
-	case EMode::CanvasMasked:
 		// The canvas is uploaded as BGRA bytes into an RGBA8 texture: rebuild R, G and B from
-		// the sampled G, B and A channels (its alpha is the sampled R).
+		// the sampled G, B and A channels.
 		C3D_TexEnvSrc(env, C3D_RGB, GPU_TEXTURE0, GPU_CONSTANT, GPU_PREVIOUS);
 		C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_G,
 			GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR);
 		C3D_TexEnvFunc(env, C3D_RGB, GPU_MODULATE);
-		if (mode == EMode::CanvasMasked)
-		{
-			C3D_TexEnvSrc(env, C3D_Alpha, GPU_TEXTURE0, GPU_CONSTANT, GPU_CONSTANT);
-			C3D_TexEnvOpAlpha(env, GPU_TEVOP_A_SRC_R, GPU_TEVOP_A_SRC_ALPHA,
-				GPU_TEVOP_A_SRC_ALPHA);
-		}
-		else
-		{
-			C3D_TexEnvSrc(env, C3D_Alpha, GPU_CONSTANT, GPU_CONSTANT, GPU_CONSTANT);
-		}
+		C3D_TexEnvSrc(env, C3D_Alpha, GPU_CONSTANT, GPU_CONSTANT, GPU_CONSTANT);
 		C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
 		C3D_TexEnvColor(env, TevColor(255, 0, 0));
 
@@ -1109,12 +1098,18 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 	// The top screen shows two images only in a frame that draws both.
 	if (stereo != gfxIs3D()) gfxSet3D(stereo);
 	F3DSGpuWorldVertex *worldVertices = WorldArenas[CurrentArena];
-	// With the GPU world the canvas holds only what the swrenderer still draws (the weapon) on
-	// transparent pixels; it goes over the world with its own alpha.
-	const size_t uploadBytes = lod3ds::CopyPresentPixels(CanvasUpload, CanvasTextureWidth,
-		pixels, pitchBytes, width, height);
-	if (R_FAILED(GSPGPU_FlushDataCache(CanvasUpload, uploadBytes))) return false;
-	if (world) GSPGPU_FlushDataCache(worldVertices, WorldUsed * sizeof(F3DSGpuWorldVertex));
+	// With the GPU world the canvas is not shown: the weapon comes as engine 2D (the
+	// swrenderer's accelerated player sprites), and nothing else is drawn into it.
+	if (!world)
+	{
+		const size_t uploadBytes = lod3ds::CopyPresentPixels(CanvasUpload, CanvasTextureWidth,
+			pixels, pitchBytes, width, height);
+		if (R_FAILED(GSPGPU_FlushDataCache(CanvasUpload, uploadBytes))) return false;
+	}
+	else
+	{
+		GSPGPU_FlushDataCache(worldVertices, WorldUsed * sizeof(F3DSGpuWorldVertex));
+	}
 
 	FVertex *quad = nullptr;
 	uint32_t quadFirst = 0;
@@ -1126,11 +1121,14 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 	const bool bottom = PrepareBottom();
 	if (!C3D_FrameBegin(0)) return false;
 	CollectReleases();
-	C3D_SyncDisplayTransfer(CanvasUpload,
-		GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
-		static_cast<u32 *>(CanvasTexture.data),
-		GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
-		TextureTransferFlags());
+	if (!world)
+	{
+		C3D_SyncDisplayTransfer(CanvasUpload,
+			GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
+			static_cast<u32 *>(CanvasTexture.data),
+			GX_BUFFER_DIM(CanvasTextureWidth, CanvasTextureHeight),
+			TextureTransferFlags());
+	}
 
 	C3D_RenderTargetClear(TopTarget, C3D_CLEAR_ALL, world ? WorldClearColor : 0x000000ff, 0);
 	C3D_FrameDrawOn(TopTarget);
@@ -1138,19 +1136,14 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 	if (world) DrawWorld(worldVertices, WorldMatrix);
 	BeginPass();
 
-	// The canvas: opaque, or over the GPU world with its alpha.
-	FDraw canvas = MakeScreenDraw(world ? EMode::CanvasMasked : EMode::Canvas, &CanvasTexture,
-		quadFirst, 6);
-	if (world)
+	if (!world)
 	{
-		C3D_AlphaTest(true, GPU_GREATER, 0);
-	}
-	else
-	{
+		// The canvas, opaque.
+		FDraw canvas = MakeScreenDraw(EMode::Canvas, &CanvasTexture, quadFirst, 6);
 		canvas.BlendSrc = STYLEALPHA_One;
 		canvas.BlendDst = STYLEALPHA_Zero;
+		ApplyDraw(canvas);
 	}
-	ApplyDraw(canvas);
 
 	// SoftPoly's 2D alpha test discards fully transparent fragments.
 	C3D_AlphaTest(true, GPU_GREATER, 0);
@@ -1165,7 +1158,6 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 		DrawWorld(worldVertices, WorldMatrixRight);
 		BeginPass();
 		C3D_AlphaTest(true, GPU_GREATER, 0);
-		ApplyDraw(canvas);
 		for (const FDraw &draw : Draws) ApplyDraw(draw);
 		for (const FDraw &draw : OverlayDraws) ApplyDraw(draw);
 		C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);

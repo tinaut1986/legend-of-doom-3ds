@@ -323,10 +323,13 @@ void PublishStats()
 {
 	const uint64_t now = osGetTime();
 	if (now - StatLastPublish < 1000 || StatFrames == 0) return;
-	char text[160];
+	char text[192];
 	const double ms = static_cast<double>(StatTicks) / StatFrames / (SYSCLOCK_ARM11 / 1000.0);
-	std::snprintf(text, sizeof(text), "capture %.2f ms, %u draws, %u vertices, gpu %.2f ms",
-		ms, StatDraws / StatFrames, StatVertices / StatFrames, I_3DSGpuLastDrawingTime());
+	const F3DSGpuStats gpu = I_3DSGpuGetStats();
+	std::snprintf(text, sizeof(text),
+		"capture %.2f ms, %u draws, %u vertices, gpu %.2f ms, 2d gpu %u sw %u",
+		ms, StatDraws / StatFrames, StatVertices / StatFrames, I_3DSGpuLastDrawingTime(),
+		static_cast<unsigned>(gpu.Recorded2D), static_cast<unsigned>(gpu.Software2D));
 	lod3ds_gpu_world_stats = text;
 	StatTicks = 0;
 	StatFrames = StatVertices = StatDraws = 0;

@@ -185,7 +185,8 @@ namespace swrenderer
 		if (r_modelscene)
 			MainThread()->Viewport->SetupPolyViewport(MainThread());
 
-		// With the GPU world the weapon still goes into the canvas, drawn over the world.
+		// With the GPU world too: the weapon then comes out as engine 2D (accelerated player
+		// sprites, RenderPlayerSprites::RenderRemaining), drawn by the GPU over the world.
 		if (renderPlayerSprites)
 			RenderPSprites();
 
