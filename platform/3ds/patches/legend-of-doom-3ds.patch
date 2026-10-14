@@ -459,7 +459,7 @@ new file mode 100644
 index 0000000..5364849
 --- /dev/null
 +++ b/actors/LegendPauseMenu.zs
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,209 @@
 +class ListMenuItemResume : ListMenuItemTextItem
 +{
 +    override bool Activate()
@@ -577,6 +577,7 @@ index 0000000..5364849
 +    int NativeUpdateChoice;
 +    int NativeUpdatePage;
 +    int NativeUpdatePages;
++    int NativeUpdateNotesPage;
 +
 +    override void Init(Menu parent, OptionMenuDescriptor desc)
 +    {
@@ -596,6 +597,21 @@ index 0000000..5364849
 +    override bool MenuEvent(int mkey, bool fromcontroller)
 +    {
 +        int state = LODUpdateAction(-1);
++        // 3: the offer's notes on the touch screen, in pages (the engine clamps the page):
++        // L R, up down or the arrows (choices 10 / 11) turn them, B or BACK returns.
++        if (NativeUpdateConfirm == 3)
++        {
++            if (mkey == MKEY_Back) NativeUpdateConfirm = 2;
++            else if (mkey == MKEY_PageUp || mkey == MKEY_Up || mkey == MKEY_Left ||
++                (mkey == MKEY_Enter && NativeUpdateChoice == 10))
++                NativeUpdateNotesPage = max(NativeUpdateNotesPage - 1, 0);
++            else if (mkey == MKEY_PageDown || mkey == MKEY_Down || mkey == MKEY_Right ||
++                (mkey == MKEY_Enter && NativeUpdateChoice == 11))
++                NativeUpdateNotesPage++;
++            else if (mkey == MKEY_Enter) NativeUpdateConfirm = 2;
++            if (NativeUpdateConfirm == 2) NativeUpdateChoice = 2;
++            return true;
++        }
 +        if (mkey == MKEY_PageUp || mkey == MKEY_PageDown)
 +        {
 +            NativeUpdatePage = clamp(NativeUpdatePage + (mkey == MKEY_PageUp ? -1 : 1), 0, NativeUpdatePages - 1);
@@ -606,12 +622,7 @@ index 0000000..5364849
 +            if (mkey == MKEY_Back) LODUpdateAction(4);
 +            return true;
 +        }
-+        // 2: the start-up offer, YES / NO and WHAT'S NEW (choice 2, below them); 3: the notes.
-+        if (NativeUpdateConfirm == 3)
-+        {
-+            if (mkey == MKEY_Back || mkey == MKEY_Enter) NativeUpdateConfirm = 2;
-+            return true;
-+        }
++        // 2: the start-up offer, YES / NO and WHAT'S NEW (choice 2, below them).
 +        if (NativeUpdateConfirm == 2)
 +        {
 +            if (mkey == MKEY_Back) { Close(); return true; }
@@ -623,7 +634,7 @@ index 0000000..5364849
 +            {
 +                if (NativeUpdateChoice == 0) { NativeUpdateConfirm = 0; LODUpdateAction(3); }
 +                else if (NativeUpdateChoice == 1) Close();
-+                else NativeUpdateConfirm = 3;
++                else { NativeUpdateConfirm = 3; NativeUpdateNotesPage = 0; NativeUpdateChoice = -1; }
 +            }
 +            return true;
 +        }

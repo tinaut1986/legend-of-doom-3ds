@@ -48,12 +48,14 @@ struct FNesFont
 };
 FNesFont NesFont;
 
-// Shapes the NES font does not have (its '<', '>' and '%' are other symbols, ':' is absent).
+// Shapes the NES font does not have (its '<', '>' and '%' are other symbols; ':' and '/' are
+// absent).
 const struct { char Character; uint8_t Rows[8]; } NesExtraAscii[] = {
 	{ '<', { 0x0c, 0x18, 0x30, 0x60, 0x30, 0x18, 0x0c, 0x00 } },
 	{ '>', { 0x60, 0x30, 0x18, 0x0c, 0x18, 0x30, 0x60, 0x00 } },
 	{ '%', { 0xc6, 0xcc, 0x18, 0x30, 0x60, 0xcc, 0x8c, 0x00 } },
 	{ ':', { 0x00, 0x30, 0x30, 0x00, 0x00, 0x30, 0x30, 0x00 } }, // missing: drawn as a dot
+	{ '/', { 0x06, 0x0c, 0x18, 0x30, 0x60, 0xc0, 0x80, 0x00 } }, // missing too
 };
 
 // Spanish capitals: a letter of the font with a mark above it, or a shape of their own.
@@ -882,29 +884,52 @@ void DrawNativeUpdateOffer(unsigned char *framebuffer, const UpdateStatus &statu
 	NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
 }
 
-// The new version's notes on the touch screen (the offer's WHAT'S NEW); A or B goes back.
+// The new version's notes on the touch screen (the offer's WHAT'S NEW): the player's block of the
+// release body, formatted as on the top screen (Update_FormatNotes), in pages. L R / up down or
+// the arrows turn them (NativeUpdateNotesPage, Choice 10 / 11); B or BACK returns to the offer.
 void DrawNativeUpdateNotes(unsigned char *framebuffer)
 {
 	NesCenteredText(framebuffer, 8, Tr("WHAT'S NEW"), 2, NesRed);
-	static char notes[4096];
+	static char notes[12289];
+	static char formatted[384][43];
 	Updater_GetNotes(notes, sizeof(notes));
-	int y = 40;
-	for (char *line = notes; line != nullptr && *line != '\0' && y < 186;)
+	const unsigned count = Update_FormatNotes(notes, formatted, 384);
+	TArray<FString> lines;
+	unsigned first = 0;
+	if (count && !std::strcmp(formatted[0], "Changelog"))
+		while (++first < count && !formatted[first][0]) {}
+	for (unsigned i = first; i < count; ++i)
 	{
-		char *next = std::strchr(line, '\n');
-		if (next != nullptr) *next++ = '\0';
-		for (const auto &text : NesWrap(line, 38, 4))
-		{
-			if (y >= 186) break;
-			NesText(framebuffer, 8, y, text.GetChars(), 1, NesWhite);
-			y += 12;
-		}
-		line = next;
+		if (!formatted[i][0]) { lines.Push(""); continue; }
+		for (const auto &text : NesWrap(formatted[i], 38, 8)) lines.Push(text);
 	}
-	NesBox(framebuffer, 112, 192, 96, 24, NesPanel, NesBlue);
-	const char *back = Tr("BACK");
-	NesText(framebuffer, 112 + (96 - NesTextWidth(back, 1)) / 2, 200, back, 1, NesGold);
-	AddNativeTouchZone(112, 192, 208, 216, ENativeTouch::Back, 0);
+	constexpr int Rows = 12;
+	const int pages = std::max(1, (static_cast<int>(lines.Size()) + Rows - 1) / Rows);
+	int &page = CurrentMenu->IntVar(FName("NativeUpdateNotesPage"));
+	page = std::clamp(page, 0, pages - 1);
+	for (int row = 0; row < Rows; ++row)
+	{
+		const unsigned i = static_cast<unsigned>(page * Rows + row);
+		if (i >= lines.Size()) break;
+		NesText(framebuffer, 8, 36 + row * 12, lines[i].GetChars(), 1, NesWhite);
+	}
+	FString footer;
+	footer.Format("%d / %d", page + 1, pages);
+	NesCenteredText(framebuffer, 184, footer.GetChars(), 1, NesGray);
+	const struct { int X, Width, Item; const char *Label; bool Enabled; } buttons[] = {
+		{ 16, 64, 10, "<", page > 0 }, { 112, 96, -1, Tr("BACK"), true },
+		{ 240, 64, 11, ">", page + 1 < pages } };
+	for (const auto &button : buttons)
+	{
+		NesBox(framebuffer, button.X, 196, button.Width, 24, button.Item < 0 ? NesPanel : NesTabIdle,
+			button.Enabled ? NesBlue : NesGray);
+		NesText(framebuffer, button.X + (button.Width - NesTextWidth(button.Label, 1)) / 2, 204,
+			button.Label, 1, button.Enabled ? NesGold : NesGray);
+		if (button.Item < 0) AddNativeTouchZone(button.X, 196, button.X + button.Width, 220,
+			ENativeTouch::Back, 0);
+		else if (button.Enabled) AddNativeTouchZone(button.X, 196, button.X + button.Width, 220,
+			ENativeTouch::Choice, button.Item);
+	}
 }
 
 void DrawNativeUpdateMenu(unsigned char *framebuffer)
