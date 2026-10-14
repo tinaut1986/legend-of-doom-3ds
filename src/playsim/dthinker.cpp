@@ -582,6 +582,10 @@ void FThinkerList::SaveList(FSerializer &arc)
 //
 //==========================================================================
 
+#ifdef __3DS__
+bool P_3DSStaticThinker(DThinker *thinker); // p_mobj.cpp
+#endif
+
 int FThinkerList::TickThinkers(FThinkerList *dest)
 {
 	int count = 0;
@@ -613,6 +617,13 @@ int FThinkerList::TickThinkers(FThinkerList *dest)
 
 		if (!(node->ObjectFlags & OF_EuthanizeMe))
 		{ // Only tick thinkers not scheduled for destruction
+#ifdef __3DS__
+			if (!(node->ObjectFlags & OF_JustSpawned) && P_3DSStaticThinker(node))
+			{
+				node = NextToThink;
+				continue;
+			}
+#endif
 			ThinkCount++;
 			node->CallTick();
 			node->ObjectFlags &= ~OF_JustSpawned;
