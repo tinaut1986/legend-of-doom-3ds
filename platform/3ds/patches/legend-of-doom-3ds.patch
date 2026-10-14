@@ -699,7 +699,7 @@ new file mode 100644
 index 0000000..1111111
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,164 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -829,6 +829,7 @@ index 0000000..1111111
 +QUIT GAME,LOD_QUIT_GAME,,,SALIR DEL JUEGO
 +RECEIVING THE INSTALLER...,LOD_RECEIVING_THE_INSTALLER,,,RECIBIENDO EL INSTALADOR...
 +RENDER,LOD_RENDER,,,RESOLUCIÓN
++RESTARTING IN,LOD_RESTARTING_IN,,,REINICIANDO EN
 +RESUME GAME,LOD_RESUME_GAME,,,CONTINUAR
 +SAVE GAME,LOD_SAVE_GAME,,,GUARDAR PARTIDA
 +SAVING FULL DUMP,LOD_SAVING_FULL_DUMP,,,GUARDANDO CAPTURA COMPLETA

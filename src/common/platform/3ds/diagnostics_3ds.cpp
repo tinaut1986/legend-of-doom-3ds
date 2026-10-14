@@ -161,6 +161,8 @@ bool OverlayAudioReady;
 char OverlayNotification[48];
 // Changes whenever a toast appears or goes, so the static bottom presentations redraw for it.
 uint32_t OverlayNotificationSerial;
+// A bar under the toast's text, in thousandths (an FTP install's progress), or -1 for none.
+int OverlayNotificationProgress = -1;
 bool DiagnosticProgressActive;
 EDiagnosticDumpMode DiagnosticProgressMode = EDiagnosticDumpMode::None;
 uint64_t DiagnosticProgressValue;
@@ -2295,12 +2297,22 @@ void DrawBottomToast(unsigned char *framebuffer)
 	if (OverlayNotification[0] == '\0') return;
 	LoadNesFont();
 	const char *text = Tr(OverlayNotification);
-	const int width = std::min(304, NesTextWidth(text, 1) + 24);
+	const bool bar = OverlayNotificationProgress >= 0;
+	const int width = std::min(304, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
+	const int height = bar ? 33 : 21;
 	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
-	const int y = InstallBarVisible() ? InstallBarY - 25 : 210; // above the install bar
-	OverlayRect(framebuffer, x, y, width, 21, OverlayInk);
-	OverlayFrame(framebuffer, x, y, width, 21, 1, OverlayBlue);
+	// Above the install bar when it is there.
+	const int y = (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+	OverlayRect(framebuffer, x, y, width, height, OverlayInk);
+	OverlayFrame(framebuffer, x, y, width, height, 1, OverlayBlue);
 	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
+	if (bar)
+	{
+		const int barWidth = width - 24;
+		OverlayRect(framebuffer, x + 12, y + 20, barWidth, 6, FOverlayColor{ 60, 60, 60 });
+		OverlayRect(framebuffer, x + 12, y + 20,
+			barWidth * std::min(OverlayNotificationProgress, 1000) / 1000, 6, OverlayRed);
+	}
 }
 
 // The STATUS box's FTP button (debug builds), in bottom-screen pixels.
@@ -6044,25 +6056,51 @@ void ConsoleLinkLog(const char *line)
 void I_3DSServiceConsoleLink()
 {
 	FtpServer_Tick(ConsoleLinkLog);
-	// While an installer arrives or installs, a toast on the touch screen says so: an install
-	// over the running game never happens without a warning.
-	static const char *shownNotice = nullptr;
-	const char *notice = FtpServer_Notice();
-	if (notice != shownNotice)
-	{
-		if (notice != nullptr) SetOverlayNotification(notice, 10u * 60u * 1000u);
-		else SetOverlayNotification(nullptr, 0);
-		shownNotice = notice;
-	}
 	// SITE INSTALL put a new build in place: relaunch into it, but not at once. Jumping right
 	// after the install had the system load the title a second time while the new build ran,
 	// and the loader crashed out of memory (3 installs in 4); 10 s later, none did in 4, nor
-	// any of 6 jumps with no install before them (issue #1). The toast stays up meanwhile.
+	// any of 6 jumps with no install before them (issue #1).
+	constexpr u64 RelaunchDelayMilliseconds = 10000u;
 	static u64 relaunchAt = 0;
 	if (FtpServer_TakeRelaunch())
 	{
-		relaunchAt = osGetTime() + 10000u;
+		relaunchAt = osGetTime() + RelaunchDelayMilliseconds;
 		ConsoleLinkLog("new build installed: relaunching in 10 s");
+	}
+	// While an installer arrives, installs or waits to relaunch, a toast on the touch screen
+	// says so, with a bar: the bytes received (of the size build_3ds.py announces with ALLO),
+	// then written to the system, then the countdown. An install over the running game never
+	// happens without a warning.
+	char text[sizeof(OverlayNotification)] = {};
+	int progress = -1;
+	if (relaunchAt != 0)
+	{
+		const u64 now = std::min<u64>(osGetTime(), relaunchAt);
+		const unsigned seconds = static_cast<unsigned>((relaunchAt - now + 999u) / 1000u);
+		std::snprintf(text, sizeof(text), "%s %u S", Tr("RESTARTING IN"), seconds);
+		progress = static_cast<int>(1000u - (relaunchAt - now) * 1000u / RelaunchDelayMilliseconds);
+	}
+	else if (const char *notice = FtpServer_Notice())
+	{
+		unsigned long long done = 0, total = 0;
+		FtpServer_Progress(&done, &total);
+		if (total > 0)
+		{
+			progress = static_cast<int>(std::min<unsigned long long>(done * 1000u / total, 1000u));
+			std::snprintf(text, sizeof(text), "%s %d%%", Tr(notice), progress / 10);
+		}
+		else std::snprintf(text, sizeof(text), "%s", Tr(notice));
+	}
+	static char shownText[sizeof(OverlayNotification)] = {};
+	static int shownProgress = -1;
+	// Drawn again when the text or the bar moves by a percent.
+	if (std::strcmp(text, shownText) != 0 || progress / 10 != shownProgress / 10)
+	{
+		if (text[0] != '\0') SetOverlayNotification(text, 10u * 60u * 1000u);
+		else if (shownText[0] != '\0') SetOverlayNotification(nullptr, 0);
+		OverlayNotificationProgress = progress;
+		std::snprintf(shownText, sizeof(shownText), "%s", text);
+		shownProgress = progress;
 	}
 	if (relaunchAt != 0 && osGetTime() >= relaunchAt)
 	{

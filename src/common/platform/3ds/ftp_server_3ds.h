@@ -40,6 +40,9 @@ void FtpServer_Stats(unsigned *sent, unsigned *received, bool *connected);
 // While a .cia is being received or SITE INSTALL runs, the line to show the player; NULL
 // otherwise.
 const char *FtpServer_Notice(void);
+// How far that is: 1 while a .cia arrives, 2 while it installs, 0 otherwise; `done` of `total`
+// bytes (`total` 0 when the client did not announce the size with ALLO).
+int FtpServer_Progress(unsigned long long *done, unsigned long long *total);
 // Main thread, once per frame: hands what the server thread has to say to `log`.
 void FtpServer_Tick(void (*log)(const char *line));
 // True once, after a SITE INSTALL succeeded: the main loop jumps into the new build.
