@@ -858,20 +858,20 @@ void DrawNativeControlsMenu(unsigned char *framebuffer)
 	NesHint(framebuffer, "B BACK");
 }
 
-// The start-up offer (AUTO UPDATE): the versions, YES / NO, and WHAT'S NEW below them
-// (NativeUpdateChoice 0, 1, 2).
+// The start-up offer (AUTO UPDATE): the versions and YES / NO (NativeUpdateChoice 0, 1); the
+// notes are on the top screen (DrawUpdateChangelogTop), paged with L R.
 void DrawNativeUpdateOffer(unsigned char *framebuffer, const UpdateStatus &status)
 {
 	const int choice = CurrentMenu->IntVar(FName("NativeUpdateChoice"));
-	NesBox(framebuffer, 16, 44, 288, 160, NesTabIdle, NesBlue);
-	NesCenteredText(framebuffer, 58, Tr("UPDATE AVAILABLE"), 1, NesGold);
+	NesBox(framebuffer, 16, 52, 288, 128, NesTabIdle, NesBlue);
+	NesCenteredText(framebuffer, 66, Tr("UPDATE AVAILABLE"), 1, NesGold);
 	FString line;
 	line.Format("%s -> %s", LOD3DS_PORT_VERSION_LABEL, status.version[0] ? status.version : "--");
-	NesCenteredText(framebuffer, 78, line.GetChars(), 1, NesWhite);
-	NesCenteredText(framebuffer, 98, Tr("INSTALL AND RESTART?"), 1, NesWhite);
-	const char *labels[] = { Tr("YES"), Tr("NO"), Tr("WHAT'S NEW") };
-	const struct { int X, Y, Width; } boxes[] = { { 52, 122, 96 }, { 172, 122, 96 }, { 52, 158, 216 } };
-	for (int i = 0; i < 3; ++i)
+	NesCenteredText(framebuffer, 86, line.GetChars(), 1, NesWhite);
+	NesCenteredText(framebuffer, 106, Tr("INSTALL AND RESTART?"), 1, NesWhite);
+	const char *labels[] = { Tr("YES"), Tr("NO") };
+	const struct { int X, Y, Width; } boxes[] = { { 52, 136, 96 }, { 172, 136, 96 } };
+	for (int i = 0; i < 2; ++i)
 	{
 		const bool active = i == choice;
 		NesBox(framebuffer, boxes[i].X, boxes[i].Y, boxes[i].Width, 24,
@@ -884,64 +884,11 @@ void DrawNativeUpdateOffer(unsigned char *framebuffer, const UpdateStatus &statu
 	NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
 }
 
-// The new version's notes on the touch screen (the offer's WHAT'S NEW): the player's block of the
-// release body, formatted as on the top screen (Update_FormatNotes), in pages. L R / up down or
-// the arrows turn them (NativeUpdateNotesPage, Choice 10 / 11); B or BACK returns to the offer.
-void DrawNativeUpdateNotes(unsigned char *framebuffer)
-{
-	NesCenteredText(framebuffer, 8, Tr("WHAT'S NEW"), 2, NesRed);
-	static char notes[12289];
-	static char formatted[384][43];
-	Updater_GetNotes(notes, sizeof(notes));
-	const unsigned count = Update_FormatNotes(notes, formatted, 384);
-	TArray<FString> lines;
-	unsigned first = 0;
-	if (count && !std::strcmp(formatted[0], "Changelog"))
-		while (++first < count && !formatted[first][0]) {}
-	for (unsigned i = first; i < count; ++i)
-	{
-		if (!formatted[i][0]) { lines.Push(""); continue; }
-		for (const auto &text : NesWrap(formatted[i], 38, 8)) lines.Push(text);
-	}
-	constexpr int Rows = 12;
-	const int pages = std::max(1, (static_cast<int>(lines.Size()) + Rows - 1) / Rows);
-	int &page = CurrentMenu->IntVar(FName("NativeUpdateNotesPage"));
-	page = std::clamp(page, 0, pages - 1);
-	for (int row = 0; row < Rows; ++row)
-	{
-		const unsigned i = static_cast<unsigned>(page * Rows + row);
-		if (i >= lines.Size()) break;
-		NesText(framebuffer, 8, 36 + row * 12, lines[i].GetChars(), 1, NesWhite);
-	}
-	FString footer;
-	footer.Format("%d / %d", page + 1, pages);
-	NesCenteredText(framebuffer, 184, footer.GetChars(), 1, NesGray);
-	const struct { int X, Width, Item; const char *Label; bool Enabled; } buttons[] = {
-		{ 16, 64, 10, "<", page > 0 }, { 112, 96, -1, Tr("BACK"), true },
-		{ 240, 64, 11, ">", page + 1 < pages } };
-	for (const auto &button : buttons)
-	{
-		NesBox(framebuffer, button.X, 196, button.Width, 24, button.Item < 0 ? NesPanel : NesTabIdle,
-			button.Enabled ? NesBlue : NesGray);
-		NesText(framebuffer, button.X + (button.Width - NesTextWidth(button.Label, 1)) / 2, 204,
-			button.Label, 1, button.Enabled ? NesGold : NesGray);
-		if (button.Item < 0) AddNativeTouchZone(button.X, 196, button.X + button.Width, 220,
-			ENativeTouch::Back, 0);
-		else if (button.Enabled) AddNativeTouchZone(button.X, 196, button.X + button.Width, 220,
-			ENativeTouch::Choice, button.Item);
-	}
-}
-
 void DrawNativeUpdateMenu(unsigned char *framebuffer)
 {
 	UpdateStatus status;
 	Updater_GetStatus(&status);
 	const int confirm = CurrentMenu->IntVar(FName("NativeUpdateConfirm"));
-	if (confirm == 3)
-	{
-		DrawNativeUpdateNotes(framebuffer);
-		return;
-	}
 	NesCenteredText(framebuffer, 8, Tr("UPDATE"), 2, NesRed);
 	if (confirm == 2 && !Updater_Busy())
 	{

@@ -18,9 +18,9 @@ by default. Installation restarts the game into the new version (unsaved progres
 **AUTO UPDATE** (first row of the Update menu, `lod3ds_auto_update`, on by default): a few
 seconds after the game starts, once Wi-Fi is up (given up after ~30 s without it), the updater
 checks the selected channel once. A newer version opens the Update menu, outside a level and
-with no menu open, straight on an offer: the installed and the new version, YES (install and
-restart), NO (closes it until the next start) and WHAT'S NEW (the release notes on the touch
-screen; A or B goes back to the offer). No update, no network or an error say nothing; opening
+with no menu open, straight on an offer on the touch screen: the installed and the new version,
+YES (install and restart) and NO (closes it until the next start), with the new version's notes
+on the top screen as usual (L R pages). No update, no network or an error say nothing; opening
 Update by hand before the check ends ends it.
 
 CIA updates include the matching engine and game resources. The updater checks
