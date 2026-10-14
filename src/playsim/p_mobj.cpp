@@ -3585,14 +3585,42 @@ bool P_3DSStaticThinker(DThinker *thinker)
 	if (!lod3ds_static_thinkers || !thinker->IsKindOf(RUNTIME_CLASS(AActor))) return false;
 	static unsigned tickIndex = ~0u;
 	static VMFunction *actorTick = nullptr;
+	static VMFunction *inventoryTick = nullptr;
+	static PClass *inventoryClass = nullptr;
+	static size_t ownerOffset = 0, dropTimeOffset = 0;
 	if (tickIndex == ~0u)
 	{
 		tickIndex = GetVirtualIndex(RUNTIME_CLASS(DThinker), "Tick");
 		actorTick = RUNTIME_CLASS(AActor)->Virtuals[tickIndex];
+		// Inventory's Tick (inventory.zs): an owned item with a state that never ends and no
+		// DropTime does nothing; a loose one only calls Actor's.
+		inventoryClass = PClass::FindClass(NAME_Inventory);
+		auto owner = inventoryClass != nullptr ?
+			dyn_cast<PField>(inventoryClass->FindSymbol(NAME_Owner, true)) : nullptr;
+		auto dropTime = inventoryClass != nullptr ?
+			dyn_cast<PField>(inventoryClass->FindSymbol(NAME_DropTime, true)) : nullptr;
+		if (owner != nullptr && dropTime != nullptr && inventoryClass->Virtuals.Size() > tickIndex)
+		{
+			inventoryTick = inventoryClass->Virtuals[tickIndex];
+			ownerOffset = owner->Offset;
+			dropTimeOffset = dropTime->Offset;
+		}
 	}
 	const PClass *type = thinker->GetClass();
-	if (type->Virtuals.Size() <= tickIndex || type->Virtuals[tickIndex] != actorTick) return false;
+	if (type->Virtuals.Size() <= tickIndex) return false;
+	VMFunction *tick = type->Virtuals[tickIndex];
 	AActor *actor = static_cast<AActor *>(thinker);
+	if (tick == inventoryTick && inventoryTick != nullptr)
+	{
+		const char *base = reinterpret_cast<const char *>(actor);
+		if (*reinterpret_cast<const int *>(base + dropTimeOffset) != 0 || actor->tics != -1)
+			return false;
+		if (*reinterpret_cast<AActor *const *>(base + ownerOffset) != nullptr) return true;
+	}
+	else if (tick != actorTick)
+	{
+		return false;
+	}
 	return actor->player == nullptr && actor->tics == -1 && actor->state != nullptr &&
 		actor->Inventory == nullptr && actor->effects == 0 && actor->Vel.isZero() &&
 		!(actor->flags & MF_SKULLFLY) && !(actor->flags2 & MF2_FLOATBOB) &&

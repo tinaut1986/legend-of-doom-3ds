@@ -133,7 +133,9 @@ void P_3DSTickProfileThinker(DThinker *thinker, bool skipped)
 		return;
 	}
 	++TickProfileTicked;
-	++TickProfileClasses[thinker->GetClass()->TypeName];
+	const FName name = thinker->GetClass()->TypeName;
+	if (unsigned *count = TickProfileClasses.CheckKey(name)) ++*count;
+	else TickProfileClasses.Insert(name, 1);
 }
 
 CCMD(lod3ds_tickprofile)
