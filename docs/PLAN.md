@@ -33,6 +33,7 @@ languages, AUTO UPDATE and the memory fix; before it **`v0.1.0`** (2026-10-12, b
 | Branch | What | State |
 |---|---|---|
 | _(merged)_ | `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS (stereo depth, sprites, trees and weapon; the bottom screen; nothing static stuck; the FTP button; the game as usual); what each holds and what was measured: [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md). The local `test/stereo-bottom` is now redundant | |
+| `feat/old3ds-boot` | P4.1 in progress (pushed, not merged; not yet checked on the New 3DS: the 804 MHz/L2 now come from `osSetSpeedupEnable` through `ptm:sysm`, not the exheader): one CIA for both models (no New 3DS-only SMDH flag; Old 3DS mode 80 MB; 12 MB of linear memory), map WADs stored in the pk3, a 5 MB map-load reserve. On the 2DS it gets 80 MB and the GPU, compiles ZScript, then a 1.3 MB lump fails to load on a fragmented heap (16 MB free) before the title | Next session: memory reduction first (decisions log, 2026-10-14) |
 | _(merged)_ | `feat/stable-dev-ftp-banner` (stable builds: no DEBUG tab or developer overlay, SHOW FPS in VIDEO; the install-only FTP bar with its X), `feat/auto-update` (AUTO UPDATE: the offer at start, YES / NO, notes on the top screen; an installed update restarts the game; ':' and '/' in the NES font) and `feat/install-progress` (FTP install: bars for receiving and installing, relaunch countdown) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS with a stable-mode build posing as 0.0.9 | |
 | _(merged)_ | `feat/gpu-world-default` (the GPU draws the world in every build; stable builds cannot turn it off; owner 2026-10-14: never the CPU) and `docs/release-notes-v0.2.0` merged into `release/v0.1.1` 2026-10-14 after the owner saw it start on the GPU and approved the notes | |
 | _(merged)_ | `fix/texture-memory` (#4: the out-of-memory close after the first dungeon; texture mipmaps skipped while `r_mipmap` is off, the `ibo_data` leak on every map load, lighter map loading, heap logs) merged into `release/v0.1.1` 2026-10-14 after the owner finished the first dungeon and went back to the overworld on the New 3DS with no close (MAP01 at 62.2 MB on both returns) | |
@@ -441,3 +442,12 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   this line is published as v0.2.0, the first stable release (owner's call; minor bump for the
   GPU world, stereo 3D and the new bottom screen). Stereo on the New 3DS is GPU-bound (~64 fps),
   so 2DS work will not raise it by itself.
+- **2026-10-14** P4.1 on the owner's 2DS. The HOME menu needs: no New 3DS-only flag in the SMDH
+  (`cia-memory.py` used to set it), Old 3DS mode 80 MB (96 MB crashed HOME), and no `CpuSpeed` /
+  `EnableL2Cache` / `CanAccessCore2` in the exheader (with them the 2DS gave the title 64 MB);
+  `SystemModeExt: 124MB` may stay. The game then gets 80 MB, of which ~55 MB of heap: ZScript's
+  compile peaks at ~45 MB and leaves the heap too fragmented for the next 1-2 MB block (MAP01's
+  TEXTMAP, a 1.3 MB lump) with 16 MB free. Reserves only move the failure; the owner chose to
+  **reduce the memory the game needs first** (next session): measure what holds the heap after
+  the compile and in MAP01, then compile only the actors this game uses (gzdoom.pk3 compiles
+  Doom, Heretic, Hexen, Strife and Chex), then 8-bit textures, the doubled sides, caches.
