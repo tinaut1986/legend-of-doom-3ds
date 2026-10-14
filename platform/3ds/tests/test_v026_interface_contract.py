@@ -95,7 +95,7 @@ class V026InterfaceContractTests(unittest.TestCase):
         self.assertNotIn('Menu.OptionWidth("INPUT")', patch)
         self.assertNotIn('mFontColorHeader, "ACTION"', patch)
         self.assertIn('Font "NewSmallFont", "White"', patch)
-        self.assertIn("BottomSelectItem(row * Columns + column)", diagnostics)
+        self.assertIn("if (BottomSelectItem(column)) DrawBottomOverlay(true);", diagnostics)
 
     def test_v030_save_load_uses_independent_screens_and_native_keyboard(self):
         diagnostics = (ROOT / "src/common/platform/3ds/diagnostics_3ds.cpp").read_text()

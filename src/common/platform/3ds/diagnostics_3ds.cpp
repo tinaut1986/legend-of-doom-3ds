@@ -1839,6 +1839,10 @@ constexpr FOverlayColor Idle{ 20, 20, 20 };
 constexpr int TitleY = 6;
 constexpr int RBoxX = 12, LBoxX = 46, ButtonBoxY = 20, ButtonBoxWidth = 32, ButtonBoxHeight = 40;
 constexpr int GridX = 86, GridY = 20, CellWidth = 28, CellHeight = 36, Columns = 8;
+// The second row (the boomerang, which L throws, and the carried items) is apart, in grey, and
+// cannot be selected: only the first row's weapons are equipped (owner, 2026-10-14).
+constexpr int PassiveRowY = GridY + CellHeight + 6;
+constexpr FOverlayColor PassiveFrame{ 116, 116, 116 };
 constexpr int MapFrameX = 10, MapFrameY = 108, MapFrameWidth = 184, MapFrameHeight = 128;
 constexpr int MapX = 12, MapY = 110, MapWidth = 180, MapHeight = 106;
 constexpr int ZoomX = 12, ZoomY = 218, ZoomWidth = 180, ZoomHeight = 16;
@@ -1947,10 +1951,11 @@ void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *read
 		BottomHasAnyInventory(owner, boomerang.Inventory1, boomerang.Inventory2,
 			boomerang.Inventory3) ? static_cast<int>(BottomBoomerangItem) : -1);
 
-	// Every item, in one frame; the selected one outlined.
-	const int rows = static_cast<int>((items.size() + Columns - 1) / Columns);
-	OverlayFrame(framebuffer, GridX - 3, GridY - 3, Columns * CellWidth + 6,
-		rows * CellHeight + 6, 2, Blue);
+	// The weapons R equips, framed in blue (the equipped one outlined); the rest apart, in grey.
+	OverlayFrame(framebuffer, GridX - 3, GridY - 3, Columns * CellWidth + 6, CellHeight + 6, 2,
+		Blue);
+	OverlayFrame(framebuffer, GridX - 3, PassiveRowY - 3, Columns * CellWidth + 6,
+		CellHeight + 6, 2, PassiveFrame);
 	AActor *selectedInventory = owner != nullptr ?
 		owner->PointerVar<AActor>(NAME_InvSel) : nullptr;
 	for (unsigned index = 0; index < items.size(); ++index)
@@ -1958,10 +1963,11 @@ void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *read
 		const FBottomItem &item = items[index];
 		if (!BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3))
 			continue;
+		const bool equippable = index < static_cast<unsigned>(Columns);
 		const int cellX = GridX + static_cast<int>(index % Columns) * CellWidth;
-		const int cellY = GridY + static_cast<int>(index / Columns) * CellHeight;
-		if (BottomReadyWeaponMatches(readyWeapon, item) ||
-			BottomInventoryMatches(selectedInventory, item))
+		const int cellY = equippable ? GridY : PassiveRowY;
+		if (equippable && (BottomReadyWeaponMatches(readyWeapon, item) ||
+			BottomInventoryMatches(selectedInventory, item)))
 		{
 			DrawBottomRoundedRectOutline(framebuffer, cellX + 1, cellY + 1,
 				CellWidth - 2, CellHeight - 2, 4, 1, White);
@@ -5726,15 +5732,14 @@ bool I_3DSDiagnosticTouch(float x, float y)
 		DrawBottomOverlay(true);
 		return true;
 	}
-	const unsigned itemCount = static_cast<unsigned>(BottomItems().size());
-	const int rows = static_cast<int>((itemCount + Columns - 1) / Columns);
-	if (Inside(pixelX, pixelY, GridX, GridY, Columns * CellWidth, rows * CellHeight))
+	// Only the first row is equipped; a touch on the second does nothing (nor moves the camera).
+	if (Inside(pixelX, pixelY, GridX, GridY, Columns * CellWidth, CellHeight))
 	{
 		const unsigned column = static_cast<unsigned>((pixelX - GridX) / CellWidth);
-		const unsigned row = static_cast<unsigned>((pixelY - GridY) / CellHeight);
-		if (BottomSelectItem(row * Columns + column)) DrawBottomOverlay(true);
+		if (BottomSelectItem(column)) DrawBottomOverlay(true);
 		return true;
 	}
+	if (Inside(pixelX, pixelY, GridX, PassiveRowY, Columns * CellWidth, CellHeight)) return true;
 	return false;
 }
 
