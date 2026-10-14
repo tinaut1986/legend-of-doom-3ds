@@ -76,14 +76,15 @@ bool DrawUpdateMenu(unsigned char *framebuffer, const unsigned char *menu,
     }
     NativeMenuCustomOption = true;
     auto descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
-    const char *labels[] = { status.prerelease ? "CHANNEL: BETA" : "CHANNEL: STABLE",
+    const char *labels[] = { lod3ds_auto_update ? "AUTO UPDATE: ON" : "AUTO UPDATE: OFF",
+        status.prerelease ? "CHANNEL: BETA" : "CHANNEL: STABLE",
         "CHECK FOR UPDATES", "INSTALL UPDATE", "BACK" };
-    for (int row=0; row<4; ++row)
+    for (int row=0; row<5; ++row)
     {
         // Keep the title and Back fixed; center the intervening content.
-        const int y = row == 3 ? 214 : 129+row*25;
+        const int y = row == 4 ? 214 : 118+row*23;
         const bool selected = descriptor && descriptor->mSelectedItem == row;
-        auto color = row == 2 && status.state != UPDATE_AVAILABLE
+        auto color = row == 3 && status.state != UPDATE_AVAILABLE
             ? FOverlayColor{112,112,112} : OverlayIvory;
         text(y, labels[row], 1.28f, color);
         if (selected)

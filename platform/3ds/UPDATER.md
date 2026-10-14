@@ -13,7 +13,15 @@ actions are centered between the fixed Update heading and Back button.
 Opening Update checks GitHub. The selected stable/beta channel persists
 under `sdmc:/3ds/Legend of Doom 3DS/update/channel.txt`. A selects, B returns or
 cancels a transfer, and the bottom screen supports touch. L/R pages through the changelog without leaving the update controls. Installation requires an explicit Yes; No is selected
-by default. Installation closes the game, so save progress first.
+by default. Installation restarts the game into the new version (unsaved progress is lost).
+
+**AUTO UPDATE** (first row of the Update menu, `lod3ds_auto_update`, on by default): a few
+seconds after the game starts, once Wi-Fi is up (given up after ~30 s without it), the updater
+checks the selected channel once. A newer version opens the Update menu, outside a level and
+with no menu open, straight on an offer on the touch screen: the installed and the new version,
+YES (install and restart) and NO (closes it until the next start), with the new version's notes
+on the top screen as usual (L R pages). No update, no network or an error say nothing; opening
+Update by hand before the check ends ends it.
 
 CIA updates include the matching engine and game resources. The updater checks
 HTTPS certificates, download size, SHA-256 and the CIA title ID before asking

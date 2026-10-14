@@ -339,7 +339,7 @@ index c7c6d33..9ddcbc3 100644
  }
  
  // //-------------------------------------------------------------------------------------------
-@@ -57,3 +124,13 @@ ListMenu "EpisodeMenu"
+@@ -57,3 +124,14 @@ ListMenu "EpisodeMenu"
  // {
  // 	Option "High Resolution Voxel Graphics",		"r_drawvoxels", "OnOff"
  // }
@@ -348,6 +348,7 @@ index c7c6d33..9ddcbc3 100644
 +{
 +    Class "LegendUpdateMenu"
 +    Title "UPDATE"
++    Command "AUTO UPDATE", ""
 +    Command "CHANNEL", ""
 +    Command "CHECK FOR UPDATES", ""
 +    Command "INSTALL UPDATE", ""
@@ -458,7 +459,7 @@ new file mode 100644
 index 0000000..5364849
 --- /dev/null
 +++ b/actors/LegendPauseMenu.zs
-@@ -0,0 +1,178 @@
+@@ -0,0 +1,198 @@
 +class ListMenuItemResume : ListMenuItemTextItem
 +{
 +    override bool Activate()
@@ -591,7 +592,13 @@ index 0000000..5364849
 +        NativeUpdatePage = 0;
 +        NativeUpdatePages = 1;
 +        NativeUpdateChoice = 1;
-+        LODUpdateAction(0);
++        // Opened by the start-up check (AUTO UPDATE): straight to its offer.
++        if (LODUpdateAction(6))
++        {
++            NativeUpdateConfirm = 2;
++            NativeUpdateChoice = 0;
++        }
++        else LODUpdateAction(0);
 +    }
 +
 +    override bool MenuEvent(int mkey, bool fromcontroller)
@@ -607,6 +614,19 @@ index 0000000..5364849
 +            if (mkey == MKEY_Back) LODUpdateAction(4);
 +            return true;
 +        }
++        // 2: the start-up offer, YES / NO (the notes are on the top screen, L R).
++        if (NativeUpdateConfirm == 2)
++        {
++            if (mkey == MKEY_Back) { Close(); return true; }
++            if (mkey == MKEY_Left || mkey == MKEY_Right || mkey == MKEY_Up || mkey == MKEY_Down)
++                NativeUpdateChoice = 1 - NativeUpdateChoice;
++            if (mkey == MKEY_Enter)
++            {
++                if (NativeUpdateChoice == 0) { NativeUpdateConfirm = 0; LODUpdateAction(3); }
++                else Close();
++            }
++            return true;
++        }
 +        if (NativeUpdateConfirm)
 +        {
 +            if (mkey == MKEY_Back) NativeUpdateConfirm = 0;
@@ -620,18 +640,19 @@ index 0000000..5364849
 +            return true;
 +        }
 +        if (mkey == MKEY_Back) { Close(); return true; }
-+        if (mkey == MKEY_Up) mDesc.mSelectedItem = (mDesc.mSelectedItem + 3) % 4;
-+        if (mkey == MKEY_Down) mDesc.mSelectedItem = (mDesc.mSelectedItem + 1) % 4;
-+        if (mkey == MKEY_Enter || ((mkey == MKEY_Left || mkey == MKEY_Right) && mDesc.mSelectedItem == 0))
++        if (mkey == MKEY_Up) mDesc.mSelectedItem = (mDesc.mSelectedItem + 4) % 5;
++        if (mkey == MKEY_Down) mDesc.mSelectedItem = (mDesc.mSelectedItem + 1) % 5;
++        if (mkey == MKEY_Enter || ((mkey == MKEY_Left || mkey == MKEY_Right) && mDesc.mSelectedItem <= 1))
 +        {
 +            switch (mDesc.mSelectedItem)
 +            {
-+            case 0: LODUpdateAction(2); break;
-+            case 1: LODUpdateAction(1); break;
-+            case 2:
++            case 0: LODUpdateAction(5); break;
++            case 1: LODUpdateAction(2); break;
++            case 2: LODUpdateAction(1); break;
++            case 3:
 +                if (state == 3) { NativeUpdateConfirm = 1; NativeUpdateChoice = 1; }
 +                break;
-+            case 3: Close(); break;
++            case 4: Close(); break;
 +            }
 +        }
 +        return true;
@@ -678,7 +699,7 @@ new file mode 100644
 index 0000000..1111111
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,163 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -695,6 +716,8 @@ index 0000000..1111111
 +ATTACK,LOD_ATTACK,,,ATACAR
 +AUDIO READY,LOD_AUDIO_READY,,,AUDIO LISTO
 +AUDIO UNAVAILABLE,LOD_AUDIO_UNAVAILABLE,,,AUDIO NO DISPONIBLE
++AUTO UPDATE: OFF,LOD_AUTO_UPDATE_OFF,,,AUTOACTUALIZAR: NO
++AUTO UPDATE: ON,LOD_AUTO_UPDATE_ON,,,AUTOACTUALIZAR: SÍ
 +B BACK,LOD_B_BACK,,,B VOLVER
 +B CANCEL,LOD_B_CANCEL,,,B CANCELAR
 +BACK,LOD_BACK,,,VOLVER
@@ -758,6 +781,7 @@ index 0000000..1111111
 +HTTP MEMORY ERROR,LOD_HTTP_MEMORY_ERROR,,,SIN MEMORIA PARA HTTP
 +IMPOSSIBLE,LOD_IMPOSSIBLE,,,IMPOSIBLE
 +INSTALL AND CLOSE?,LOD_INSTALL_AND_CLOSE,,,¿INSTALAR Y CERRAR?
++INSTALL AND RESTART?,LOD_INSTALL_AND_RESTART,,,¿INSTALAR Y REINICIAR?
 +INSTALL THE CIA TO UPDATE,LOD_INSTALL_THE_CIA_TO_UPDATE,,,INSTALA EL CIA PARA ACTUALIZAR
 +INSTALL UPDATE,LOD_INSTALL_UPDATE,,,INSTALAR
 +INSTALLATION FAILED,LOD_INSTALLATION_FAILED,,,FALLÓ LA INSTALACIÓN

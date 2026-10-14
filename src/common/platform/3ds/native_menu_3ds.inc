@@ -48,11 +48,14 @@ struct FNesFont
 };
 FNesFont NesFont;
 
-// Shapes the NES font does not have (its '<', '>' and '%' are other symbols).
+// Shapes the NES font does not have (its '<', '>' and '%' are other symbols; ':' and '/' are
+// absent).
 const struct { char Character; uint8_t Rows[8]; } NesExtraAscii[] = {
 	{ '<', { 0x0c, 0x18, 0x30, 0x60, 0x30, 0x18, 0x0c, 0x00 } },
 	{ '>', { 0x60, 0x30, 0x18, 0x0c, 0x18, 0x30, 0x60, 0x00 } },
 	{ '%', { 0xc6, 0xcc, 0x18, 0x30, 0x60, 0xcc, 0x8c, 0x00 } },
+	{ ':', { 0x00, 0x30, 0x30, 0x00, 0x00, 0x30, 0x30, 0x00 } }, // missing: drawn as a dot
+	{ '/', { 0x06, 0x0c, 0x18, 0x30, 0x60, 0xc0, 0x80, 0x00 } }, // missing too
 };
 
 // Spanish capitals: a letter of the font with a mark above it, or a shape of their own.
@@ -856,16 +859,48 @@ void DrawNativeControlsMenu(unsigned char *framebuffer)
 	NesHint(framebuffer, "B BACK");
 }
 
+// The start-up offer (AUTO UPDATE): the versions and YES / NO (NativeUpdateChoice 0, 1); the
+// notes are on the top screen (DrawUpdateChangelogTop), paged with L R.
+void DrawNativeUpdateOffer(unsigned char *framebuffer, const UpdateStatus &status)
+{
+	const int choice = CurrentMenu->IntVar(FName("NativeUpdateChoice"));
+	NesBox(framebuffer, 16, 52, 288, 128, NesTabIdle, NesBlue);
+	NesCenteredText(framebuffer, 66, Tr("UPDATE AVAILABLE"), 1, NesGold);
+	FString line;
+	line.Format("%s -> %s", LOD3DS_PORT_VERSION_LABEL, status.version[0] ? status.version : "--");
+	NesCenteredText(framebuffer, 86, line.GetChars(), 1, NesWhite);
+	NesCenteredText(framebuffer, 106, Tr("INSTALL AND RESTART?"), 1, NesWhite);
+	const char *labels[] = { Tr("YES"), Tr("NO") };
+	const struct { int X, Y, Width; } boxes[] = { { 52, 136, 96 }, { 172, 136, 96 } };
+	for (int i = 0; i < 2; ++i)
+	{
+		const bool active = i == choice;
+		NesBox(framebuffer, boxes[i].X, boxes[i].Y, boxes[i].Width, 24,
+			active ? NesPanel : NesTabIdle, active ? NesBlue : NesGray);
+		NesText(framebuffer, boxes[i].X + (boxes[i].Width - NesTextWidth(labels[i], 1)) / 2,
+			boxes[i].Y + 8, labels[i], 1, active ? NesGold : NesWhite);
+		AddNativeTouchZone(boxes[i].X, boxes[i].Y, boxes[i].X + boxes[i].Width, boxes[i].Y + 24,
+			ENativeTouch::Choice, i);
+	}
+	NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
+}
+
 void DrawNativeUpdateMenu(unsigned char *framebuffer)
 {
 	UpdateStatus status;
 	Updater_GetStatus(&status);
+	const int confirm = CurrentMenu->IntVar(FName("NativeUpdateConfirm"));
 	NesCenteredText(framebuffer, 8, Tr("UPDATE"), 2, NesRed);
+	if (confirm == 2 && !Updater_Busy())
+	{
+		DrawNativeUpdateOffer(framebuffer, status);
+		return;
+	}
 
-	if (CurrentMenu->IntVar(FName("NativeUpdateConfirm")))
+	if (confirm == 1)
 	{
 		FString message;
-		message.Format("%s %s", Tr("INSTALL AND CLOSE?"), Tr("UNSAVED PROGRESS WILL BE LOST"));
+		message.Format("%s %s", Tr("INSTALL AND RESTART?"), Tr("UNSAVED PROGRESS WILL BE LOST"));
 		DrawNesDialog(framebuffer, message.GetChars(), Tr("YES"), Tr("NO"),
 			CurrentMenu->IntVar(FName("NativeUpdateChoice")));
 		NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
@@ -909,13 +944,14 @@ void DrawNativeUpdateMenu(unsigned char *framebuffer)
 	}
 
 	auto *descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
-	const char *labels[] = { status.prerelease ? "CHANNEL: BETA" : "CHANNEL: STABLE",
+	const char *labels[] = { lod3ds_auto_update ? "AUTO UPDATE: ON" : "AUTO UPDATE: OFF",
+		status.prerelease ? "CHANNEL: BETA" : "CHANNEL: STABLE",
 		"CHECK FOR UPDATES", "INSTALL UPDATE", "BACK" };
-	for (int row = 0; row < 4; ++row)
+	for (int row = 0; row < 5; ++row)
 	{
-		const int y = 108 + row * 25;
+		const int y = 104 + row * 22;
 		const bool selected = descriptor != nullptr && descriptor->mSelectedItem == row;
-		const bool disabled = row == 2 && status.state != UPDATE_AVAILABLE;
+		const bool disabled = row == 3 && status.state != UPDATE_AVAILABLE;
 		if (selected) NesBox(framebuffer, 40, y - 6, 240, 20, NesPanel, NesBlue);
 		NesCenteredText(framebuffer, y, Tr(labels[row]), 1,
 			disabled ? NesGray : selected ? NesGold : NesWhite);
