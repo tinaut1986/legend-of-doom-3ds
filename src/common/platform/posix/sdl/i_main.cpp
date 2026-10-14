@@ -394,6 +394,11 @@ int main (int argc, char **argv)
 	#else
 	Args->AppendArg("0");
 	#endif
+	// GZDoom's tic stability busy-waits, on every frame that runs no tic, as long as the last
+	// tic took (d_net.cpp, TicStabilityWait): ~3 ms a frame of nothing on the New 3DS at 57 fps
+	// with the GPU world, measured 2026-10-14 (other_ms 3.0 -> 0.25, 56.9 -> 60.8 fps).
+	Args->AppendArg("+r_ticstability");
+	Args->AppendArg("0");
 	Args->AppendArg("+r_scene_multithreaded");
 	// Scene traversal retains its audited main-thread ownership. The two-way
 	// split happens inside the drawer where every command is explicitly
