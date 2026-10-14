@@ -38,6 +38,7 @@
 #include <3ds.h>
 #include <algorithm>
 #include <cstdlib>
+#include "c_dispatch.h"
 #endif
 #include "g_levellocals.h"
 #include "events.h"
