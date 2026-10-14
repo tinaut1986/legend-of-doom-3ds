@@ -10,6 +10,9 @@ extern "C" {
 // `sdPath` is an SD path without "sdmc:" ("/3ds/..."). Refuses a CIA whose title ID is not the
 // running title's. On failure `error` says why.
 bool CiaInstall_File(const char *sdPath, char *error, unsigned errorCap);
+// While CiaInstall_File runs (any thread): the bytes written to the system so far and the CIA's
+// size (0 before it is known).
+void CiaInstall_Progress(unsigned long long *done, unsigned long long *total);
 
 // Makes the process start the installed build of this title when it exits (libctru's
 // chainloader, run by aptExit()). Call it, then quit through the normal exit path.

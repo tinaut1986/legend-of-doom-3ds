@@ -290,6 +290,8 @@ def install_into_running_game(cia, host, port):
             ftp.mkd(folder)
         except ftplib.error_perm:
             pass  # already there
+        # ALLO tells the game the size, so its toast can show how much has arrived.
+        ftp.sendcmd(f"ALLO {os.path.getsize(cia)}")
         with open(cia, "rb") as f:
             ftp.storbinary("STOR " + path, f, blocksize=64 * 1024)
         ftp.sock.settimeout(300)  # the install itself takes a while

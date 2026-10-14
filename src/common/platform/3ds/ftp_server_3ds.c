@@ -94,6 +94,9 @@ enum { FTP_LOG_LINES = 8, FTP_LOG_LEN = 160 };
 static char sLogRing[FTP_LOG_LINES][FTP_LOG_LEN];
 static volatile unsigned sLogHead, sLogTail;
 static volatile bool sRelaunch;
+/* FtpServer_Progress: ALLO's size for the next STOR, the .cia arriving, the install. */
+static volatile unsigned long long sAllo, sStorDone, sStorTotal;
+static volatile int sPhase;
 
 static void FtpLog(const char* fmt, ...) {
     const unsigned head = sLogHead;
@@ -387,12 +390,19 @@ static void CmdStor(Session* s, const char* arg, bool append) {
     }
     const size_t len = strlen(vpath);
     const bool cia = len > 4 && strcasecmp(vpath + len - 4, ".cia") == 0;
-    if (cia) sNotice = "RECEIVING THE INSTALLER...";
+    if (cia) {
+        sStorDone = 0;
+        sStorTotal = sAllo;
+        sPhase = 1;
+        sNotice = "RECEIVING THE INSTALLER...";
+    }
+    sAllo = 0;
     Reply(s, "150 Receiving.");
     int data = AcceptData(s);
     if (data < 0) {
         fclose(f);
         sNotice = NULL;
+        sPhase = 0;
         Reply(s, "425 No data connection.");
         return;
     }
@@ -408,11 +418,15 @@ static void CmdStor(Session* s, const char* arg, bool append) {
             ok = false;
             break;
         }
+        if (cia) sStorDone += (unsigned long long)r;
     }
     if (fclose(f) != 0) ok = false;
     CloseData(&data);
     if (ok) sReceived++;
-    if (cia) sNotice = NULL;
+    if (cia) {
+        sNotice = NULL;
+        sPhase = 0;
+    }
     FtpLog("ftp: received %s%s", vpath, ok ? "" : " (failed)");
     Reply(s, ok ? "226 Done." : "451 Transfer failed.");
 }
@@ -458,8 +472,13 @@ static void HandleSession(int ctrl) {
             Reply(s, "530 Please log in.");
         } else if (!strcmp(line, "SYST")) Reply(s, "215 UNIX Type: L8");
         else if (!strcmp(line, "FEAT")) Reply(s, "211-Features:\r\n SIZE\r\n MDTM\r\n MLSD\r\n EPSV\r\n PASV\r\n UTF8\r\n211 End");
+        else if (!strcmp(line, "ALLO")) {
+            /* The size of the next STOR (build_3ds.py --install sends it), for the progress bar. */
+            sAllo = strtoull(arg, NULL, 10);
+            Reply(s, "200 OK.");
+        }
         else if (!strcmp(line, "OPTS") || !strcmp(line, "TYPE") || !strcmp(line, "MODE") || !strcmp(line, "STRU") ||
-                 !strcmp(line, "NOOP") || !strcmp(line, "ALLO"))
+                 !strcmp(line, "NOOP"))
             Reply(s, "200 OK.");
         else if (!strcmp(line, "PWD") || !strcmp(line, "XPWD")) Reply(s, "257 \"%s\"", s->cwd);
         else if (!strcmp(line, "CWD") || !strcmp(line, "CDUP")) {
@@ -531,7 +550,10 @@ static void HandleSession(int ctrl) {
                 }
                 char error[96];
                 sNotice = "INSTALLING - THE GAME WILL RESTART";
-                if (CiaInstall_File(vpath, error, sizeof(error))) {
+                sPhase = 2;
+                const bool installed = CiaInstall_File(vpath, error, sizeof(error));
+                sPhase = 0;
+                if (installed) {
                     FtpLog("ftp: installed %s, relaunching", vpath);
                     Reply(s, "200 Installed %s; relaunching the game.", vpath);
                     sRelaunch = true;
@@ -645,6 +667,16 @@ static bool StartServer(bool restricted) {
         return false;
     }
     return true;
+}
+
+int FtpServer_Progress(unsigned long long *done, unsigned long long *total) {
+    const int phase = sPhase;
+    if (phase == 2) CiaInstall_Progress(done, total);
+    else {
+        *done = sStorDone;
+        *total = phase == 1 ? sStorTotal : 0;
+    }
+    return phase;
 }
 
 const char* FtpServer_Notice(void) {

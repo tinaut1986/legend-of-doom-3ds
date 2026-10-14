@@ -21,6 +21,9 @@ static bool EnoughSpace(u64 required) {
   return R_SUCCEEDED(FSUSER_GetSdmcArchiveResource(&r)) && (u64)r.freeClusters * r.clusterSize >= required;
 }
 
+// CiaInstall_Progress: written by the installing thread, read by the main one.
+static volatile unsigned long long sProgressDone, sProgressTotal;
+
 bool CiaInstall_File(const char *sdPath, char *error, unsigned errorCap) {
   u64 title = 0;
   FS_MediaType media = MEDIATYPE_SD;
@@ -55,6 +58,8 @@ bool CiaInstall_File(const char *sdPath, char *error, unsigned errorCap) {
   snprintf(error, errorCap, "install start failed (%08lx)", (unsigned long)rc);
   if (R_FAILED(rc)) goto done;
   started = true;
+  sProgressDone = 0;
+  sProgressTotal = size;
   for (u64 offset = 0; offset < size;) {
     u32 read = 0, wrote = 0, want = size - offset > kCiaIoSize ? kCiaIoSize : (u32)(size - offset);
     rc = FSFILE_Read(input, &read, offset, data, want);
@@ -64,6 +69,7 @@ bool CiaInstall_File(const char *sdPath, char *error, unsigned errorCap) {
     snprintf(error, errorCap, "install write failed (%08lx)", (unsigned long)rc);
     if (R_FAILED(rc) || wrote != read) goto done;
     offset += read;
+    sProgressDone = offset;
   }
   rc = AM_FinishCiaInstall(output);
   started = false;
@@ -75,6 +81,11 @@ done:
   free(data);
   amExit();
   return ok;
+}
+
+void CiaInstall_Progress(unsigned long long *done, unsigned long long *total) {
+  *done = sProgressDone;
+  *total = sProgressTotal;
 }
 
 void CiaInstall_RelaunchOnExit(void) {
