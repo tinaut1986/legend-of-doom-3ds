@@ -3571,6 +3571,10 @@ DEFINE_ACTION_FUNCTION(AActor, CheckPortalTransition)
 //
 // P_MobjThinker
 //
+#ifdef __3DS__
+CVAR(Bool, lod3ds_static_thinkers, true, 0)
+#endif
+
 void AActor::Tick ()
 {
 	// [RH] Data for Heretic/Hexen scrolling sectors
@@ -3600,6 +3604,21 @@ void AActor::Tick ()
 		Destroy();
 		return;
 	}
+#ifdef __3DS__
+	// A thing that cannot change by itself costs nothing (P2.4): no velocity, a state that never
+	// ends, no inventory, effects or player, resting (or not falling) where no sector special or
+	// scroller can carry it. Legend of Doom's MAP01 has ~600 of these (bushes, trees, spawn
+	// spots, teleport destinations), ~4 ms a tic of the New 3DS's 5 for nothing. Whatever gives
+	// it velocity (a push, a blast, a scroller) or a state change makes it tick again.
+	if (lod3ds_static_thinkers && player == nullptr && tics == -1 && Inventory == nullptr &&
+		effects == 0 && Vel.isZero() && !(flags & MF_SKULLFLY) && !(flags2 & MF2_FLOATBOB) &&
+		((flags & MF_NOGRAVITY) || Z() <= floorz) &&
+		(!(flags8 & MF8_INSCROLLSEC) || Level->Scrolls.Size() == 0) &&
+		((flags & MF_NOSECTOR) || Sector == nullptr || Sector->special == 0) && !isFrozen())
+	{
+		return;
+	}
+#endif
 
 	if (flags5 & MF5_NOINTERACTION)
 	{
