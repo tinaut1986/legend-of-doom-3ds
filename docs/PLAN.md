@@ -220,6 +220,17 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* the owner switches the language on the console and finds no English left
   in the interface in Spanish (and none Spanish in English).
 
+- [ ] **U4** The gameplay bottom screen like the NES Zelda's pause screen, with debug cheats.
+  *Spec:* owner 2026-10-13: the MAP / ITEMS tabs look bolted on, their text scaled, the layout
+  and style clash, and a touch on the map both zoomed it and moved the camera. One screen with
+  no tabs, on black with the NES palette and font: INVENTORY with the B item's box and every
+  item in one frame (a touch selects one), the map in a frame with its own zoom button, the
+  rupee / key / bomb counters and -LIFE- with the hearts; every other touch moves the camera.
+  Debug builds: GOD (the engine's god mode) and ALL (every item, the counters full, sixteen
+  hearts; the triforce pieces left out, they drive the story).
+  *Done when:* the owner finds it integrated on the console, the map zooms only with its
+  button, and GOD / ALL work in a debug build and are absent from a stable one.
+
 ## Phase 2: GPU world renderer, 60 fps on New 3DS
 
 The base for everything else: 3D doubles the world drawing and the Old 3DS has a
