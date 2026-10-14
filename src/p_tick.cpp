@@ -34,6 +34,11 @@
 #include "d_player.h"
 #include "r_utility.h"
 #include "p_spec.h"
+#ifdef __3DS__
+#include <3ds.h>
+#include <algorithm>
+#include <cstdlib>
+#endif
 #include "g_levellocals.h"
 #include "events.h"
 #include "actorinlines.h"
@@ -81,14 +86,56 @@ bool P_CheckTickerPaused ()
 //
 // P_Ticker
 //
+#ifdef __3DS__
+// lod3ds_tickprofile N (P2.4): the average time of each phase of P_Ticker over the next N tics,
+// printed to the console and its log.
+namespace
+{
+enum ETickPhase { TP_Interpolations, TP_ClearInterpolation, TP_Particles, TP_Players,
+	TP_WorldTick, TP_LevelTick, TP_Thinkers, TP_Specials, TP_StatusBar, TP_Count };
+const char *const TickPhaseNames[TP_Count] = { "interpolations", "clear interpolation",
+	"particles", "players", "WorldTick", "level tick", "thinkers", "specials", "status bar" };
+uint64_t TickPhaseTicks[TP_Count];
+int TickProfileLeft, TickProfileTotal;
+uint64_t TickPhaseStart;
+inline void TickPhaseBegin() { if (TickProfileLeft > 0) TickPhaseStart = svcGetSystemTick(); }
+inline void TickPhaseEnd(ETickPhase phase)
+{
+	if (TickProfileLeft > 0) TickPhaseTicks[phase] += svcGetSystemTick() - TickPhaseStart;
+}
+void TickProfileTicDone()
+{
+	if (TickProfileLeft <= 0 || --TickProfileLeft > 0) return;
+	Printf("Tick profile, %d tics, ms a tic:\n", TickProfileTotal);
+	for (int phase = 0; phase < TP_Count; ++phase)
+		Printf("  %-20s %.3f\n", TickPhaseNames[phase],
+			TickPhaseTicks[phase] * 1000.0 / SYSCLOCK_ARM11 / TickProfileTotal);
+}
+}
+
+CCMD(lod3ds_tickprofile)
+{
+	TickProfileTotal = argv.argc() > 1 ? std::max(1, atoi(argv[1])) : 70;
+	TickProfileLeft = TickProfileTotal;
+	for (auto &ticks : TickPhaseTicks) ticks = 0;
+}
+#define TICK_PHASE_BEGIN() TickPhaseBegin()
+#define TICK_PHASE_END(phase) TickPhaseEnd(phase)
+#else
+#define TICK_PHASE_BEGIN()
+#define TICK_PHASE_END(phase)
+#endif
+
 void P_Ticker (void)
 {
 	int i;
 
+	TICK_PHASE_BEGIN();
 	for (auto Level : AllLevels())
 	{
 		Level->interpolator.UpdateInterpolations();
 	}
+	TICK_PHASE_END(TP_Interpolations);
 	r_NoInterpolate = true;
 
 	if (!demoplayback)
@@ -158,6 +205,7 @@ void P_Ticker (void)
 	for (auto Level : AllLevels())
 	{
 		// todo: set up a sandbox for secondary levels here.
+		TICK_PHASE_BEGIN();
 		auto it = Level->GetThinkerIterator<AActor>();
 		AActor *ac;
 
@@ -166,22 +214,35 @@ void P_Ticker (void)
 			ac->ClearInterpolation();
 		}
 
+		TICK_PHASE_END(TP_ClearInterpolation);
+		TICK_PHASE_BEGIN();
 		P_ThinkParticles(Level);	// [RH] make the particles think
+		TICK_PHASE_END(TP_Particles);
+		TICK_PHASE_BEGIN();
 
 		for (i = 0; i < MAXPLAYERS; i++)
 			if (Level->PlayerInGame(i))
 				P_PlayerThink(Level->Players[i]);
+		TICK_PHASE_END(TP_Players);
+		TICK_PHASE_BEGIN();
 
 		// [ZZ] call the WorldTick hook
 		Level->localEventManager->WorldTick();
+		TICK_PHASE_END(TP_WorldTick);
+		TICK_PHASE_BEGIN();
 		Level->Tick();			// [RH] let the level tick
+		TICK_PHASE_END(TP_LevelTick);
+		TICK_PHASE_BEGIN();
 		Level->Thinkers.RunThinkers(Level);
+		TICK_PHASE_END(TP_Thinkers);
+		TICK_PHASE_BEGIN();
 
 		//if added by MC: Freeze mode.
 		if (!Level->isFrozen())
 		{
 			P_UpdateSpecials(Level);
 		}
+		TICK_PHASE_END(TP_Specials);
 
 		// for par times
 		Level->time++;
@@ -192,5 +253,10 @@ void P_Ticker (void)
 		if (players[consoleplayer].mo->Vel.Length() > primaryLevel->max_velocity) { primaryLevel->max_velocity = players[consoleplayer].mo->Vel.Length(); }
 		primaryLevel->avg_velocity += (players[consoleplayer].mo->Vel.Length() - primaryLevel->avg_velocity) / primaryLevel->maptime;
 	}
+	TICK_PHASE_BEGIN();
 	StatusBar->CallTick();		// Status bar should tick AFTER the thinkers to properly reflect the level's state at this time.
+	TICK_PHASE_END(TP_StatusBar);
+#ifdef __3DS__
+	TickProfileTicDone();
+#endif
 }
