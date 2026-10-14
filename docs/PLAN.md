@@ -34,6 +34,7 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 | Branch | What | State |
 |---|---|---|
 | _(merged)_ | `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS (stereo depth, sprites, trees and weapon; the bottom screen; nothing static stuck; the FTP button; the game as usual); what each holds and what was measured: [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md). The local `test/stereo-bottom` is now redundant | |
+| _(merged)_ | `feat/gpu-world-default` (the GPU draws the world in every build; stable builds cannot turn it off; owner 2026-10-14: never the CPU) and `docs/release-notes-v0.2.0` merged into `release/v0.1.1` 2026-10-14 after the owner saw it start on the GPU and approved the notes | |
 | _(merged)_ | `fix/texture-memory` (#4: the out-of-memory close after the first dungeon; texture mipmaps skipped while `r_mipmap` is off, the `ibo_data` leak on every map load, lighter map loading, heap logs) merged into `release/v0.1.1` 2026-10-14 after the owner finished the first dungeon and went back to the overworld on the New 3DS with no close (MAP01 at 62.2 MB on both returns) | |
 | _(merged)_ | `feat/gpu-world-spike` (P2.3 first step: walls and flats of the swrenderer's visible set drawn by the PICA200, `lod3ds_gpu_world`, debug builds, off by default; and the bottom map's flicker above 35 fps) merged into `release/v0.1.1` 2026-10-13 after the owner's look on the New 3DS ("60 fuera y 110 en mazmorra", no flicker) | |
 | _(merged)_ | `docs/gpu-path` (P2.1 note, P2.2 decision, the one-shot hwrenderer probe for debug builds) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead | |
@@ -44,9 +45,11 @@ The 2026-10-13 merges below are pushed to origin (no tag yet).
 | _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
 | _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
-**Priority** (2026-10-14, owner): P3 stereo 3D and P2.4 (60 fps stable in stereo on the New 3DS,
-with the Old 3DS in mind: 30 fps minimum there), then P4 the 2DS, with P2.3's parity (light, sky)
-done for cost along the way. Start from [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md).
+**Priority** (2026-10-14, owner, later the same day): publish **v0.2.0** as the first stable release
+(this line, with the GPU world in every build), then **P4 the 2DS**: boot it and aim for 60 fps
+mono there (P4.1, P4.2), since CPU savings for the Old 3DS help everything; then P3.2 / P2.4
+(stereo at 60 on the New 3DS) and #5 (title and menus at 35 fps). P2.3's parity (light, sky) for
+cost along the way.
 
 
 
@@ -433,3 +436,9 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   (one TEXTMAP copy, parsed arrays sized once). Still open: MAP01 holds its 2.5 MB of sides twice
   while loading (`ParsedSides` and `Level->sides`), and `CreateVBO`'s vertex data is built for the
   swrenderer too; whether anything on this path reads it is not checked yet.
+- **2026-10-14** The owner reordered: the 2DS (P4) before stereo at 60 fps, aiming for 60 fps
+  mono on the Old 3DS/2DS, because work that makes the CPU side cheaper helps every model. The
+  world is drawn by the GPU in every build from now on (no CPU fallback in stable builds), and
+  this line is published as v0.2.0, the first stable release (owner's call; minor bump for the
+  GPU world, stereo 3D and the new bottom screen). Stereo on the New 3DS is GPU-bound (~64 fps),
+  so 2DS work will not raise it by itself.
