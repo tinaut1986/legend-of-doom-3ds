@@ -98,6 +98,9 @@ const char *const TickPhaseNames[TP_Count] = { "interpolations", "clear interpol
 	"particles", "players", "WorldTick", "level tick", "thinkers", "specials", "status bar" };
 uint64_t TickPhaseTicks[TP_Count];
 int TickProfileLeft, TickProfileTotal;
+// Thinkers ticked and skipped (P_3DSStaticThinker) while profiling, the ticked ones by class.
+unsigned TickProfileSkipped, TickProfileTicked;
+TMap<FName, unsigned> TickProfileClasses;
 uint64_t TickPhaseStart;
 inline void TickPhaseBegin() { if (TickProfileLeft > 0) TickPhaseStart = svcGetSystemTick(); }
 inline void TickPhaseEnd(ETickPhase phase)
@@ -111,7 +114,26 @@ void TickProfileTicDone()
 	for (int phase = 0; phase < TP_Count; ++phase)
 		Printf("  %-20s %.3f\n", TickPhaseNames[phase],
 			TickPhaseTicks[phase] * 1000.0 / SYSCLOCK_ARM11 / TickProfileTotal);
+	Printf("  thinkers a tic: %u ticked, %u skipped as static; ticked by class:\n",
+		TickProfileTicked / TickProfileTotal, TickProfileSkipped / TickProfileTotal);
+	TMap<FName, unsigned>::Iterator it(TickProfileClasses);
+	TMap<FName, unsigned>::Pair *pair;
+	while (it.NextPair(pair))
+		if (pair->Value >= unsigned(TickProfileTotal))
+			Printf("    %5u %s\n", pair->Value / TickProfileTotal, pair->Key.GetChars());
 }
+}
+
+void P_3DSTickProfileThinker(DThinker *thinker, bool skipped)
+{
+	if (TickProfileLeft <= 0) return;
+	if (skipped)
+	{
+		++TickProfileSkipped;
+		return;
+	}
+	++TickProfileTicked;
+	++TickProfileClasses[thinker->GetClass()->TypeName];
 }
 
 CCMD(lod3ds_tickprofile)
@@ -119,6 +141,8 @@ CCMD(lod3ds_tickprofile)
 	TickProfileTotal = argv.argc() > 1 ? std::max(1, atoi(argv[1])) : 70;
 	TickProfileLeft = TickProfileTotal;
 	for (auto &ticks : TickPhaseTicks) ticks = 0;
+	TickProfileSkipped = TickProfileTicked = 0;
+	TickProfileClasses.Clear();
 }
 #define TICK_PHASE_BEGIN() TickPhaseBegin()
 #define TICK_PHASE_END(phase) TickPhaseEnd(phase)

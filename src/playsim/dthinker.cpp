@@ -584,6 +584,7 @@ void FThinkerList::SaveList(FSerializer &arc)
 
 #ifdef __3DS__
 bool P_3DSStaticThinker(DThinker *thinker); // p_mobj.cpp
+void P_3DSTickProfileThinker(DThinker *thinker, bool skipped); // p_tick.cpp
 #endif
 
 int FThinkerList::TickThinkers(FThinkerList *dest)
@@ -620,9 +621,11 @@ int FThinkerList::TickThinkers(FThinkerList *dest)
 #ifdef __3DS__
 			if (!(node->ObjectFlags & OF_JustSpawned) && P_3DSStaticThinker(node))
 			{
+				P_3DSTickProfileThinker(node, true);
 				node = NextToThink;
 				continue;
 			}
+			P_3DSTickProfileThinker(node, false);
 #endif
 			ThinkCount++;
 			node->CallTick();
