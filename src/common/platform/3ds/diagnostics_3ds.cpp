@@ -70,6 +70,9 @@ EXTERN_CVAR(Bool, lod3ds_top_hud)
 EXTERN_CVAR(Bool, crosshairon)
 
 CVAR(Bool, lod3ds_select_overlay, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+// Read-only: whether this is a debug build (LOD3DS_DEBUG_TOOLS), for the game's scripts (the
+// OPTIONS tabs show DEBUG only then).
+CVAR(Bool, lod3ds_debug_tools, LOD3DS_DEBUG_TOOLS != 0, CVAR_NOSET | CVAR_NOSAVE)
 CVAR(Bool, lod3ds_map_collisions, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 // OPTIONS -> DEVELOPER -> FTP SERVER (debug builds): the in-game FTP server and remote control
 // (ftp_server_3ds.h, debug_link_3ds.h). Archived, so it comes back after a relaunch.
@@ -2231,16 +2234,70 @@ int NesTextWidth(const char *text, int scale);
 void NesText(unsigned char *framebuffer, int x, int y, const char *text, int scale,
 	FOverlayColor color);
 
+// Stable builds with dev-ftp.txt: a bar along the bottom of every bottom-screen presentation while
+// the install-only server runs, with its address and CANCEL (as in ../zelda-tmc-3ds). Taps on
+// it reach nothing else; CANCEL stops the server until the game is opened again.
+constexpr int InstallBarHeight = 22;
+constexpr int InstallBarY = static_cast<int>(BottomScreenHeight) - InstallBarHeight;
+// CANCEL is an icon (an X in a box) so that the address fits beside it.
+constexpr int InstallBarCancelWidth = 18;
+constexpr int InstallBarCancelX = static_cast<int>(BottomScreenWidth) - 4 - InstallBarCancelWidth;
+
+bool InstallBarVisible()
+{
+	return !LOD3DS_DEBUG_TOOLS && FtpServer_InstallOnly();
+}
+
+// Changes when the bar appears, goes or shows another address: the bottom screen is drawn again.
+uint64_t InstallBarSignature()
+{
+	if (!InstallBarVisible()) return 0;
+	char address[48];
+	FtpServer_Address(address, sizeof(address));
+	uint64_t hash = 1469598103934665603ull;
+	for (const char *c = address; *c != '\0'; ++c)
+	{
+		hash ^= static_cast<unsigned char>(*c);
+		hash *= 1099511628211ull;
+	}
+	return hash | 1u;
+}
+
+void DrawInstallBar(unsigned char *framebuffer)
+{
+	if (!InstallBarVisible()) return;
+	LoadNesFont();
+	char address[48];
+	FtpServer_Address(address, sizeof(address));
+	char text[96];
+	std::snprintf(text, sizeof(text), "%s %s", Tr("FTP INSTALL ONLY"), address);
+	// Too long for the bar (a longer address, or another language): the port goes, it is
+	// always FTP_SERVER_PORT.
+	if (NesTextWidth(text, 1) > InstallBarCancelX - 8)
+	{
+		if (char *port = std::strrchr(text, ':')) *port = '\0';
+	}
+	OverlayRect(framebuffer, 0, InstallBarY, BottomScreenWidth, InstallBarHeight, OverlayInk);
+	OverlayFrame(framebuffer, 0, InstallBarY, BottomScreenWidth, InstallBarHeight, 1, OverlayBlue);
+	NesText(framebuffer, 4, InstallBarY + 7, text, 1, OverlayIvory);
+	OverlayFrame(framebuffer, InstallBarCancelX, InstallBarY + 3, InstallBarCancelWidth,
+		InstallBarHeight - 6, 1, OverlayRed);
+	NesText(framebuffer, InstallBarCancelX + (InstallBarCancelWidth - NesTextWidth("X", 1)) / 2,
+		InstallBarY + 7, "X", 1, OverlayIvory);
+}
+
 void DrawBottomToast(unsigned char *framebuffer)
 {
+	DrawInstallBar(framebuffer);
 	if (OverlayNotification[0] == '\0') return;
 	LoadNesFont();
 	const char *text = Tr(OverlayNotification);
 	const int width = std::min(304, NesTextWidth(text, 1) + 24);
 	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
-	OverlayRect(framebuffer, x, 210, width, 21, OverlayInk);
-	OverlayFrame(framebuffer, x, 210, width, 21, 1, OverlayBlue);
-	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, 217, text, 1, OverlayIvory);
+	const int y = InstallBarVisible() ? InstallBarY - 25 : 210; // above the install bar
+	OverlayRect(framebuffer, x, y, width, 21, OverlayInk);
+	OverlayFrame(framebuffer, x, y, width, 21, 1, OverlayBlue);
+	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
 }
 
 // The STATUS box's FTP button (debug builds), in bottom-screen pixels.
@@ -3430,6 +3487,13 @@ void DrawBottomOverlay(bool force)
 	if (drawnToast != OverlayNotificationSerial)
 	{
 		drawnToast = OverlayNotificationSerial;
+		force = true;
+	}
+	static uint64_t drawnInstallBar = 0;
+	const uint64_t installBar = InstallBarSignature();
+	if (drawnInstallBar != installBar)
+	{
+		drawnInstallBar = installBar;
 		force = true;
 	}
 	const EBottomPresentation desired = DesiredBottomPresentation();
@@ -5524,7 +5588,9 @@ F3DSDiagnosticButtonResult I_3DSDiagnosticButtonEvent(unsigned int button, bool 
 	if (pressed) HeldButtons |= bit;
 	else HeldButtons &= ~bit;
 
-	if (button == 2u && lod3ds_select_overlay &&
+	// The developer overlay is a debug tool: a stable build ignores the option even when a
+	// debug build left it on in the shared config.
+	if (LOD3DS_DEBUG_TOOLS && button == 2u && lod3ds_select_overlay &&
 		(gamestate != GS_LEVEL || menuactive == MENU_Off || DeveloperOverlayVisible))
 	{
 		if (pressed)
@@ -5606,6 +5672,15 @@ void I_3DSRequestCleanDiagnosticDumps()
 bool I_3DSDiagnosticTouch(float x, float y)
 {
 	if (x < 0.0f || x > 1.0f || y < 0.0f || y > 1.0f) return false;
+	if (InstallBarVisible() && y * BottomScreenHeight >= InstallBarY)
+	{
+		if (x * BottomScreenWidth >= InstallBarCancelX - 6) // a little wider than the icon
+		{
+			FtpServer_Cancel();
+			DrawBottomOverlay(true);
+		}
+		return true;
+	}
 	// The overlay, wherever it is on screen (over the menus outside a level), takes the touches.
 	if (DesiredBottomPresentation() == EBottomPresentation::DeveloperOverlay)
 	{
@@ -5955,12 +6030,17 @@ void I_3DSServiceConsoleLink()
 	}
 #else
 	// Stable builds: the install-only server, for the owner, when dev-ftp.txt is in the data
-	// folder (created over FTP while a debug build was installed). Checked once.
-	static bool checked = false;
-	if (!checked)
+	// folder (created over FTP while a debug build was installed; checked once). Tried again
+	// every ~2 s until Wi-Fi is up; after CANCEL FtpServer_StartInstallOnly refuses until the
+	// game is opened again.
+	static int devFtp = -1;
+	static unsigned retry = 0;
+	if (devFtp < 0) devFtp = access(LOD3DS_APP_DIR "/dev-ftp.txt", F_OK) == 0;
+	if (devFtp && !FtpServer_Running() && (retry == 0 || ++retry >= 70) &&
+		(retry == 0 || osGetWifiStrength() > 0))
 	{
-		checked = true;
-		if (access(LOD3DS_APP_DIR "/dev-ftp.txt", F_OK) == 0) FtpServer_StartInstallOnly();
+		retry = 1;
+		FtpServer_StartInstallOnly();
 	}
 #endif
 }

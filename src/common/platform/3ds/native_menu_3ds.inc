@@ -296,7 +296,8 @@ void AddNativeTouchZone(int x0, int y0, int x1, int y1, ENativeTouch action, int
 constexpr const char *OptionTabMenus[] = {
 	"LegendDisplayOptions", "LegendSoundOptions", "LegendControllerOptions", "LegendDeveloperOptions" };
 constexpr const char *OptionTabTitles[] = { "VIDEO", "SOUND", "CONTROL", "DEBUG" };
-constexpr int OptionTabCount = 4;
+// The DEBUG tab (last) only in debug builds.
+constexpr int OptionTabCount = LOD3DS_DEBUG_TOOLS ? 4 : 3;
 
 int OptionTabIndex(FName menu)
 {

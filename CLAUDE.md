@@ -282,8 +282,11 @@ an accidental client out, it is not a secret.
 
 **Stable builds** have no FTP unless `dev-ftp.txt` exists in `/3ds/Legend of Doom 3DS/` (the
 owner creates it once, over FTP, while a debug build is installed): then they start an
-install-only server (only `update/`, no remote control), enough for `--install`. Players never
-see it; do not put it in the release notes.
+install-only server (only `update/`, no remote control), enough for `--install` (with either
+`--mode`). While it runs the bottom screen shows a bar, `FTP INSTALL ONLY <address>` with an X,
+over every screen; the X stops it until the game is opened again. A stable build has no OPTIONS
+-> DEBUG tab and no developer overlay. Players never see the bar (no file, no server); do not put
+it in the release notes.
 
 `platform/3ds/tools/lod-link.py` presses buttons, holds the sticks, taps, takes screenshots of
 both screens, runs GZDoom console commands (`map`, `give`, `save`, `load`...), reads and sets
