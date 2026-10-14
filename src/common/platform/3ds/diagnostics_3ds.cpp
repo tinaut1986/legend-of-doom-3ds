@@ -2188,6 +2188,12 @@ void DrawBottomToast(unsigned char *framebuffer)
 	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, 217, text, 1, OverlayIvory);
 }
 
+// The STATUS box's FTP button (debug builds), in bottom-screen pixels.
+constexpr int DeveloperFtpButtonX = 258;
+constexpr int DeveloperFtpButtonY = 142;
+constexpr int DeveloperFtpButtonWidth = 48;
+constexpr int DeveloperFtpButtonHeight = 25;
+
 void DrawDeveloperOverlay(unsigned char *framebuffer)
 {
 	OverlayRect(framebuffer, 0, 0, BottomScreenWidth, BottomScreenHeight, OverlayInk);
@@ -2251,6 +2257,19 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 		OverlayGreen);
 	OverlayText(framebuffer, 146, 145, isNew3DS ? "NEW 3DS 804MHZ" : "OLD 3DS",
 		1, OverlayIvory);
+#if LOD3DS_DEBUG_TOOLS
+	// Debug builds: a button that switches FTP SERVER (OPTIONS -> DEVELOPER) from here.
+	constexpr int StatusTextWidth = DeveloperFtpButtonX - 8;
+	OverlayFrame(framebuffer, DeveloperFtpButtonX, DeveloperFtpButtonY, DeveloperFtpButtonWidth,
+		DeveloperFtpButtonHeight, 2, lod3ds_ftp_server ? OverlayGreen : OverlayBlue);
+	OverlayCenteredText(framebuffer, DeveloperFtpButtonX, DeveloperFtpButtonWidth,
+		DeveloperFtpButtonY + 4, "FTP", 1, OverlayIvory);
+	OverlayCenteredText(framebuffer, DeveloperFtpButtonX, DeveloperFtpButtonWidth,
+		DeveloperFtpButtonY + 14, lod3ds_ftp_server ? "STOP" : "START", 1,
+		lod3ds_ftp_server ? OverlayGreen : OverlayIvory);
+#else
+	constexpr int StatusTextWidth = 304;
+#endif
 	if (FtpServer_Running() || lod3ds_ftp_server)
 	{
 		char address[40] = {};
@@ -2260,13 +2279,14 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 		FtpServer_Stats(nullptr, nullptr, &connected);
 		std::snprintf(ftp, sizeof(ftp), "FTP %s%s%s", address,
 			FtpServer_InstallOnly() ? " INSTALL ONLY" : "", connected ? " LINKED" : "");
-		OverlayCenteredText(framebuffer, 8, 304, 158, ftp, 1,
+		OverlayCenteredText(framebuffer, 8, StatusTextWidth, 158, ftp, 1,
 			FtpServer_Running() ? OverlayGreen : OverlayIvory);
 	}
 	else
 	{
-		OverlayCenteredText(framebuffer, 8, 304, 158,
-			"QUICK DUMP EXCLUDES 136 MB MEMORY IMAGE", 1, OverlayIvory);
+		OverlayCenteredText(framebuffer, 8, StatusTextWidth, 158,
+			LOD3DS_DEBUG_TOOLS ? "FTP OFF" : "QUICK DUMP EXCLUDES 136 MB MEMORY IMAGE", 1,
+			OverlayIvory);
 	}
 
 	struct FButton { int X; const char *Title; const char *Chord; };
@@ -5527,6 +5547,18 @@ bool I_3DSDiagnosticTouch(float x, float y)
 	{
 		const float pixelX = x * BottomScreenWidth;
 		const float pixelY = y * BottomScreenHeight;
+#if LOD3DS_DEBUG_TOOLS
+		if (pixelX >= DeveloperFtpButtonX &&
+			pixelX < DeveloperFtpButtonX + DeveloperFtpButtonWidth &&
+			pixelY >= DeveloperFtpButtonY &&
+			pixelY < DeveloperFtpButtonY + DeveloperFtpButtonHeight)
+		{
+			// The console link starts or stops the server on its next poll.
+			lod3ds_ftp_server = !lod3ds_ftp_server;
+			DrawBottomOverlay(true);
+			return true;
+		}
+#endif
 		if (pixelY >= 178.0f && pixelY < 222.0f)
 		{
 			if (pixelX >= 7.0f && pixelX < 106.0f) I_3DSRequestDiagnosticDump();
