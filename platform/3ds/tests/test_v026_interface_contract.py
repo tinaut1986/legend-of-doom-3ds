@@ -58,7 +58,7 @@ class V026InterfaceContractTests(unittest.TestCase):
         self.assertNotIn("if (DrawNativePixelMenu(framebuffer))", diagnostics)
         self.assertIn('Font "NewSmallFont", "White"', patch)
         self.assertIn("DrawBottomRoundedRectOutline", diagnostics)
-        self.assertIn('NesText(framebuffer, BBoxX, TitleY, Tr("INVENTORY"), 1, Red)', diagnostics)
+        self.assertIn('NesText(framebuffer, RBoxX, TitleY, Tr("INVENTORY"), 1, Red)', diagnostics)
         self.assertIn('Tr(BottomMapZoomedOut ? "ZOOM IN" : "ZOOM OUT")', diagnostics)
         self.assertNotIn("DrawBottomTabs", diagnostics)
         self.assertIn("A_OverlayOffset(OverlayID(), 51, 170)", patch)

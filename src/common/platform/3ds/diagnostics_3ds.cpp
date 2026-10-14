@@ -53,6 +53,7 @@
 #include "menustate.h"
 #include "playsim/actor.h"
 #include "playsim/d_player.h"
+#include "playsim/a_pickups.h"
 #include "r_videoscale.h"
 #include "rendering/r_sky.h"
 #include "rendering/swrenderer/r_swcolormaps.h"
@@ -1750,21 +1751,23 @@ const std::array<FBottomItem, 16> &BottomItems()
 	static constexpr FEmbeddedBottomImage Bracelet = BOTTOM_IMAGE(BottomItemBracelet);
 	static constexpr FEmbeddedBottomImage LionKey = BOTTOM_IMAGE(BottomItemLionKey);
 	static constexpr FEmbeddedBottomImage Triforce = BOTTOM_IMAGE(BottomItemTriforce);
+	// Row 1: the weapons R uses (the NES order after the sword); row 2: the boomerang, which L
+	// throws whatever is equipped, and the items that work by being carried.
 	static const std::array<FBottomItem, 16> Items = {{
 		{ &Sword, "ZeldaSwordWood", "ZeldaSwordSilver", "ZeldaSwordMaster",
 			"ZeldaSwordWood", "ZeldaSwordSilver", "ZeldaSwordMaster" },
-		{ &Boomerang, "Boomerang", "BoomerangBlue", nullptr,
-			"Boomerang", "BoomerangBlue", nullptr },
-		{ &Bow, "Bow", "ZeldaSilverArrow", nullptr, "Bow", nullptr, nullptr },
 		{ &Bomb, "ZeldaBomb", "ZeldaInfiniteBomb", "BombAmmo",
 			"ZeldaBomb", "ZeldaInfiniteBomb", nullptr },
+		{ &Bow, "Bow", "ZeldaSilverArrow", nullptr, "Bow", nullptr, nullptr },
 		{ &Candle, "CandleRed", "CandleBlue", nullptr,
 			"CandleRed", "CandleBlue", nullptr },
 		{ &Whistle, "ZeldaWhistle", nullptr, nullptr, "ZeldaWhistle", nullptr, nullptr },
-		{ &Wand, "ZeldaWand", nullptr, nullptr, "ZeldaWand", nullptr, nullptr },
+		{ &Meat, "ZeldaMeat", nullptr, nullptr, "ZeldaMeat", nullptr, nullptr },
 		{ &Potion, "PotAmmo", "ZeldaUniquePotion", "ZeldaLetter",
 			"ZeldaPotion", nullptr, nullptr },
-		{ &Meat, "ZeldaMeat", nullptr, nullptr, "ZeldaMeat", nullptr, nullptr },
+		{ &Wand, "ZeldaWand", nullptr, nullptr, "ZeldaWand", nullptr, nullptr },
+		{ &Boomerang, "Boomerang", "BoomerangBlue", nullptr,
+			"Boomerang", "BoomerangBlue", nullptr },
 		{ &Ladder, "ZeldaLadder", nullptr, nullptr, nullptr, nullptr, nullptr },
 		{ &Raft, "ZeldaRaft", nullptr, nullptr, nullptr, nullptr, nullptr },
 		{ &Book, "ZeldaBook", nullptr, nullptr, nullptr, nullptr, nullptr },
@@ -1834,7 +1837,7 @@ constexpr FOverlayColor Green{ 0, 168, 0 };
 constexpr FOverlayColor Idle{ 20, 20, 20 };
 
 constexpr int TitleY = 6;
-constexpr int BBoxX = 14, BBoxY = 22, BBoxWidth = 60, BBoxHeight = 50;
+constexpr int RBoxX = 12, LBoxX = 46, ButtonBoxY = 20, ButtonBoxWidth = 32, ButtonBoxHeight = 40;
 constexpr int GridX = 86, GridY = 20, CellWidth = 28, CellHeight = 36, Columns = 8;
 constexpr int MapFrameX = 10, MapFrameY = 108, MapFrameWidth = 184, MapFrameHeight = 128;
 constexpr int MapX = 12, MapY = 110, MapWidth = 180, MapHeight = 106;
@@ -1863,12 +1866,24 @@ bool BottomGodMode()
 void BottomGiveEverything()
 {
 	static const char *const Items[] = {
-		"ZeldaSwordWood", "ZeldaSwordSilver", "ZeldaSwordMaster", "Boomerang", "BoomerangBlue",
-		"Bow", "ZeldaSilverArrow", "ZeldaBomb", "CandleBlue", "CandleRed", "ZeldaWhistle",
+		"ZeldaSwordWood", "ZeldaSwordSilver", "ZeldaSwordMaster", "Bow", "ZeldaSilverArrow", "ZeldaBomb", "CandleBlue", "CandleRed", "ZeldaWhistle",
 		"ZeldaWand", "ZeldaPotion", "ZeldaLetter", "ZeldaMeat", "ZeldaLadder", "ZeldaRaft",
 		"ZeldaBook", "ZeldaRingBlue", "ZeldaRingRed", "ZeldaPowerBracelet", "ZeldaLionKey",
 	};
 	for (const char *item : Items) AddCommandString(FStringf("give %s", item).GetChars());
+	// The boomerangs refuse a pickup while invisible (Boomerang.CanPickup), and they are spawned
+	// invisible until an enemy drops one: given here visible.
+	AActor *pawn = players[consoleplayer].mo;
+	for (const char *name : { "Boomerang", "BoomerangBlue" })
+	{
+		PClassActor *type = PClass::FindActor(name);
+		if (pawn == nullptr || type == nullptr || pawn->FindInventory(type, false) != nullptr)
+			continue;
+		AActor *item = Spawn(pawn->Level, type, pawn->Pos(), NO_REPLACE);
+		if (item == nullptr) continue;
+		item->renderflags &= ~RF_INVISIBLE;
+		if (!CallTryPickup(item, pawn)) item->Destroy();
+	}
 	AddCommandString("give ZeldaRupee 999");
 	AddCommandString("give ZeldaKey 99");
 	AddCommandString("give BombAmmo 20");
@@ -1884,17 +1899,31 @@ void BottomGiveEverything()
 }
 #endif
 
-// The item the B box shows: the selected inventory item, else the ready weapon unless it is
-// the sword (the A button's).
-int BottomBItem(AActor *owner, AActor *readyWeapon)
+// The item R uses: the ready weapon's.
+int BottomReadyItem(AActor *readyWeapon)
 {
 	const auto &items = BottomItems();
-	AActor *selected = owner != nullptr ? owner->PointerVar<AActor>(NAME_InvSel) : nullptr;
 	for (unsigned index = 0; index < items.size(); ++index)
-		if (BottomInventoryMatches(selected, items[index])) return static_cast<int>(index);
-	for (unsigned index = 1; index < items.size(); ++index)
 		if (BottomReadyWeaponMatches(readyWeapon, items[index])) return static_cast<int>(index);
 	return -1;
+}
+
+// The boomerang's place in BottomItems (the one L throws).
+constexpr unsigned BottomBoomerangItem = 8;
+
+void DrawBottomButtonBox(unsigned char *framebuffer, int x, const char *label, int item)
+{
+	using namespace BottomLayout;
+	OverlayFrame(framebuffer, x, ButtonBoxY, ButtonBoxWidth, ButtonBoxHeight, 2, Blue);
+	if (item >= 0)
+	{
+		const FEmbeddedBottomImage &image = *BottomItems()[item].Image;
+		DrawEmbeddedBottomImage(framebuffer,
+			x + (ButtonBoxWidth - static_cast<int>(image.Width)) / 2,
+			ButtonBoxY + (ButtonBoxHeight - static_cast<int>(image.Height)) / 2, image);
+	}
+	NesText(framebuffer, x + (ButtonBoxWidth - NesTextWidth(label, 1)) / 2,
+		ButtonBoxY + ButtonBoxHeight + 4, label, 1, White);
 }
 
 void DrawBottomCheatButton(unsigned char *framebuffer, int x, const char *label, bool on)
@@ -1909,20 +1938,14 @@ void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *read
 {
 	using namespace BottomLayout;
 	const auto &items = BottomItems();
-	NesText(framebuffer, BBoxX, TitleY, Tr("INVENTORY"), 1, Red);
+	NesText(framebuffer, RBoxX, TitleY, Tr("INVENTORY"), 1, Red);
 
-	// The B box: the item the B button uses.
-	OverlayFrame(framebuffer, BBoxX, BBoxY, BBoxWidth, BBoxHeight, 2, Blue);
-	const int bItem = BottomBItem(owner, readyWeapon);
-	if (bItem >= 0)
-	{
-		const FEmbeddedBottomImage &image = *items[bItem].Image;
-		DrawEmbeddedBottomImage(framebuffer,
-			BBoxX + (BBoxWidth - static_cast<int>(image.Width)) / 2,
-			BBoxY + (BBoxHeight - static_cast<int>(image.Height)) / 2, image);
-	}
-	NesText(framebuffer, BBoxX + (BBoxWidth - NesTextWidth("-B-", 1)) / 2,
-		BBoxY + BBoxHeight + 4, "-B-", 1, White);
+	// The buttons' boxes: R uses the equipped weapon, L throws the boomerang.
+	DrawBottomButtonBox(framebuffer, RBoxX, "R", BottomReadyItem(readyWeapon));
+	const FBottomItem &boomerang = items[BottomBoomerangItem];
+	DrawBottomButtonBox(framebuffer, LBoxX, "L",
+		BottomHasAnyInventory(owner, boomerang.Inventory1, boomerang.Inventory2,
+			boomerang.Inventory3) ? static_cast<int>(BottomBoomerangItem) : -1);
 
 	// Every item, in one frame; the selected one outlined.
 	const int rows = static_cast<int>((items.size() + Columns - 1) / Columns);
