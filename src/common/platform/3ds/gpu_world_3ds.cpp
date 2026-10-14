@@ -8,8 +8,10 @@
 // them for the swrenderer's translucent pass), drawn as masked billboards.
 // Not yet: light, sky, translucency, masked mid-textures, 3D floors, portals.
 //
-// lod3ds_gpu_world (debug builds, not saved) turns it on; lod3ds_gpu_world_stats reads the CPU
-// time of the capture, the draws and vertices, and the GPU's drawing time.
+// On in every build (owner 2026-10-14: the world never falls back to the CPU). lod3ds_gpu_world
+// (not saved, so every start is on the GPU) turns it off in debug builds to compare;
+// lod3ds_gpu_world_stats reads the CPU time of the capture, the draws and vertices, and the
+// GPU's drawing time.
 #include "gpu_world_3ds.h"
 
 #if defined(__3DS__) && defined(LOD3DS_HYBRID_PERFORMANCE)
@@ -38,7 +40,7 @@
 #include "gpu_3ds.h"
 #include "lod3ds_version.h"
 
-CVAR(Bool, lod3ds_gpu_world, false, 0)
+CVAR(Bool, lod3ds_gpu_world, true, 0)
 CVAR(String, lod3ds_gpu_world_stats, "", CVAR_NOSAVE)
 // Stereo 3D with the 3D slider (P3); off draws one image whatever the slider says.
 CVAR(Bool, lod3ds_stereo, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
@@ -340,7 +342,8 @@ void PublishStats()
 void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *thread)
 {
 	if (thread == nullptr || !thread->MainThread) return;
-	Active = LOD3DS_DEBUG_TOOLS && lod3ds_gpu_world && I_3DSGpuReady();
+	// Stable builds cannot turn it off; debug builds can, for comparisons.
+	Active = (lod3ds_gpu_world || !LOD3DS_DEBUG_TOOLS) && I_3DSGpuReady();
 	Sprites.clear();
 }
 
@@ -443,7 +446,7 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 
 bool I_3DSGpuWorldActive()
 {
-	return Active && lod3ds_gpu_world;
+	return Active && (lod3ds_gpu_world || !LOD3DS_DEBUG_TOOLS);
 }
 
 #else
