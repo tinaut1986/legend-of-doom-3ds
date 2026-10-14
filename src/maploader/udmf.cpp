@@ -2186,13 +2186,91 @@ public:
 	//
 	//===========================================================================
 
+#ifdef __3DS__
+	//===========================================================================
+	//
+	// Counts the top-level blocks of a TEXTMAP and grows the parsed arrays to
+	// fit them, so they are allocated once at their final size.
+	//
+	//===========================================================================
+
+	void ReserveParsedArrays(const char *text, size_t len)
+	{
+		static const char *const names[] = { "thing", "linedef", "sidedef", "sector", "vertex" };
+		unsigned counts[5] = {};
+		int depth = 0;
+		for (size_t i = 0; i < len; i++)
+		{
+			const char c = text[i];
+			const char next = i + 1 < len ? text[i + 1] : 0;
+			if (c == '/' && next == '/')
+			{
+				while (i < len && text[i] != '\n') i++;
+			}
+			else if (c == '/' && next == '*')
+			{
+				for (i += 2; i + 1 < len && !(text[i] == '*' && text[i + 1] == '/'); i++) {}
+				i++;
+			}
+			else if (c == '"')
+			{
+				for (i++; i < len && text[i] != '"'; i++)
+				{
+					if (text[i] == '\\') i++;
+				}
+			}
+			else if (c == '{') depth++;
+			else if (c == '}') depth--;
+			else if (depth == 0 && (isalpha((unsigned char)c) || c == '_'))
+			{
+				const size_t start = i;
+				while (i < len && (isalnum((unsigned char)text[i]) || text[i] == '_')) i++;
+				const size_t length = i - start;
+				for (int n = 0; n < 5; n++)
+				{
+					if (strlen(names[n]) == length && !strnicmp(text + start, names[n], length))
+					{
+						counts[n]++;
+						break;
+					}
+				}
+				i--;
+			}
+		}
+		loader->MapThingsConverted.Grow(counts[0]);
+		ParsedLines.Grow(counts[1]);
+		ParsedSides.Grow(counts[2]);
+		ParsedSideTextures.Grow(counts[2]);
+		ParsedSectors.Grow(counts[3]);
+		ParsedVertices.Grow(counts[4]);
+		loader->vertexdatas.Grow(counts[4]);
+	}
+#endif
+
 	void ParseTextMap(MapData *map)
 	{
 		isTranslated = true;
 		isExtended = false;
 		floordrop = false;
 
+#ifdef __3DS__
+		// The overworld's TEXTMAP is 2 MB. Read it straight into the scanner's string
+		// (OpenMem holds a second copy while it converts) and size the parsed arrays once
+		// instead of doubling them: on a fragmented heap each extra multi-megabyte block
+		// is a chance to fail (realloc of ParsedSides, 2026-10-14).
+		{
+			const uint32_t size = map->Size(ML_TEXTMAP);
+			FString text;
+			char *buffer = text.LockNewBuffer(size + 1);
+			map->Read(ML_TEXTMAP, buffer, (int)size);
+			buffer[size] = '\n';	// PrepareScript would otherwise append it with a reallocation
+			text.UnlockBuffer();
+			ReserveParsedArrays(text.GetChars(), size);
+			sc.OpenString(fileSystem.GetFileFullName(map->lumpnum), text);
+		}
+#else
 		sc.OpenMem(fileSystem.GetFileFullName(map->lumpnum), map->Read(ML_TEXTMAP));
+#endif
 		sc.SetCMode(true);
 		if (sc.CheckString("namespace"))
 		{

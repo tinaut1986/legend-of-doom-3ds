@@ -94,6 +94,12 @@ For the built-in CIA updater, its release format, TLS checks, host harness and c
 
 Attach the complete quick folder for ordinary bug reports. For updater failures, include `sdmc:/3ds/Legend of Doom 3DS/update.log`. Keep the matching manifest and debug symbols for address resolution; review full memory dumps before sharing them.
 
+Logs in the game's folder, written straight to the SD card (all builds):
+
+- `startup.log`: one line per checkpoint with the heap, linear and VRAM figures. Besides the boot stages it gets `level-freed` (after the old map is freed and a full GC: the baseline between two maps), `level-built`, `level-loaded MAPxx` and `level-loaded-gc MAPxx` on every map load (`gc=` is the engine's own count, `GC::AllocBytes`), and `realloc <bytes> caller 0x...` whenever an engine array grows past 256 KB. Heap that climbs from one `level-freed` to the next is a leak.
+- `startup-previous.log`: the run before this one, kept at the next start so a crash's log survives the relaunch (quick captures copy it too).
+- `fatal.log`: the last fatal error, then a line with the heap at that moment. Out-of-memory errors name the request and its caller (`caller 0x...`); resolve it with `arm-none-eabi-addr2line -f -C -i -e gzdoom-<build id>.elf 0x...` from the debug symbols of that build. A failure with plenty of `heap_free` is fragmentation, not exhaustion.
+
 Useful local checks:
 
 ```sh
