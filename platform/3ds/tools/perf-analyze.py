@@ -16,7 +16,7 @@ import sys
 from collections import defaultdict
 
 PARTS = ['logic_ms', 'world_ms', 'raster_wait_ms', 'twod_ms', 'compose_ms', 'present_ms', 'limit_ms',
-         'bottom_ms', 'other_ms']
+         'bottom_ms', 'input_ms', 'sound_ms', 'framestart_ms', 'hud_ms', 'other_ms']
 TEXT = ('state',)
 FRAME_MS = 1000.0 / 59.8261  # the 3DS LCD
 

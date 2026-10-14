@@ -149,7 +149,8 @@ int I_3DSPerfStop()
 			LOD3DS_PORT_VERSION_LABEL, LOD3DS_UPSTREAM_VERSION, LOD3DS_BUILD_ID,
 			isNew3DS ? "New 3DS" : "Old 3DS");
 		std::fprintf(file, "frame,t_ms,interval_ms,logic_ms,tics,world_ms,raster_wait_ms,twod_ms,"
-			"compose_ms,present_ms,limit_ms,bottom_ms,other_ms,state,menu,canvas_w,canvas_h\n");
+			"compose_ms,present_ms,limit_ms,bottom_ms,input_ms,sound_ms,framestart_ms,hud_ms,"
+			"other_ms,state,menu,canvas_w,canvas_h\n");
 		uint64_t previous = StartTick;
 		for (unsigned i = 0; i < RowCount; ++i)
 		{
