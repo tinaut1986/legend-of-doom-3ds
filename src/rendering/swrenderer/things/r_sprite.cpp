@@ -146,7 +146,8 @@ namespace swrenderer
 				const DVector2 origin = viewport->viewpoint.Pos.XY();
 				I_3DSGpuWorldAddSprite(tex->GetTexture(), origin.X + pt1.X, origin.Y + pt1.Y,
 					origin.X + pt2.X, origin.Y + pt2.Y, gzb, gzt, (renderflags & RF_XFLIP) != 0,
-					lightlevel);
+					lightlevel, !foggy && ((renderflags & RF_FULLBRIGHT) || (thing->flags5 & MF5_BRIGHT)),
+					thing->Sector);
 			}
 			return;
 		}

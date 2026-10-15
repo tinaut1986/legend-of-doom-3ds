@@ -111,17 +111,22 @@ void I_3DSGpuOverlayRect(float x, float y, float width, float height, uint32_t r
 // in [-1, 0] from near to far; the LCD's rotation is applied here. With rightMatrix (the right
 // eye's; matrix is then the left eye's) the frame is drawn in stereo: the top screen switches
 // to 3D for it and the 2D is drawn at the screen's depth in both eyes.
+// Colour: R, G, B multiply the texture (the light); A is how much of the texel is kept against
+// the frame's fog colour (255: none of the fog, the MAP01 distance fog lowers it).
 struct F3DSGpuWorldVertex
 {
 	float X, Y, Z;
 	float S, T; // PICA convention: t = 1 at the image top
 	uint32_t Color; // bytes R, G, B, A
 };
-void I_3DSGpuWorldBegin(const float matrix[16], const float *rightMatrix, uint32_t clearColor);
+// clearColor and fogColor: 0xRRGGBBAA.
+void I_3DSGpuWorldBegin(const float matrix[16], const float *rightMatrix, uint32_t clearColor,
+	uint32_t fogColor = 0x000000ff);
 // Room for count vertices of a triangle list textured with texture (nullptr: vertex colour);
 // nullptr when the frame's world arena is full. Masked: fully transparent texels are dropped
-// (sprites).
-F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool masked = false);
+// (sprites). Sky: drawn before everything else, with no depth test or write (the background).
+F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool masked = false,
+	bool sky = false);
 // The part of a texture's copy the image fills (it is padded to powers of two unless wrapped).
 void I_3DSGpuTextureScale(const F3DSGpuTexture *texture, float &scaleS, float &scaleT);
 // GPU time of the last frame (citro3d's drawing time), in ms.

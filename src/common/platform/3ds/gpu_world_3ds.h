@@ -4,15 +4,17 @@
 namespace swrenderer { class RenderThread; }
 
 class FGameTexture;
+struct sector_t;
 
 // Before the swrenderer's opaque pass of the main view: decides whether the GPU draws this
 // frame's world (always, unless lod3ds_gpu_world is turned off in a debug build), so that the
 // walk can hand it the sprites.
 void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *thread);
 // A sprite the walk projected (RenderSprite::Project): its billboard from (ax, ay) to (bx, by)
-// in map units, bottom to top, the image mirrored or not, its sector's light level.
+// in map units, bottom to top, the image mirrored or not, its sector's light level, whether it is
+// fullbright, and its sector (for MAP01's outdoor distance fog).
 void I_3DSGpuWorldAddSprite(FGameTexture *texture, double ax, double ay, double bx, double by,
-	double bottom, double top, bool flipX, int lightLevel);
+	double bottom, double top, bool flipX, int lightLevel, bool fullbright, const sector_t *sector);
 
 // After the swrenderer's opaque pass of the main view: builds what it found visible for the
 // GPU (always, unless lod3ds_gpu_world is turned off in a debug build).
