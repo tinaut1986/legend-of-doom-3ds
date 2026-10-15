@@ -544,6 +544,8 @@ void OverlayTextSized(unsigned char *framebuffer, int x, int y, const char *text
 	int glyphWidth, int glyphHeight, int advance, FOverlayColor color);
 void OverlayCenteredText(unsigned char *framebuffer, int x, int width, int y,
 	const char *text, int scale, FOverlayColor color);
+// The interface's language (native_menu_3ds.inc).
+const char *Tr(const char *english);
 
 void OverlayPutPixel(unsigned char *framebuffer, int x, int y, FOverlayColor color)
 {
@@ -1350,7 +1352,7 @@ void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
 	if (!view.Valid)
 	{
 		OverlayCenteredText(framebuffer, MapX, MapWidth, MapY + MapHeight / 2 - 4,
-			"MAP UNAVAILABLE", 1, OverlayIvory);
+			Tr("MAP UNAVAILABLE"), 1, OverlayIvory);
 		return;
 	}
 	if (BottomMapTerrainOnGpu) return;
@@ -2616,7 +2618,7 @@ bool DrawNativeSaveLoadBottomFrame(unsigned char *framebuffer,
 	if (saveCount == 0)
 	{
 		OverlayCenteredText(framebuffer, SectionLeft, SectionWidth,
-			116, "NO SAVE GAMES", 2, OverlayIvory);
+			116, Tr("NO SAVE GAMES"), 2, OverlayIvory);
 		return true;
 	}
 
