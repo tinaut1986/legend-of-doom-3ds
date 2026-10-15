@@ -25,7 +25,7 @@ Only what no other place records. Bugs: the open GitHub issues. Tasks: the untic
 boxes below. History: `git log` and the decisions log.
 
 **Release line:** `release/v0.2.4` (on origin; renamed from `release/v0.2.3` right after its tag).
-Published: **`v0.2.3`** beta (2026-10-15), **`v0.2.2`** beta, **`v0.2.1`** stable (2026-10-15),
+Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`** beta, **`v0.2.1`** stable (2026-10-15),
 **`v0.2.0`** stable (2026-10-14, the first), `v0.1.0` beta. `main` holds the last stable merge.
 
 **Branches:**
@@ -36,16 +36,23 @@ Published: **`v0.2.3`** beta (2026-10-15), **`v0.2.2`** beta, **`v0.2.1`** stabl
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
 - The v0.2.3 beta: that the console's updater (Beta channel) offers it from the v0.2.2 beta and
-  shows its 6 notes; the release workflow was still running when this was written.
-- `gpu-light-sky`'s list: a dark dungeon room, the hit flash on a monster, Ghini, a Wizzrobe, Ganon.
+  shows its 6 notes.
 - #6 (toasts over the map), fixed in the v0.2.2 beta: to look.
 - The Old 3DS screen can only be seen on an Old 3DS / 2DS.
+- `gpu-light-sky` is checked (owner, 2026-10-15): the hit flash, Ghini and a Wizzrobe translucent,
+  Ganon invisible, the sky, the fog, a dark cave. What is left of it is #14, low priority.
 
-**Priority** (2026-10-15, owner): the 2DS (P4.1) first, then #12 (stereo at 48-50 fps), then the
-GPU world's parity (P2.3: 3D floors, portals, translucent walls, decals, animated textures,
-palette flashes), #5 and #7 last.
+**Priority** (2026-10-15, owner): #15 (the clock silences sounds) is the next one, in a new
+session; then the 2DS (P4.1), then #12 (stereo at 48-50 fps), then the GPU world's parity (P2.3:
+3D floors, portals, translucent walls, decals, animated textures, palette flashes); #5, #7 and #14
+last.
 
 **Start here:**
+0. **#15, the clock.** `ZeldaClock` gives the engine's `PowerTimeFreezer`, whose `InitEffect` calls
+   `S_PauseSound(false, false)` (`wadsrc/static/zscript/actors/inventory/powerups.zs`, ~line 1511):
+   music **and** effects pause, so the sword is mute while it lasts. The fix proposed is
+   `S_PauseSound(false, true)` (music only), as a `fix/` branch cut from the release; the owner has
+   not said yes to the exact change yet, so confirm, then check it on the console with a clock.
 1. **The 2DS (P4.1).** Create `allow-old3ds.txt` (merged 2026-10-15, debug builds only; without it
    the 2DS shows only the "not supported yet" message) in `sdmc:/3ds/Legend of Doom 3DS/` on it, install a debug build over
    `release/v0.2.4` and read `fatal.log` and the `pool=` figures in `startup.log`. What is known: on
@@ -60,10 +67,12 @@ palette flashes), #5 and #7 last.
 
 **On the owner's consoles now (2026-10-15):**
 - **New 3DS**, `192.168.1.141` (the 2DS has used the same address; `.3ds_ftp_ip` holds it): a
-  debug build of this line, `0.2.3-dev.39.7+19aae0c` (v0.2.3's content), FTP server on, an
-  install-only server file `dev-ftp.txt`, saves `save0` ("test", MAP01, the spot Claude loads),
-  `test2` (the 48-50 fps spot of #12) and three autosaves. FRAMES was last left at NO SKIP by
-  Claude; the owner may have changed it.
+  debug build `0.2.4-dev.56.1+b4d6b62`: this line plus the parked `fix/horizon-fog-fade` (the sky
+  fade, the only difference from the release), FTP server on, the install-only marker
+  `dev-ftp.txt`, saves `save0` ("test", MAP01, the spot Claude loads), `test2` (the 48-50 fps spot
+  of #12) and three autosaves. DISTANCE is HIGH (the owner's setting); FRAMES was last left at
+  NO SKIP by Claude; `sv_cheats` is 0 again (Claude set it to warp). The player stands near
+  MAP01 (8030, -92) after Claude's warps.
 - **2DS**: the last build tried is a debug build of `0.0.0-dev+52193bd` plus the memory work
   (2026-10-15, early morning): it stopped at the title with `operator new failure`. Nothing
   newer has been installed there; it will show the "not supported yet" message until
@@ -503,5 +512,19 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   (#5); that is idle time, not work.
 - **2026-10-15** #8 and #9 had one cause: with the GPU world the canvas has no world in it. A
   native menu over a level now keeps rendering it (about 3 ms) and dims it with a GPU quad; the
-  save and load menus, which draw their own picture on the top canvas, keep the frozen route. The
-  save picture is rendered with the GPU world suspended.
+  save and load menus put their picture and text on a transparent layer of their own, shown by
+  the GPU over it (#10, #11: the picture's cache is keyed by the slot, not the texture pointer).
+  The save picture is rendered with the GPU world suspended.
+- **2026-10-15** Distant walls pop (#14): the tall mountains at the horizon are dropped at the
+  cull distance (1536 + DISTANCE x 512) and a whole pale block appears between two frames, in
+  front of the clouds; fading the sky to the fog colour (`fix/horizon-fog-fade`) does not hide
+  it. The fix is to keep drawing the far tall segments, or fade them to transparent over a margin.
+  Not done: MAP01's TEXTMAP has every sector at height 0 (ACS / the level postprocessor builds
+  the relief at load), so "tall" would have to be read from the live planes each frame. Owner:
+  "if it is a lot of work, it is not that serious".
+- **2026-10-15** Owner's decisions: no dynamic lights from fire for now (#13 closed); the clock
+  muting every sound is wanted fixed (#15); DISTANCE stays HIGH on the New 3DS.
+- **2026-10-15** Production build checked on the New 3DS by the owner (`--mode prod`, `debug_tools=0`):
+  runs, no DEBUG tab or overlay, FRAMES works, the messages and the progress bar are right. A
+  production build's FTP is install-only: the saves and logs cannot be read until a debug build
+  is installed again (`--install` works over it).
