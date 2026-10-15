@@ -22,7 +22,7 @@ index e28575f..dfe5b53 100644
          +WEAPON.NOAUTOSWITCHTO
 -        +WEAPON.TWOHANDED
      }
-
+ 
      States
 diff --git a/actors/weapons/Candle.zs b/actors/weapons/Candle.zs
 index 9cbcac6..98c1aa2 100644
@@ -34,7 +34,7 @@ index 9cbcac6..98c1aa2 100644
          +WEAPON.NO_AUTO_SWITCH
 -        +WEAPON.TWOHANDED
      }
-
+ 
      States
 diff --git a/actors/weapons/Meat.zs b/actors/weapons/Meat.zs
 index d3be909..bba32d4 100644
@@ -46,7 +46,7 @@ index d3be909..bba32d4 100644
          Inventory.PickupMessage "You picked up meat!";
 -        +WEAPON.TWOHANDED
      }
-
+ 
      States
 diff --git a/actors/weapons/Potions.zs b/actors/weapons/Potions.zs
 index 51f9ae0..fd31a6e 100644
@@ -58,7 +58,7 @@ index 51f9ae0..fd31a6e 100644
  		Inventory.Pickupmessage "Picked up a potion!";
 -        +WEAPON.TWOHANDED
  	}
-
+ 
      States
 diff --git a/actors/weapons/Swords.zs b/actors/weapons/Swords.zs
 index eb58538..1ef9a84 100644
@@ -70,16 +70,16 @@ index eb58538..1ef9a84 100644
  		Tag "$TAG_WOODSWORD";
 -		+WEAPON.TWOHANDED
  	}
-
+ 
  	States
 @@ -234,8 +233,6 @@ class ZeldaSword : ZeldaWeapon abstract
  	{
          if (player == null) return;
-
+ 
 -		int alflags = invoker.bOffhandWeapon ? ALF_ISOFFHAND : 0;
 -
  		A_WeaponOffset(offsetX, offsetY);
-
+ 
  		if (invoker.SpawnedSword || player.Health < player.mo.GetMaxHealth())
 @@ -244,7 +241,7 @@ class ZeldaSword : ZeldaWeapon abstract
  		}
@@ -100,7 +100,7 @@ index 887e5b8..6d29b1f 100644
          -BLOODSPLATTER
 -        +WEAPON.TWOHANDED
      }
-
+ 
    States
 diff --git a/actors/weapons/Whistle.zs b/actors/weapons/Whistle.zs
 index 7a9f250..aeddbd1 100644
@@ -112,13 +112,14 @@ index 7a9f250..aeddbd1 100644
          Scale 0.5;
 -        +WEAPON.TWOHANDED
      }
-
+ 
      States
 diff --git a/actors/weapons/ZeldaWeapon.zs b/actors/weapons/ZeldaWeapon.zs
-index 029f40d..fbd3247 100644
+index 029f40d..4dbcc20 100644
 --- a/actors/weapons/ZeldaWeapon.zs
 +++ b/actors/weapons/ZeldaWeapon.zs
-@@ -16,11 +16,11 @@ class ZeldaWeapon : Weapon abstract
+@@ -15,13 +15,13 @@ class ZeldaWeapon : Weapon abstract
+ 
          ShieldReady:
              SLDW A 0 A_OverlayFlags(OverlayID(), PSPF_ADDWEAPON | PSPF_ADDBOB, 1);
 -            SLDW A 1 A_OverlayOffset(OverlayID(), 32, 170);
@@ -132,10 +133,11 @@ index 029f40d..fbd3247 100644
 +            SLDH A 1 A_OverlayOffset(OverlayID(), 51, 170);
              SLDH A 1;
              Wait;
+ 
 @@ -35,15 +35,13 @@ class ZeldaWeapon : Weapon abstract
-
+ 
                  if (!player) return;
-
+ 
 -                int alflags = invoker.bOffhandWeapon ? ALF_ISOFFHAND : 0;
 -
                  if (player.CountInv("BoomerangBlue") >= 1)
@@ -150,17 +152,16 @@ index 029f40d..fbd3247 100644
                  }
              }
              Goto Ready;
-@@ -56,20 +54,21 @@ class ZeldaWeapon : Weapon abstract
-     action void A_RaiseShield()
+@@ -57,19 +55,20 @@ class ZeldaWeapon : Weapon abstract
      {
          A_WeaponReady();
-+
+ 
 +        // Keep the ready weapon and shield together as one centered group on
 +        // the 3DS wide top screen. Attack-state offsets remain authoritative.
 +        A_WeaponOffset(35, 32);
- 
++
          A_SpawnItemEx("SHEELD", 30, 0, 15, flags: SXF_SETTARGET);
-
+ 
          // Draw shield overlay when weapon is not firing.
 -        if (player == null)
 -        {
@@ -168,19 +169,19 @@ index 029f40d..fbd3247 100644
 -        }
 +        let player = players[consoleplayer].mo;
 +        if (!player) return;
-
+ 
 -        let wep = invoker == player.OffhandWeapon ? player.OffhandWeapon : player.ReadyWeapon;
 +        let wep = players[consoleplayer].ReadyWeapon;
          if (!wep) return;
 -        let psplayer = wep.bOffhandWeapon ? PSP_OFFHANDWEAPON : PSP_WEAPON;
-
+ 
 -        let psp = players[consoleplayer].GetPSprite(psplayer);
 +        let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
-
+ 
          let isReady =
              players[consoleplayer].AttackDown == false ||
 diff --git a/MENUDEF b/MENUDEF
-index c7c6d33..9ddcbc3 100644
+index c7c6d33..aad1419 100644
 --- a/MENUDEF
 +++ b/MENUDEF
 @@ -1,50 +1,126 @@
@@ -339,7 +340,7 @@ index c7c6d33..9ddcbc3 100644
  }
  
  // //-------------------------------------------------------------------------------------------
-@@ -57,3 +124,14 @@ ListMenu "EpisodeMenu"
+@@ -57,3 +133,15 @@ ListMenu "EpisodeMenu"
  // {
  // 	Option "High Resolution Voxel Graphics",		"r_drawvoxels", "OnOff"
  // }
@@ -352,25 +353,32 @@ index c7c6d33..9ddcbc3 100644
 +    Command "CHANNEL", ""
 +    Command "CHECK FOR UPDATES", ""
 +    Command "INSTALL UPDATE", ""
++    Command "CHANGELOG", ""
 +    Command "BACK", ""
 +}
 diff --git a/ZMAPINFO b/ZMAPINFO
-index c3ad34f..852fc07 100644
+index 8b89194..5e5b367 100644
 --- a/ZMAPINFO
 +++ b/ZMAPINFO
-@@ -10,7 +10,7 @@ GameInfo
+@@ -8,11 +8,11 @@ GameInfo
+     InfoPage = "Info"
+     TitleMusic = "ZTITLE"
      CursorPic = "Cursor"
 -	DrawReadThis = false
 +    DrawReadThis = false
      DimColor = "Black"
 -    DimAmount = 0.95
-+    DimAmount = 0.72
 -	BorderFlat = "Black"
 -	QuitMessages = "Leave Hyrule in darkness?", "Let Ganon's rule unfold?", "Doom the princess?"
++    DimAmount = 0.72
 +    BorderFlat = "Black"
 +    QuitMessages = "Leave Hyrule in darkness?", "Let Ganon's rule unfold?", "Doom the princess?"
  
-@@ -215,45 +215,45 @@ skill baby
+ 	AddEventHandlers = "SpawnController"
+ 	AddEventHandlers = "UniqueItemController"
+@@ -213,47 +213,47 @@ DoomEdNums
+ 
+ skill baby
  {
 -	AutoUseHealth
 -	AmmoFactor = 2
@@ -444,7 +452,7 @@ index c3ad34f..852fc07 100644
 +    Key = "n"
  }
 diff --git a/ZSCRIPT b/ZSCRIPT
-index f9342af..b4b976f 100644
+index ed22291..fef1c23 100644
 --- a/ZSCRIPT
 +++ b/ZSCRIPT
 @@ -1,5 +1,6 @@
@@ -456,10 +464,10 @@ index f9342af..b4b976f 100644
  #include "actors/Decorations.zs"
 diff --git a/actors/LegendPauseMenu.zs b/actors/LegendPauseMenu.zs
 new file mode 100644
-index 0000000..5364849
+index 0000000..5b11284
 --- /dev/null
 +++ b/actors/LegendPauseMenu.zs
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,201 @@
 +class ListMenuItemResume : ListMenuItemTextItem
 +{
 +    override bool Activate()
@@ -585,6 +593,7 @@ index 0000000..5364849
 +    int NativeUpdateChoice;
 +    int NativeUpdatePage;
 +    int NativeUpdatePages;
++    int NativeUpdateAll; // CHANGELOG: 0 NEW (since the installed version), 1 ALL versions
 +
 +    override void Init(Menu parent, OptionMenuDescriptor desc)
 +    {
@@ -640,9 +649,10 @@ index 0000000..5364849
 +            return true;
 +        }
 +        if (mkey == MKEY_Back) { Close(); return true; }
-+        if (mkey == MKEY_Up) mDesc.mSelectedItem = (mDesc.mSelectedItem + 4) % 5;
-+        if (mkey == MKEY_Down) mDesc.mSelectedItem = (mDesc.mSelectedItem + 1) % 5;
-+        if (mkey == MKEY_Enter || ((mkey == MKEY_Left || mkey == MKEY_Right) && mDesc.mSelectedItem <= 1))
++        if (mkey == MKEY_Up) mDesc.mSelectedItem = (mDesc.mSelectedItem + 5) % 6;
++        if (mkey == MKEY_Down) mDesc.mSelectedItem = (mDesc.mSelectedItem + 1) % 6;
++        if (mkey == MKEY_Enter || ((mkey == MKEY_Left || mkey == MKEY_Right) &&
++            (mDesc.mSelectedItem <= 1 || mDesc.mSelectedItem == 4)))
 +        {
 +            switch (mDesc.mSelectedItem)
 +            {
@@ -652,16 +662,18 @@ index 0000000..5364849
 +            case 3:
 +                if (state == 3) { NativeUpdateConfirm = 1; NativeUpdateChoice = 1; }
 +                break;
-+            case 4: Close(); break;
++            case 4: NativeUpdateAll = 1 - NativeUpdateAll; NativeUpdatePage = 0; break;
++            case 5: Close(); break;
 +            }
 +        }
 +        return true;
 +    }
 +}
 diff --git a/actors/monsters/SnakeMonster.zs b/actors/monsters/SnakeMonster.zs
+index 600383c..c706d3a 100644
 --- a/actors/monsters/SnakeMonster.zs
 +++ b/actors/monsters/SnakeMonster.zs
-@@ -59,7 +59,7 @@
+@@ -59,7 +59,7 @@ class SnakeMonster : ZeldaMonster abstract
  	// Reset Bodies' targets, when ONLY the Head was destroyed
  	void RetargetBodies(actor Whom, bool HeadDestroyed = true)
  	{
@@ -670,7 +682,7 @@ diff --git a/actors/monsters/SnakeMonster.zs b/actors/monsters/SnakeMonster.zs
  		{
  			NumOfBodies[0].Destroy();
  
-@@ -82,7 +82,7 @@
+@@ -82,7 +82,7 @@ class SnakeMonster : ZeldaMonster abstract
  			let Body = SnakeMonsterBody(NumOfBodies[i]);
  			if (Body)
  			{
@@ -680,9 +692,10 @@ diff --git a/actors/monsters/SnakeMonster.zs b/actors/monsters/SnakeMonster.zs
  					if (NumOfBodies[i-1])
  					{
 diff --git a/actors/monsters/Ganon.zs b/actors/monsters/Ganon.zs
+index f718b23..154c58f 100644
 --- a/actors/monsters/Ganon.zs
 +++ b/actors/monsters/Ganon.zs
-@@ -82,8 +82,11 @@
+@@ -82,8 +82,11 @@ class Ganon : ZeldaMonster
      {
          FCheckPosition fCheckPos;
          let spawnDest = GetPosition();
@@ -696,10 +709,10 @@ diff --git a/actors/monsters/Ganon.zs b/actors/monsters/Ganon.zs
  
 diff --git a/language.csv b/language.csv
 new file mode 100644
-index 0000000..1111111
+index 0000000..0890e1e
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,167 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -712,6 +725,7 @@ index 0000000..1111111
 +ALL,LOD_ALL,,,TODO
 +ALL DUMPS CLEANED,LOD_ALL_DUMPS_CLEANED,,,CAPTURAS BORRADAS
 +ALL ITEMS GIVEN,LOD_ALL_ITEMS_GIVEN,,,TODOS LOS OBJETOS
++ALL VERSIONS,LOD_ALL_VERSIONS,,,TODAS LAS VERSIONES
 +ALT ATTACK,LOD_ALT_ATTACK,,,ATAQUE SECUNDARIO
 +ATTACK,LOD_ATTACK,,,ATACAR
 +AUDIO READY,LOD_AUDIO_READY,,,AUDIO LISTO
@@ -734,6 +748,8 @@ index 0000000..1111111
 +CHANGE ITEM,LOD_CHANGE_ITEM,,,CAMBIAR OBJETO
 +CHANGE WEAPON,LOD_CHANGE_WEAPON,,,CAMBIAR ARMA
 +CHANGELOG,LOD_CHANGELOG,,,NOVEDADES
++CHANGELOG: ALL,LOD_CHANGELOG_ALL,,,NOVEDADES: TODAS
++CHANGELOG: NEW,LOD_CHANGELOG_NEW,,,NOVEDADES: NUEVAS
 +CHANNEL,LOD_CHANNEL,,,CANAL
 +CHANNEL: BETA,LOD_CHANNEL_BETA,,,CANAL: BETA
 +CHANNEL: STABLE,LOD_CHANNEL_STABLE,,,CANAL: ESTABLE

@@ -131,11 +131,11 @@ int main(int argc,char**argv){
    assert(curl_global_init(CURL_GLOBAL_DEFAULT)==CURLE_OK);
    Transfer live={0};assert(fetch("https://api.github.com/repos/" UPDATE_REPOSITORY "/releases?per_page=100",&live));
    UpdateRelease found;
-   assert(Update_ParseRelease(live.data,live.size,false,false,&found)>=0);
-   assert(Update_ParseRelease(live.data,live.size,true,false,&found)>=0);
+   assert(Update_ParseRelease(live.data,live.size,false,false,NULL,&found)>=0);
+   assert(Update_ParseRelease(live.data,live.size,true,false,NULL,&found)>=0);
    free(live.data);
    live=(Transfer){0};assert(fetch("https://api.github.com/repos/" UPDATE_REPOSITORY "/releases?per_page=100",&live));
-   assert(Update_ParseRelease(live.data,live.size,false,false,&release)==1);free(live.data);
+   assert(Update_ParseRelease(live.data,live.size,false,false,NULL,&release)==1);free(live.data);
    live=(Transfer){.expected=release.size};assert(open_download(&live));
    assert(fetch(release.url,&live));assert(close_download(&live,true));free(live.data);assert(verify_file());
    curl_global_cleanup();
