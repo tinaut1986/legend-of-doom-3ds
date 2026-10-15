@@ -35,6 +35,9 @@ languages, AUTO UPDATE and the memory fix; before it **`v0.1.0`** (2026-10-12, b
 | _(merged)_ | `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS (stereo depth, sprites, trees and weapon; the bottom screen; nothing static stuck; the FTP button; the game as usual); what each holds and what was measured: [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md). The local `test/stereo-bottom` is now redundant | |
 | _(merged, to check)_ | `feat/ingame-spanish` (U5: the game's own text in Spanish), `fix/updater-channels` (the Beta channel sees stable releases; notes since the installed version; CHANGELOG: ALL), `chore/remove-render-option` (no RENDER option: no effect with the GPU world), `docs/readme-fork` and these notes merged into `release/v0.2.1` 2026-10-15 for the v0.2.1 beta, on the owner's go-ahead, before the console check | Owner: check them on the v0.2.1 beta, then the stable release |
 | _(merged, to check)_ | `fix/toast-over-map` (#6), `fix/press-start-legible`, `fix/untranslated-texts` and these notes merged into `release/v0.2.2` 2026-10-15 for the v0.2.2 beta, on the owner's go-ahead, before the console check | Owner: check them on the v0.2.2 beta |
+| _(merged, to check)_ | `feat/frames-option-fps-counter` (OPTIONS -> VIDEO -> FRAMES: AUTO 60 / LOCK 30 / NO SKIP; the top counter and the developer overlay show the same figure), `fix/overlay-redraw-cost` (the overlay redraws once a second, `mallinfo` every 4 s) and `fix/menu-top-black` (#8, #9: a menu over a GPU-world level keeps drawing the world dimmed by a GPU quad; the save picture is rendered by the CPU), plus `fix/build-ftp-login` and `fix/gpu-comment-contract-test`, merged into `release/v0.2.3` 2026-10-15 | Owner: FRAMES and the overlay checked on the New 3DS; #8 and #9 seen by Claude only (screenshot of the pause menu, a test save's picture): the owner to look |
+| `test/2ds-memory` | P4.1 memory work for the 2DS, on top of `feat/old3ds-boot` (pushed; not for merging as it is: to be split into topics once it runs): ZScript compiled for this game only (`wadsrc/static/zscript.txt`, `lod_kept.zs`), the engine tolerant of the missing classes, map arrays built in place, a 10 MB pool for TArray's big blocks. Last install on the 2DS (before the pool's last build) stopped at the title with `operator new failure` | Next: install on the 2DS, read `fatal.log` and the new `pool=` figures in `startup.log` |
+| `perf/bsp-distance-cull` | `walk_ms` and `capture_ms` in the perf recorder (inside `world_ms`), `--ftp` login (merged separately). The BSP pruning itself is **not** done: see the decisions log, 2026-10-15 | Parked: the walk is 1.7-3.3 ms of a frame |
 | `feat/old3ds-boot` | P4.1 in progress (pushed, not merged; not yet checked on the New 3DS: the 804 MHz/L2 now come from `osSetSpeedupEnable` through `ptm:sysm`, not the exheader): one CIA for both models (no New 3DS-only SMDH flag; Old 3DS mode 80 MB; 12 MB of linear memory), map WADs stored in the pk3, a 5 MB map-load reserve. On the 2DS it gets 80 MB and the GPU, compiles ZScript, then a 1.3 MB lump fails to load on a fragmented heap (16 MB free) before the title | Next session: memory reduction first (decisions log, 2026-10-14) |
 | _(merged)_ | `feat/stable-dev-ftp-banner` (stable builds: no DEBUG tab or developer overlay, SHOW FPS in VIDEO; the install-only FTP bar with its X), `feat/auto-update` (AUTO UPDATE: the offer at start, YES / NO, notes on the top screen; an installed update restarts the game; ':' and '/' in the NES font) and `feat/install-progress` (FTP install: bars for receiving and installing, relaunch countdown) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS with a stable-mode build posing as 0.0.9 | |
 | _(merged)_ | `feat/gpu-world-default` (the GPU draws the world in every build; stable builds cannot turn it off; owner 2026-10-14: never the CPU) and `docs/release-notes-v0.2.0` merged into `release/v0.1.1` 2026-10-14 after the owner saw it start on the GPU and approved the notes | |
@@ -462,3 +465,32 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   **reduce the memory the game needs first** (next session): measure what holds the heap after
   the compile and in MAP01, then compile only the actors this game uses (gzdoom.pk3 compiles
   Doom, Heretic, Hexen, Strife and Chex), then 8-bit textures, the doubled sides, caches.
+- **2026-10-15** ZScript for the 2DS: `gzdoom.pk3` compiles Doom, Heretic, Hexen, Strife and Chex;
+  this game needs only Doom's base. Dropping 136 includes (`zscript.txt`) cut the compile's heap
+  peak from ~45 MB to ~37 MB, but the files cannot just go: the kept ZScript and the mod name some
+  of their classes (`BossSpot`, `BloodySkull`, `A_AlertMonsters`, `ArtiFly`, `ArtiPoisonBag1-3`,
+  `Coin`; copied or stubbed in `lod_kept.zs`), and the engine needs to tolerate unknown classes in
+  the spawn / conversation id maps, decal generators, key groups and bot weapons. A static check by
+  class name missed all of it; what finds the rest is the compiler's own messages, which the 3DS
+  has no console for, so `fatal.log` now carries them (`ScriptErrorSummary`).
+- **2026-10-15** The 2DS heap fails on **fragmentation**, not on size: a 0.5 MB request failed with
+  9-11 MB free in pieces. What helped, in order: building the level's sides / sectors / vertices in
+  place instead of a second copy (`udmf.cpp`), reserving the big arrays while the heap the previous
+  map freed is whole, and a 10 MB pool for TArray blocks of 192 KB or more (`m_alloc.cpp`,
+  `M_ReallocBig`). The pool and the 5 MB map-load reserve together may leave the heap too small at
+  the title: measure with `pool=` in `startup.log` before keeping both.
+- **2026-10-15** Frame time on the New 3DS at MAP01, overlay closed (`perf-analyze`, debug build):
+  looking at the sea 110 fps (world 3.3 ms), looking inland 70 fps (world 5.9: BSP walk 3.3, GPU
+  hand-over 1.0; present 3.5; logic 2.4). Nothing dominates, so no pruning of the BSP is worth it
+  alone; and a node-level distance prune is not safe as it stands (a far subtree can still own the
+  columns that keep the sky out: `FarClipLine` exists for that). With FRAMES = AUTO both spots hold
+  60.00 fps, 1% low 60.
+- **2026-10-15** The "bottom-screen redraw spikes" first read from the recorder were the developer
+  overlay (CPU drawing 8 times a second, 24 ms each, 15 of them one `mallinfo()` call on a
+  fragmented heap), not the game's NES screen (`bottom_ms` 0.5 ms with the overlay closed). The
+  pause and title menus run at 35 fps because the loop waits for the next tic when nothing moves
+  (#5); that is idle time, not work.
+- **2026-10-15** #8 and #9 had one cause: with the GPU world the canvas has no world in it. A
+  native menu over a level now keeps rendering it (about 3 ms) and dims it with a GPU quad; the
+  save and load menus, which draw their own picture on the top canvas, keep the frozen route. The
+  save picture is rendered with the GPU world suspended.
