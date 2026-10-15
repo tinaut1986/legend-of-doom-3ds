@@ -470,6 +470,7 @@ cmake -E copy "${ROOT}/platform/3ds/assets/menu-top.png" \
   "${MOD_PACKAGE_SOURCE}/graphics/TITLEPIC.png"
 cmake -E copy "${ROOT}/platform/3ds/assets/menu-story.png" \
   "${MOD_PACKAGE_SOURCE}/graphics/ZSTORY.png"
+python3 "${ROOT}/platform/3ds/tools/spanish-game.py" "${MOD_PACKAGE_SOURCE}"
 "${HOST_GZDOOM_BUILD}/tools/zipdir/zipdir" -df "${MOD_PK3}" "${MOD_PACKAGE_SOURCE}"
 # Map WADs stored, so the engine reads them from the pk3 instead of inflating them whole.
 python3 "${ROOT}/platform/3ds/tools/store-map-wads.py" "${MOD_PK3}"

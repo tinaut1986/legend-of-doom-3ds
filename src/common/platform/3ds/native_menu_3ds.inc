@@ -944,12 +944,14 @@ void DrawNativeUpdateMenu(unsigned char *framebuffer)
 	}
 
 	auto *descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
+	// CHANGELOG: what the top screen lists, NEW (since the installed version) or ALL versions.
 	const char *labels[] = { lod3ds_auto_update ? "AUTO UPDATE: ON" : "AUTO UPDATE: OFF",
 		status.prerelease ? "CHANNEL: BETA" : "CHANNEL: STABLE",
-		"CHECK FOR UPDATES", "INSTALL UPDATE", "BACK" };
-	for (int row = 0; row < 5; ++row)
+		"CHECK FOR UPDATES", "INSTALL UPDATE",
+		CurrentMenu->IntVar(FName("NativeUpdateAll")) ? "CHANGELOG: ALL" : "CHANGELOG: NEW", "BACK" };
+	for (int row = 0; row < 6; ++row)
 	{
-		const int y = 104 + row * 22;
+		const int y = 100 + row * 20;
 		const bool selected = descriptor != nullptr && descriptor->mSelectedItem == row;
 		const bool disabled = row == 3 && status.state != UPDATE_AVAILABLE;
 		if (selected) NesBox(framebuffer, 40, y - 6, 240, 20, NesPanel, NesBlue);

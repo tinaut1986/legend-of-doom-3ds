@@ -134,3 +134,7 @@ void I_3DSStopConsoleLink();
 bool I_3DSSaveScreenShots(const char *topPath, const char *bottomPath);
 // Once per input poll: saves the config when the player leaves the option menus.
 void I_3DSServiceSettingsSave();
+// Text in the player's language: the English text is also the key (LOD_ and its words), looked
+// up in language.csv; missing keys return the English (Tr() in native_menu_3ds.inc). The game's
+// ACS messages go through it too.
+const char *I_3DSTranslate(const char *english);

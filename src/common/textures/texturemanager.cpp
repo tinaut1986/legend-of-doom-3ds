@@ -1355,13 +1355,21 @@ FTextureID FTextureManager::GetFrontSkyLayer(FTextureID texid)
 //
 //==========================================================================
 EXTERN_CVAR(String, language)
+#ifdef __3DS__
+const char *I_3DSSystemLanguage();
+#endif
 
 int FTextureManager::ResolveLocalizedTexture(int tex)
 {
-	size_t langlen = strlen(language);
+	const char *active = language;
+#ifdef __3DS__
+	// "auto" (LANGUAGE: SYSTEM) is the console's own language, as in the string table.
+	if (!stricmp(active, "auto")) active = I_3DSSystemLanguage();
+#endif
+	size_t langlen = strlen(active);
 	int lang = (langlen < 2 || langlen > 3) ?
 		MAKE_ID('e', 'n', 'u', '\0') :
-		MAKE_ID(language[0], language[1], language[2], '\0');
+		MAKE_ID(active[0], active[1], active[2], '\0');
 
 	uint64_t index = (uint64_t(lang) << 32) + tex;
 	if (auto pTex = LocalizedTextures.CheckKey(index)) return *pTex;

@@ -33,6 +33,8 @@ languages, AUTO UPDATE and the memory fix; before it **`v0.1.0`** (2026-10-12, b
 | Branch | What | State |
 |---|---|---|
 | _(merged)_ | `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS (stereo depth, sprites, trees and weapon; the bottom screen; nothing static stuck; the FTP button; the game as usual); what each holds and what was measured: [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md). The local `test/stereo-bottom` is now redundant | |
+| _(merged, to check)_ | `feat/ingame-spanish` (U5: the game's own text in Spanish), `fix/updater-channels` (the Beta channel sees stable releases; notes since the installed version; CHANGELOG: ALL), `chore/remove-render-option` (no RENDER option: no effect with the GPU world), `docs/readme-fork` and these notes merged into `release/v0.2.1` 2026-10-15 for the v0.2.1 beta, on the owner's go-ahead, before the console check | Owner: check them on the v0.2.1 beta, then the stable release |
+| _(merged, to check)_ | `fix/toast-over-map` (#6), `fix/press-start-legible`, `fix/untranslated-texts` and these notes merged into `release/v0.2.2` 2026-10-15 for the v0.2.2 beta, on the owner's go-ahead, before the console check | Owner: check them on the v0.2.2 beta |
 | `feat/old3ds-boot` | P4.1 in progress (pushed, not merged; not yet checked on the New 3DS: the 804 MHz/L2 now come from `osSetSpeedupEnable` through `ptm:sysm`, not the exheader): one CIA for both models (no New 3DS-only SMDH flag; Old 3DS mode 80 MB; 12 MB of linear memory), map WADs stored in the pk3, a 5 MB map-load reserve. On the 2DS it gets 80 MB and the GPU, compiles ZScript, then a 1.3 MB lump fails to load on a fragmented heap (16 MB free) before the title | Next session: memory reduction first (decisions log, 2026-10-14) |
 | _(merged)_ | `feat/stable-dev-ftp-banner` (stable builds: no DEBUG tab or developer overlay, SHOW FPS in VIDEO; the install-only FTP bar with its X), `feat/auto-update` (AUTO UPDATE: the offer at start, YES / NO, notes on the top screen; an installed update restarts the game; ':' and '/' in the NES font) and `feat/install-progress` (FTP install: bars for receiving and installing, relaunch countdown) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS with a stable-mode build posing as 0.0.9 | |
 | _(merged)_ | `feat/gpu-world-default` (the GPU draws the world in every build; stable builds cannot turn it off; owner 2026-10-14: never the CPU) and `docs/release-notes-v0.2.0` merged into `release/v0.1.1` 2026-10-14 after the owner saw it start on the GPU and approved the notes | |
@@ -233,6 +235,15 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   hearts; the triforce pieces left out, they drive the story).
   *Done when:* the owner finds it integrated on the console, the map zooms only with its
   button, and GOD / ALL work in a debug build and are absent from a stable one.
+
+- [ ] **U5** The game's own text in Spanish too (U3 left it out).
+  *Spec:* owner 2026-10-15: the whole game, not only the menus. The NPCs' dialogue (compiled
+  ACS, through `Tr()` in the engine), pickup messages, obituaries, level names, the story and
+  ending pages (Spanish variants drawn at build time), and the Spanish letters in the game's
+  own fonts (`platform/3ds/tools/spanish-game.py`).
+  *Done when:* in Spanish the owner meets no English in a playthrough's text (dialogue,
+  pickups, story, ending), the accents read well in the dialogue box and the pickup line,
+  the texts fit on screen, and English is unchanged.
 
 ## Phase 2: GPU world renderer, 60 fps on New 3DS
 

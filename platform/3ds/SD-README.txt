@@ -38,16 +38,15 @@ With Luma3DS, open Rosalina, choose "Miscellaneous options...", then
 
 RENDERER AND DISPLAY
 
-Releases use profile=hardware-hybrid: SoftPoly renders the world on
-CPU0/CPU2 and PICA200 scales the completed image to the 400x240 top screen.
-Gameplay defaults to 320x192; Display adjusts render scale from 50% to 100%.
-Menus use native 400x240. NovaGL does not render world geometry in this profile.
+Releases use profile=hardware-hybrid: since v0.2.0 the PICA200 GPU draws the 3D
+world (with stereoscopic 3D) and the 2D. Menus use native 400x240.
+NovaGL does not render world geometry in this profile.
 
 Packages marked profile=hardware-safe use the CPU-only 320x200 recovery path
 and SDL/libctru presentation. This is the default source-build and CI profile.
 Other NovaGL profiles are intended for renderer investigation.
 
-Rendering is uncapped. Actual frame rate depends on scene and render scale;
+Rendering is uncapped. Actual frame rate depends on the scene;
 display refresh rate is not a measurement of gameplay FPS.
 
 CONTROLS

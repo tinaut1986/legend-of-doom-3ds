@@ -544,6 +544,8 @@ void OverlayTextSized(unsigned char *framebuffer, int x, int y, const char *text
 	int glyphWidth, int glyphHeight, int advance, FOverlayColor color);
 void OverlayCenteredText(unsigned char *framebuffer, int x, int width, int y,
 	const char *text, int scale, FOverlayColor color);
+// The interface's language (native_menu_3ds.inc).
+const char *Tr(const char *english);
 
 void OverlayPutPixel(unsigned char *framebuffer, int x, int y, FOverlayColor color)
 {
@@ -1350,7 +1352,7 @@ void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
 	if (!view.Valid)
 	{
 		OverlayCenteredText(framebuffer, MapX, MapWidth, MapY + MapHeight / 2 - 4,
-			"MAP UNAVAILABLE", 1, OverlayIvory);
+			Tr("MAP UNAVAILABLE"), 1, OverlayIvory);
 		return;
 	}
 	if (BottomMapTerrainOnGpu) return;
@@ -1532,12 +1534,13 @@ const std::vector<FMapLine> &MapLines()
 	return lines;
 }
 
+// clipBottom: the first row the GPU must leave alone (the CPU draws something over the map there).
 void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int mapHeight,
-	double worldUnitsPerPixel)
+	double worldUnitsPerPixel, int clipBottom = 1 << 30)
 {
 	const FBottomMapView view = BottomMapView();
 	if (!view.Valid) return;
-	const int scissor[4] = { mapX, mapY, mapX + mapWidth, mapY + mapHeight };
+	const int scissor[4] = { mapX, mapY, mapX + mapWidth, std::min(mapY + mapHeight, clipBottom) };
 	const double halfWidth = mapWidth * 0.5 * worldUnitsPerPixel;
 	const double halfHeight = mapHeight * 0.5 * worldUnitsPerPixel;
 	const double minX = view.CenterX - halfWidth;
@@ -2291,6 +2294,15 @@ void DrawInstallBar(unsigned char *framebuffer)
 		InstallBarY + 7, "X", 1, OverlayIvory);
 }
 
+// The toast's top row, above the install bar when it is there; the screen's height when there
+// is none. The GPU map stops above it (I_3DSOverlayFrame), or it would draw over the toast.
+int BottomToastTop()
+{
+	if (OverlayNotification[0] == '\0') return static_cast<int>(BottomScreenHeight);
+	const int height = OverlayNotificationProgress >= 0 ? 33 : 21;
+	return (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+}
+
 void DrawBottomToast(unsigned char *framebuffer)
 {
 	DrawInstallBar(framebuffer);
@@ -2301,8 +2313,7 @@ void DrawBottomToast(unsigned char *framebuffer)
 	const int width = std::min(304, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
 	const int height = bar ? 33 : 21;
 	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
-	// Above the install bar when it is there.
-	const int y = (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+	const int y = BottomToastTop();
 	OverlayRect(framebuffer, x, y, width, height, OverlayInk);
 	OverlayFrame(framebuffer, x, y, width, height, 1, OverlayBlue);
 	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
@@ -2616,7 +2627,7 @@ bool DrawNativeSaveLoadBottomFrame(unsigned char *framebuffer,
 	if (saveCount == 0)
 	{
 		OverlayCenteredText(framebuffer, SectionLeft, SectionWidth,
-			116, "NO SAVE GAMES", 2, OverlayIvory);
+			116, Tr("NO SAVE GAMES"), 2, OverlayIvory);
 		return true;
 	}
 
@@ -3566,11 +3577,17 @@ void DrawBottomOverlay(bool force)
 			else
 				DrawMenuBottomScreen(framebuffer,
 					target == EBottomPresentation::MenuDimmed ? 71u : 255u);
-			if (target == EBottomPresentation::Menu && NewSmallFont != nullptr && (now / 600u) % 2u == 0u)
+			if (target == EBottomPresentation::Menu && NewSmallFont != nullptr)
 			{
+				// On a box like the toasts': the picture behind it is light. The text blinks.
 				LoadNesFont();
 				const char *prompt = Tr("PRESS START TO BEGIN");
-				NesText(framebuffer, (320 - NesTextWidth(prompt, 1)) / 2, 116, prompt, 1, OverlayIvory);
+				const int width = NesTextWidth(prompt, 1) + 24;
+				const int x = (320 - width) / 2;
+				OverlayRect(framebuffer, x, 109, width, 21, OverlayInk);
+				OverlayFrame(framebuffer, x, 109, width, 21, 1, OverlayBlue);
+				if ((now / 600u) % 2u == 0u)
+					NesText(framebuffer, x + 12, 116, prompt, 1, OverlayIvory);
 			}
 		}
 		else
@@ -5914,7 +5931,7 @@ void I_3DSOverlayFrame()
 	{
 		using namespace BottomLayout;
 		QueueGpuMap(E3DSGpuScreen::Bottom, MapX, MapY, MapWidth, MapHeight,
-			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear);
+			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear, BottomToastTop());
 	}
 }
 
@@ -6161,4 +6178,9 @@ void I_3DSServiceSettingsSave()
 		CurrentMenu->IsKindOf("OptionMenu");
 	if (inOptions && !options) M_SaveDefaults(nullptr);
 	inOptions = options;
+}
+
+const char *I_3DSTranslate(const char *english)
+{
+	return Tr(english);
 }

@@ -1570,16 +1570,21 @@ void D_PageDrawer (void)
 	{
 		FGameTexture *pageTexture = TexMan.GetGameTexture(Page, true);
 		#ifdef __3DS__
+		// By the page's own name: in Spanish pageTexture is its localized variant (ZSTORY.es).
+		bool story = FName(TexMan.GetGameTexture(Page, false)->GetName()) == FName("ZSTORY");
 		// Keep the authored waterfall/title composition behind an open menu.
 		// The lore page remains untouched when no menu is active, and the lower
 		// LCD can then be guaranteed solid black for the whole lore sequence.
 		if (gamestate == GS_DEMOSCREEN && I_3DSNativeMenuVisible())
 		{
 			FGameTexture *titleTexture = TexMan.GetGameTextureByName("TITLEPIC", true);
-			if (titleTexture != nullptr) pageTexture = titleTexture;
+			if (titleTexture != nullptr)
+			{
+				pageTexture = titleTexture;
+				story = false;
+			}
 		}
-		I_3DSSetMenuStoryPage(pageTexture != nullptr &&
-			FName(pageTexture->GetName()) == FName("ZSTORY"));
+		I_3DSSetMenuStoryPage(pageTexture != nullptr && story);
 		#endif
 		DrawTexture(twod, pageTexture, 0, 0,
 			DTA_Fullscreen, true,
