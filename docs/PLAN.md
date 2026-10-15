@@ -50,6 +50,7 @@ languages, AUTO UPDATE and the memory fix; before it **`v0.1.0`** (2026-10-12, b
 | _(merged)_ | `feat/gpu-2d` (U2) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("funciona"; gameplay still ~20 fps: the 3D view, P2) | |
 | _(merged)_ | `feat/language` (U1 + U3, with `feat/native-menus`) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("todo ok") | |
 | _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
+| _(merged)_ | `fix/save-load-top` (#10: the save / load preview follows the selection, #11: the game dimmed behind it instead of the hands on black; the picture and text are a GPU layer over the world) and `feat/old3ds-unsupported-screen` (an Old 3DS / 2DS shows a message saying it is not supported yet, instead of closing) merged into `release/v0.2.3` 2026-10-15 after the owner's checks on the New 3DS (debug and production builds); the Old 3DS screen is only seen on an Old 3DS | |
 | _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
 
 **Priority** (2026-10-14, owner, later the same day): v0.2.0 published; next **P4 the 2DS**: boot it and aim for 60 fps
