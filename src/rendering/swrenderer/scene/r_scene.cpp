@@ -59,6 +59,7 @@
 #include "swrenderer/r_renderthread.h"
 #ifdef __3DS__
 #include "common/platform/3ds/gpu_world_3ds.h"
+#include "common/platform/3ds/perf_3ds.h"
 #endif
 #include "swrenderer/things/r_playersprite.h"
 #include <chrono>
@@ -292,9 +293,17 @@ namespace swrenderer
 		#ifdef __3DS__
 		I_3DSGpuWorldBeginScene(thread);
 		#endif
-		thread->OpaquePass->RenderScene(thread->Viewport->Level());
 		#ifdef __3DS__
-		I_3DSGpuWorldCapture(thread);
+		{
+			F3DSPerfScope perfWalk(E3DSPerfPart::Walk);
+			thread->OpaquePass->RenderScene(thread->Viewport->Level());
+		}
+		{
+			F3DSPerfScope perfCapture(E3DSPerfPart::Capture);
+			I_3DSGpuWorldCapture(thread);
+		}
+		#else
+		thread->OpaquePass->RenderScene(thread->Viewport->Level());
 		#endif
 		thread->Clip3D->ResetClip(); // reset clips (floor/ceiling)
 
