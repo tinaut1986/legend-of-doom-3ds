@@ -6162,3 +6162,8 @@ void I_3DSServiceSettingsSave()
 	if (inOptions && !options) M_SaveDefaults(nullptr);
 	inOptions = options;
 }
+
+const char *I_3DSTranslate(const char *english)
+{
+	return Tr(english);
+}
