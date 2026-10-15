@@ -518,7 +518,7 @@ bool DrawTriforceAnimationFrame(unsigned frame)
 // data folder.
 const char *I_3DSSystemLanguage();
 
-bool I_3DSUnsupportedConsoleScreen()
+bool UnsupportedConsoleScreen()
 {
 	bool isNew3DS = true;
 	APT_CheckNew3DS(&isNew3DS);
@@ -6331,4 +6331,9 @@ const char *I_3DSTranslate(const char *english)
 void I_3DSToast(const char *english)
 {
 	SetOverlayNotification(english);
+}
+
+bool I_3DSUnsupportedConsoleScreen()
+{
+	return UnsupportedConsoleScreen();
 }
