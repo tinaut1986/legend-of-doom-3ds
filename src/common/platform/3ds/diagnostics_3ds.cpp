@@ -511,6 +511,97 @@ bool DrawTriforceAnimationFrame(unsigned frame)
 	return true;
 }
 
+// An Old 3DS / 2DS cannot run the game yet (it runs out of memory loading the first map): say so
+// on the top screen instead of closing with no word. One CIA serves both families (the SMDH has
+// no New 3DS-only flag), so the check is at run time. Returns true when the screen was shown
+// and the game should exit. Debug builds can show it on a New 3DS: a force-old3ds.txt in the
+// data folder.
+const char *I_3DSSystemLanguage();
+
+bool I_3DSUnsupportedConsoleScreen()
+{
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+#if LOD3DS_DEBUG_TOOLS
+	if (isNew3DS)
+	{
+		FILE *forced = std::fopen(LOD3DS_APP_DIR "/force-old3ds.txt", "rb");
+		if (forced != nullptr)
+		{
+			std::fclose(forced);
+			isNew3DS = false;
+		}
+	}
+#endif
+	if (isNew3DS) return false;
+
+	u16 physicalWidth = 0;
+	u16 physicalHeight = 0;
+	unsigned char *framebuffer = gfxGetFramebuffer(GFX_TOP, GFX_LEFT,
+		&physicalWidth, &physicalHeight);
+	if (framebuffer == nullptr || physicalWidth != 240 || physicalHeight != 400) return false;
+
+	const bool spanish = std::strcmp(I_3DSSystemLanguage(), "es") == 0;
+	const char *const english[] = {
+		"THIS CONSOLE IS NOT SUPPORTED YET", "",
+		"THE OLD 3DS / 2DS VERSION IS STILL", "IN DEVELOPMENT. WE ARE TRYING",
+		"TO MAKE IT WORK.", "",
+		"FOR NOW IT NEEDS A NEW 3DS.", "", "PRESS A OR START TO EXIT" };
+	const char *const castellano[] = {
+		"ESTA CONSOLA TODAVIA NO ES COMPATIBLE", "",
+		"LA VERSION PARA OLD 3DS / 2DS SIGUE", "EN DESARROLLO. ESTAMOS INTENTANDO",
+		"QUE FUNCIONE.", "",
+		"DE MOMENTO NECESITA UNA NEW 3DS.", "", "PULSA A O START PARA SALIR" };
+	const char *const *lines = spanish ? castellano : english;
+
+	auto put = [&](int x, int y, unsigned char red, unsigned char green, unsigned char blue)
+	{
+		if (x < 0 || x >= 400 || y < 0 || y >= 240) return;
+		const size_t offset = 4u * (static_cast<size_t>(x) * 240u + (239u - static_cast<unsigned>(y)));
+		framebuffer[offset + 0] = 255;
+		framebuffer[offset + 1] = blue;
+		framebuffer[offset + 2] = green;
+		framebuffer[offset + 3] = red;
+	};
+	auto text = [&](int x, int y, const char *line, int scale, unsigned char red,
+		unsigned char green, unsigned char blue)
+	{
+		for (; *line != '\0'; ++line, x += 6 * scale)
+		{
+			const uint8_t *rows = LoadingFindGlyph(*line);
+			if (rows == nullptr) continue;
+			for (int row = 0; row < 7; ++row)
+				for (int column = 0; column < 5; ++column)
+					if ((rows[row] & (1u << (4 - column))) != 0)
+						for (int dy = 0; dy < scale; ++dy)
+							for (int dx = 0; dx < scale; ++dx)
+								put(x + column * scale + dx, y + row * scale + dy, red, green, blue);
+		}
+	};
+	std::memset(framebuffer, 0, 400u * 240u * 4u);
+	for (int x = 0; x < 400; ++x) { put(x, 40, 217, 74, 25); put(x, 41, 217, 74, 25); }
+	const char *title = "LEGEND OF DOOM 3DS";
+	text((400 - LoadingTextWidth(title, 2)) / 2, 16, title, 2, 245, 151, 49);
+	int y = 62;
+	for (int i = 0; i < 9; ++i, y += 14)
+	{
+		const bool last = i == 8;
+		text((400 - LoadingTextWidth(lines[i], 1)) / 2, last ? y + 14 : y, lines[i], 1,
+			last ? 132 : 242, last ? 183 : 236, last ? 232 : 213);
+	}
+	I_3DSCleanDataCache(framebuffer, 400u * 240u * 4u);
+	gfxScreenSwapBuffers(GFX_TOP, false);
+	I_3DSStartupLog("unsupported-console-screen");
+
+	while (aptMainLoop())
+	{
+		hidScanInput();
+		if (hidKeysDown() & (KEY_A | KEY_START | KEY_B)) break;
+		gspWaitForVBlank();
+	}
+	return true;
+}
+
 void TriforceAnimationMain(void *)
 {
 	unsigned frame = 1;
