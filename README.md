@@ -51,7 +51,7 @@ Audio on a real console requires its own DSP firmware at `sdmc:/3ds/dspfirm.cdc`
 - Circle Pad movement and configurable C-Stick / touch camera input.
 - Save/load menus with previews and the native Nintendo 3DS keyboard.
 - Music and sound effects through OpenAL Soft/NDSP.
-- Display options for render resolution and draw distance.
+- A draw distance option.
 - A built-in CIA updater with stable and beta channels.
 - Quick diagnostic capture for bug reports.
 
