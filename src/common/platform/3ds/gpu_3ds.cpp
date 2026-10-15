@@ -11,6 +11,7 @@
 #include <cstring>
 #include <vector>
 
+#include "c_cvars.h"
 #include "v_2ddrawer.h"
 #include "v_video.h"
 #include "hw_material.h"
@@ -21,6 +22,10 @@
 
 #include "gpu_3ds_shbin.h"
 #include "present_pixels.h"
+
+// World textures in 16 bits (565 or 5551) when they allow it; read when a texture is built, so a
+// change shows after the next map load. Debug builds can turn it off to compare.
+CVAR(Bool, lod3ds_gpu_texture16, true, CVAR_NOSAVE)
 
 extern "C" void C3Di_RenderQueueWaitDone(void);
 
@@ -508,14 +513,60 @@ bool BuildTexture(C3D_Tex &texture, float &scaleS, float &scaleT, DCanvas *image
 	int textureHeight = std::min(NextPowerOfTwo(height), MaxTextureSize);
 	const bool stretchX = wrap || width > MaxTextureSize;
 	const bool stretchY = wrap || height > MaxTextureSize;
+	const int pitch = image->GetPitch();
+	const uint32_t *source = reinterpret_cast<const uint32_t *>(image->GetPixels());
+	// World textures (wrap: filling the texture, no padding) in 16 bits when their alpha allows:
+	// 565 if opaque, 5551 if every texel is either solid or fully clear. Half the memory and half
+	// the texture reads of RGBA8; anything with partial alpha keeps 8888.
+	GPU_TEXCOLOR format = GPU_RGBA8;
+	if (wrap && lod3ds_gpu_texture16)
+	{
+		bool opaque = true, binary = true;
+		for (int y = 0; y < height && binary; ++y)
+		{
+			const uint32_t *row = source + static_cast<size_t>(y) * pitch;
+			for (int x = 0; x < width; ++x)
+			{
+				const uint32_t alpha = row[x] >> 24;
+				if (alpha != 255)
+				{
+					opaque = false;
+					if (alpha != 0) { binary = false; break; }
+				}
+			}
+		}
+		if (binary) format = opaque ? GPU_RGB565 : GPU_RGBA5551;
+	}
 	if (!C3D_TexInit(&texture, static_cast<u16>(textureWidth),
-		static_cast<u16>(textureHeight), GPU_RGBA8))
+		static_cast<u16>(textureHeight), format))
 	{
 		return false;
 	}
+	if (format != GPU_RGBA8)
+	{
+		uint16_t *texels = static_cast<uint16_t *>(texture.data);
+		for (int y = 0; y < textureHeight; ++y)
+		{
+			const int sourceY = stretchY ? y * height / textureHeight : y;
+			const uint32_t *row = source + static_cast<size_t>(sourceY) * pitch;
+			for (int x = 0; x < textureWidth; ++x)
+			{
+				const int sourceX = stretchX ? x * width / textureWidth : x;
+				const uint32_t pixel = row[sourceX]; // 0xAARRGGBB
+				const uint32_t r = (pixel >> 16) & 0xff, g = (pixel >> 8) & 0xff, b = pixel & 0xff;
+				uint16_t texel;
+				if (format == GPU_RGB565)
+					texel = uint16_t(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+				else
+					texel = uint16_t(((r >> 3) << 11) | ((g >> 3) << 6) | ((b >> 3) << 1) |
+						((pixel >> 24) != 0 ? 1u : 0u));
+				texels[TiledOffset(x, y, textureWidth)] = texel;
+			}
+		}
+	}
+	else
+	{
 	uint32_t *texels = static_cast<uint32_t *>(texture.data);
-	const int pitch = image->GetPitch();
-	const uint32_t *source = reinterpret_cast<const uint32_t *>(image->GetPixels());
 	for (int y = 0; y < textureHeight; ++y)
 	{
 		const int sourceY = stretchY ? y * height / textureHeight : y;
@@ -533,6 +584,7 @@ bool BuildTexture(C3D_Tex &texture, float &scaleS, float &scaleT, DCanvas *image
 			}
 			texels[TiledOffset(x, y, textureWidth)] = texel;
 		}
+	}
 	}
 	C3D_TexFlush(&texture);
 	C3D_TexSetFilter(&texture, GPU_NEAREST, GPU_NEAREST);

@@ -32,6 +32,7 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
 
 | Branch | What | State |
 |---|---|---|
+| `perf/gpu-world-16bit-textures` | the world's textures in 565 / 5551 (#12) | On the console (debug build), measured: stereo 48 -> 61 fps at `test2`; **waiting for the owner's eye on the colours**, not merged |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
@@ -535,3 +536,10 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   oscillates on the GPU, the flashes ride the GPU 2D. Not looked at: the waterfall `WTRFL01` (not found
   in MAP01's sidedefs) and views from inside a 3D floor. The ffloor sides' light is the target
   sector's, not the control sector's.
+- **2026-10-15** #12 measured at `test2` (save slot 1) on the New 3DS, overlay closed, fresh boots: the
+  GPU is the limit, not the CPU (12 draws, 3.4k vertices; GPU 13.5 ms mono, 17.7 stereo, with
+  `capture` 2.5 ms and `walk` 3.7 ms), so the world's RGBA8 textures read from linear RAM were the
+  cost. World textures (walls, flats, sky) are now built as 565 when opaque, 5551 when their alpha is
+  binary, 8888 otherwise (`BuildTexture`, cvar `lod3ds_gpu_texture16`, debug builds): stereo
+  48.2 -> 61.4 fps, mono 76.7 -> 86.0, and half the memory of those textures (good for P4). Textures are
+  kept across map loads, so the cvar only shows on a fresh boot. Sprites and 2D stay 8888.
