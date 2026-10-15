@@ -1970,7 +1970,9 @@ constexpr int ZoomX = 12, ZoomY = 218, ZoomWidth = 180, ZoomHeight = 16;
 constexpr int SideX = 204, SideWidth = 108;
 constexpr int CounterY = 112, CounterStep = 18;
 constexpr int LifeY = 172, HeartsY = 186, HeartWidth = 11, HeartHeight = 12, HeartStep = 13;
-constexpr int GodX = 232, AllX = 274, CheatY = 2, CheatWidth = 38, CheatHeight = 13;
+// GOD and ALL (debug builds) sit under the hearts, which leaves the title row to the clock,
+// the Wi-Fi bars and the battery.
+constexpr int GodX = 204, AllX = 250, CheatY = 222, CheatWidth = 42, CheatHeight = 13;
 constexpr double MapUnitsNear = 12.0, MapUnitsFar = 32.0;
 
 bool Inside(float x, float y, int left, int top, int width, int height)
@@ -2059,6 +2061,95 @@ void DrawBottomCheatButton(unsigned char *framebuffer, int x, const char *label,
 		on ? White : Gray);
 }
 
+// The console's clock, Wi-Fi bars and battery, drawn on the gameplay bottom screen like the other
+// ports' tab bars (../mzm, ../sm-3ds, ../zelda-tmc-3ds): HH:MM, three rising bars, a battery
+// gauge with a nub. The battery comes from ptm:u (an IPC call: polled every 2 s); the gauge is
+// green while charging, red at one bar or less, amber at two.
+struct FSystemStatus
+{
+	int Minute;      // minutes of the day, -1 when the clock cannot be read
+	int Hour;
+	int Wifi;        // 0..3
+	int Battery;     // 0..5, -1 when ptm:u is not available
+	bool Charging;
+};
+
+FSystemStatus ReadSystemStatus()
+{
+	static bool ptmReady = false, ptmTried = false;
+	static uint64_t batteryReadAt = 0;
+	static int battery = -1;
+	static bool charging = false;
+	const uint64_t now = osGetTime();
+	if (!ptmTried)
+	{
+		ptmTried = true;
+		ptmReady = R_SUCCEEDED(ptmuInit());
+	}
+	if (ptmReady && (batteryReadAt == 0 || now - batteryReadAt >= 2000))
+	{
+		batteryReadAt = now;
+		u8 level = 0, charge = 0;
+		if (R_SUCCEEDED(PTMU_GetBatteryLevel(&level))) battery = level > 5 ? 5 : level;
+		if (R_SUCCEEDED(PTMU_GetBatteryChargeState(&charge))) charging = charge != 0;
+	}
+	FSystemStatus status{ -1, 0, static_cast<int>(osGetWifiStrength()), battery, charging };
+	const time_t seconds = time(nullptr);
+	const struct tm *clock = seconds > 0 ? gmtime(&seconds) : nullptr; // the RTC holds local time
+	if (clock != nullptr)
+	{
+		status.Hour = clock->tm_hour;
+		status.Minute = clock->tm_hour * 60 + clock->tm_min;
+	}
+	return status;
+}
+
+// The widget ends at rightX; the clock, the bars and the battery run left to right, 8 pixels high
+// from y.
+void DrawBottomSystemStatus(unsigned char *framebuffer, int rightX, int y)
+{
+	using namespace BottomLayout;
+	const FSystemStatus status = ReadSystemStatus();
+	constexpr FOverlayColor Amber{ 252, 152, 56 };
+	constexpr FOverlayColor Dim{ 60, 60, 60 };
+	// Battery: 15x8 shell and a 2x4 nub at the right edge.
+	const int batteryX = rightX - 17;
+	OverlayFrame(framebuffer, batteryX, y, 15, 8, 1, White);
+	OverlayRect(framebuffer, batteryX + 15, y + 2, 2, 4, White);
+	if (status.Battery >= 0)
+	{
+		const FOverlayColor fill = status.Charging ? Green : status.Battery <= 1 ? Red :
+			status.Battery == 2 ? Amber : White;
+		const int width = status.Battery * 11 / 5;
+		if (width > 0) OverlayRect(framebuffer, batteryX + 2, y + 2, width, 4, fill);
+	}
+	else
+	{
+		OverlayRect(framebuffer, batteryX + 5, y + 3, 4, 2, Dim);
+	}
+	// Wi-Fi: three rising bars on the battery's baseline.
+	const int wifiX = batteryX - 16;
+	for (int bar = 0; bar < 3; ++bar)
+	{
+		const int height = 3 + bar * 2;
+		OverlayRect(framebuffer, wifiX + bar * 4, y + 8 - height, 2, height,
+			bar < status.Wifi ? White : Dim);
+	}
+	// The clock, to the left of the bars.
+	char text[8] = "--:--";
+	if (status.Minute >= 0) snprintf(text, sizeof(text), "%02d:%02d", status.Hour, status.Minute % 60);
+	NesText(framebuffer, wifiX - 6 - NesTextWidth(text, 1), y, text, 1, White);
+}
+
+// What the widget shows, for the redraw signature: the minute, the bars and the battery.
+uint64_t SystemStatusSignature()
+{
+	const FSystemStatus status = ReadSystemStatus();
+	return static_cast<uint64_t>(status.Minute + 1) | (static_cast<uint64_t>(status.Wifi) << 12) |
+		(static_cast<uint64_t>(status.Battery + 1) << 16) |
+		(static_cast<uint64_t>(status.Charging) << 20);
+}
+
 void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *readyWeapon)
 {
 	using namespace BottomLayout;
@@ -2101,6 +2192,7 @@ void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *read
 	DrawBottomCheatButton(framebuffer, GodX, Tr("GOD"), BottomGodMode());
 	DrawBottomCheatButton(framebuffer, AllX, Tr("ALL"), false);
 #endif
+	DrawBottomSystemStatus(framebuffer, BottomScreenWidth - 8, TitleY);
 }
 
 // -LIFE-: up to sixteen hearts, eight a row, each full, three quarters, half, a quarter or
@@ -3619,6 +3711,7 @@ uint64_t BottomGameplaySignature()
 	AActor *owner = players[consoleplayer].mo;
 	mix(static_cast<uint64_t>(BottomMapZoomedOut));
 	mix(static_cast<uint64_t>(BottomGodMode()));
+	mix(SystemStatusSignature());
 	mix(primaryLevel != nullptr ? primaryLevel->lines.Size() : 0u);
 	mix(reinterpret_cast<uintptr_t>(owner));
 	if (owner == nullptr) return hash;
