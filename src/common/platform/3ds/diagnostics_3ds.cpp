@@ -3566,11 +3566,17 @@ void DrawBottomOverlay(bool force)
 			else
 				DrawMenuBottomScreen(framebuffer,
 					target == EBottomPresentation::MenuDimmed ? 71u : 255u);
-			if (target == EBottomPresentation::Menu && NewSmallFont != nullptr && (now / 600u) % 2u == 0u)
+			if (target == EBottomPresentation::Menu && NewSmallFont != nullptr)
 			{
+				// On a box like the toasts': the picture behind it is light. The text blinks.
 				LoadNesFont();
 				const char *prompt = Tr("PRESS START TO BEGIN");
-				NesText(framebuffer, (320 - NesTextWidth(prompt, 1)) / 2, 116, prompt, 1, OverlayIvory);
+				const int width = NesTextWidth(prompt, 1) + 24;
+				const int x = (320 - width) / 2;
+				OverlayRect(framebuffer, x, 109, width, 21, OverlayInk);
+				OverlayFrame(framebuffer, x, 109, width, 21, 1, OverlayBlue);
+				if ((now / 600u) % 2u == 0u)
+					NesText(framebuffer, x + 12, 116, prompt, 1, OverlayIvory);
 			}
 		}
 		else
