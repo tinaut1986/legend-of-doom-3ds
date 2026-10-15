@@ -447,9 +447,25 @@ void AddSky(FLevelLocals *level, const FRenderViewpoint &vp, swrenderer::RenderV
 	const double top = vp.Pos.Z + heightOfRow(0.0);
 	const double bottom = vp.Pos.Z + heightOfRow(texHeight);
 	const double scroll = level->sky1pos / 65536.0 / texWidth;
-	const uint32_t color = I_3DSGpuColor(255, 255, 255);
+	// MAP01's fog colour is where the far walls end; the sky meets it at the horizon so that a
+	// distant mountain going past the cull distance does not "pop" against a different blue (#14).
+	// Rings from the bottom of the band up: [z, alpha] with alpha the part of the texel kept
+	// against the fog colour (the world's second TEV stage).
+	struct FRing { double Z; uint8_t Keep; };
+	std::vector<FRing> rings;
+	if (LightContext.Map01Fog)
+	{
+		const double horizon = vp.Pos.Z;
+		const double fadeTop = std::min(top, vp.Pos.Z + (heightOfRow(0.0) - heightOfRow(texHeight)) * 0.22);
+		rings = { { bottom, 0 }, { horizon, 0 }, { fadeTop, 255 }, { top, 255 } };
+	}
+	else
+	{
+		rings = { { bottom, 255 }, { top, 255 } };
+	}
 	std::vector<FVertex> sky;
-	sky.reserve(SkySides * 6);
+	sky.reserve(SkySides * 6 * (rings.size() - 1));
+	auto rowT = [&](double z) { return float((z - bottom) / (top - bottom)); };
 	for (int i = 0; i < SkySides; ++i)
 	{
 		const double a0 = 2.0 * M_PI * i / SkySides, a1 = 2.0 * M_PI * (i + 1) / SkySides;
@@ -459,12 +475,19 @@ void AddSky(FLevelLocals *level, const FRenderViewpoint &vp, swrenderer::RenderV
 		const float y1 = float(vp.Pos.Y + SkyRadius * std::sin(a1));
 		const float s0 = float(a0 / (2.0 * M_PI) * cylinder / texWidth + scroll);
 		const float s1 = float(a1 / (2.0 * M_PI) * cylinder / texWidth + scroll);
-		sky.push_back(FVertex{ x0, y0, float(top), s0, 1.0f, color });
-		sky.push_back(FVertex{ x0, y0, float(bottom), s0, 0.0f, color });
-		sky.push_back(FVertex{ x1, y1, float(top), s1, 1.0f, color });
-		sky.push_back(FVertex{ x1, y1, float(top), s1, 1.0f, color });
-		sky.push_back(FVertex{ x0, y0, float(bottom), s0, 0.0f, color });
-		sky.push_back(FVertex{ x1, y1, float(bottom), s1, 0.0f, color });
+		for (size_t r = 0; r + 1 < rings.size(); ++r)
+		{
+			const FRing &low = rings[r], &high = rings[r + 1];
+			const uint32_t lowColor = I_3DSGpuColor(255, 255, 255, low.Keep);
+			const uint32_t highColor = I_3DSGpuColor(255, 255, 255, high.Keep);
+			const float tl = rowT(low.Z), th = rowT(high.Z);
+			sky.push_back(FVertex{ x0, y0, float(high.Z), s0, th, highColor });
+			sky.push_back(FVertex{ x0, y0, float(low.Z), s0, tl, lowColor });
+			sky.push_back(FVertex{ x1, y1, float(high.Z), s1, th, highColor });
+			sky.push_back(FVertex{ x1, y1, float(high.Z), s1, th, highColor });
+			sky.push_back(FVertex{ x0, y0, float(low.Z), s0, tl, lowColor });
+			sky.push_back(FVertex{ x1, y1, float(low.Z), s1, tl, lowColor });
+		}
 	}
 	FVertex *out = I_3DSGpuWorldQueue(texture, static_cast<int>(sky.size()), false, true);
 	if (out != nullptr) std::memcpy(out, sky.data(), sky.size() * sizeof(FVertex));
