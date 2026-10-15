@@ -2349,11 +2349,13 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 	OverlayText(framebuffer, 312 - LoadingTextWidth(upstream, 1), 17, upstream, 1, OverlayIvory);
 	OverlayRect(framebuffer, 0, 29, BottomScreenWidth, 2, OverlayBlue);
 
-	const double frameMilliseconds = std::clamp(LastFrameMilliseconds, 0.0, 999.9);
-	const double fps = frameMilliseconds > 0.0 ? 1000.0 / frameMilliseconds : LastCount;
+	// The same figure as the counter on the top screen: the frames of the last whole second (and
+	// their mean time), not the smoothed time of the last frame, which swings with every spike.
+	const double fps = static_cast<double>(std::min<uint64_t>(LastCount, 999u));
+	const double frameMilliseconds = fps > 0.0 ? 1000.0 / fps : 0.0;
 	char fpsText[16] = {};
 	char frameText[24] = {};
-	std::snprintf(fpsText, sizeof(fpsText), "%.1f", std::clamp(fps, 0.0, 999.9));
+	std::snprintf(fpsText, sizeof(fpsText), "%.0f", fps);
 	std::snprintf(frameText, sizeof(frameText), "FRAME %.1fMS", frameMilliseconds);
 	OverlayFrame(framebuffer, 8, 38, 104, 89, 2, OverlayBlue);
 	OverlayText(framebuffer, 15, 44, "PERFORMANCE", 1, OverlayIvory);
@@ -3266,9 +3268,9 @@ void ComposeNativeSaveLoadTop(unsigned char *pixels, const unsigned char *menuSo
 
 void FormatFpsLabel(char *label, size_t size)
 {
-	std::snprintf(label, size, "FPS %llu  %.1fMS",
-		static_cast<unsigned long long>(std::min<uint64_t>(LastCount, 999u)),
-		std::clamp(LastFrameMilliseconds, 0.0, 999.9));
+	const uint64_t fps = std::min<uint64_t>(LastCount, 999u);
+	std::snprintf(label, size, "FPS %llu  %.1fMS", static_cast<unsigned long long>(fps),
+		fps > 0u ? 1000.0 / static_cast<double>(fps) : 0.0);
 }
 
 // The FPS counter and the crosshair as GPU overlays (gpu_3ds.h): drawn once into small images
