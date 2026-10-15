@@ -32,7 +32,6 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
 
 | Branch | What | State |
 |---|---|---|
-| `feat/gpu-3d-floors` | 3D floors on the GPU world (MAP01's cave mouths and brick blocks), P2.3 | A/B-checked by Claude against the CPU renderer in 8 spots (identical); **waiting for the owner's eye on the console**, not merged |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
@@ -525,7 +524,8 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
 - **2026-10-15** #15 fixed in `fix/clock-keeps-sfx`: `PowerTimeFreezer` pauses the music only
   (`S_PauseSound(false, true)`) and resumes it with `S_ResumeSound(true)` when the effect ends; the
   effects were paused with it, so the sword was mute. Checked by the owner on the New 3DS.
-- **2026-10-15** P2.3 against the game's own data (the ten maps' UDMF and the ACS): only MAP01 has 3D
+- **2026-10-15** `feat/gpu-3d-floors` merged into the release line after the owner walked MAP01's cave mouths
+  (entering one teleports to its interior, by design). P2.3 against the game's own data (the ten maps' UDMF and the ACS): only MAP01 has 3D
   floors (7 `Sector_Set3dFloor` lines, ~40 sectors of 128x128: additive cave mouths `CAVEENT`/`CAVEENTB`
   and solid `OBRKB` blocks). No real portals (`portal_ceil_norender` is a flag that draws nothing), no
   translucent lines, no coloured light or fade, no scrolling, no decals (monsters carry
