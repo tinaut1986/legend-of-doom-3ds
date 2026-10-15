@@ -10,7 +10,10 @@
 // contrast and the fading with depth, and MAP01's distance fog outdoors; long walls are cut so
 // that it changes smoothly along them. The sky is a cylinder around the eye drawn first as the
 // background, mapped as the swrenderer maps it (AddSky).
-// Not yet: translucency, 3D floors, portals, coloured sector light and fades.
+// 3D floors (MAP01's platforms and glowing sheets): their planes in the subsectors of the sector
+// that holds them and their sides on the boundary segs seen from the neighbouring sector, opaque
+// or see-through (translucent in depth order, additive batched, drawn with the sprites).
+// Not yet: portals, coloured sector light and fades.
 //
 // On in every build (owner 2026-10-14: the world never falls back to the CPU). lod3ds_gpu_world
 // (not saved, so every start is on the GPU) turns it off in debug builds to compare;
@@ -31,6 +34,7 @@
 
 #include "c_cvars.h"
 #include "g_levellocals.h"
+#include "p_3dfloors.h"
 #include "r_defs.h"
 #include "r_sky.h"
 #include "r_state.h"
@@ -90,7 +94,25 @@ struct FSprite
 	float Depth;   // for drawing the see-through ones far to near
 };
 std::vector<FSprite> Sprites;
-std::vector<FSprite *> SeeThrough;
+// A see-through face of a 3D floor (a wall or a plane) waiting for its draw.
+struct FFace
+{
+	F3DSGpuTexture *Texture;
+	E3DSGpuWorldStyle Style;
+	uint8_t Alpha;
+	float Depth;
+	std::vector<FVertex> Vertices;
+};
+std::vector<FFace> Faces;
+size_t FacesUsed;
+// What the see-through pass draws, far to near: a sprite or a face.
+struct FSeeThrough
+{
+	float Depth;
+	const FSprite *Sprite;
+	const FFace *Face;
+};
+std::vector<FSeeThrough> SeeThrough;
 // This frame's GPU copies of the textures met, as I_3DSGpuGameTexture finds them.
 std::unordered_map<FGameTexture *, F3DSGpuTexture *> TextureCache;
 std::unordered_map<FGameTexture *, F3DSGpuTexture *> SpriteTextureCache;
@@ -235,7 +257,8 @@ FGameTexture *PartTexture(const side_t *side, int part)
 constexpr double WallPiece = 128.0;
 void AddWall(FGameTexture *gameTexture, const DVector2 &a, const DVector2 &b,
 	double bottomA, double bottomB, double topA, double topB, double topRef,
-	double u0, const side_t *side, int part, int lightLevel, bool exterior, bool masked = false)
+	double u0, const side_t *side, int part, int lightLevel, bool exterior, bool masked = false,
+	FFace *face = nullptr)
 {
 	if (topA <= bottomA && topB <= bottomB) return;
 	F3DSGpuTexture *texture = GpuTexture(gameTexture);
@@ -247,7 +270,8 @@ void AddWall(FGameTexture *gameTexture, const DVector2 &a, const DVector2 &b,
 	const double yOffset = side->GetTextureYOffset(part);
 	auto t = [&](double z) { return static_cast<float>(1.0 - (topRef - z + yOffset) / height); };
 
-	std::vector<FVertex> &out = BatchFor(texture, masked);
+	if (face != nullptr) face->Texture = texture;
+	std::vector<FVertex> &out = face != nullptr ? face->Vertices : BatchFor(texture, masked);
 	const int pieces = std::clamp(static_cast<int>(std::ceil(length / WallPiece)), 1, 16);
 	auto edge = [&](int i, FVertex &bottom, FVertex &top)
 	{
@@ -276,6 +300,159 @@ void AddWall(FGameTexture *gameTexture, const DVector2 &a, const DVector2 &b,
 	}
 }
 
+// A subsector's plane at the height of `plane`: a fan over its (convex) polygon, flats on the map
+// grid, mapped with `model`'s offsets, rotation and scale for `which` (sector_t::floor or
+// ceiling). Into `face` when given, else the opaque batches.
+void AddPlane(const subsector_t *sub, const secplane_t &plane, FTextureID id, const sector_t *model,
+	int which, int lightLevel, bool exterior, FFace *face = nullptr)
+{
+	if (!id.isValid() || id == skyflatnum) return;
+	FGameTexture *gameTexture = TexMan.GetGameTexture(id, true);
+	if (gameTexture == nullptr || !gameTexture->isValid()) return;
+	F3DSGpuTexture *texture = GpuTexture(gameTexture);
+	if (texture == nullptr || sub->numlines < 3) return;
+	const double width = gameTexture->GetDisplayWidth();
+	const double height = gameTexture->GetDisplayHeight();
+	if (width <= 0 || height <= 0) return;
+	// The hardware renderer's flat mapping (hw_SetPlaneTextureRotation): (x / 64, -y / 64)
+	// rotated, scaled to the texture, offset, scaled by the sector's scale; t is minus v.
+	const double angle = -model->GetAngle(which).Radians();
+	const double cosine = std::cos(angle), sine = std::sin(angle);
+	const double offsetU = model->GetXOffset(which) / width;
+	const double offsetV = model->GetYOffset(which) / height;
+	const double scaleU = model->GetXScale(which), scaleV = model->GetYScale(which);
+	auto vertex = [&](double x, double y)
+	{
+		const double u0 = x / 64.0, v0 = -y / 64.0;
+		const double u = ((cosine * u0 - sine * v0) * 64.0 / width + offsetU) * scaleU;
+		const double vv = ((sine * u0 + cosine * v0) * 64.0 / height + offsetV) * scaleV;
+		return FVertex{ float(x), float(y), float(plane.ZatPoint(DVector2(x, y))),
+			float(u), float(-vv), VertexColor(x, y, lightLevel, exterior) };
+	};
+	// A fan from the polygon's centre, so that its middle is lit at its own depth too.
+	double cx = 0, cy = 0;
+	for (uint32_t i = 0; i < sub->numlines; ++i)
+	{
+		cx += sub->firstline[i].v1->fX();
+		cy += sub->firstline[i].v1->fY();
+	}
+	const FVertex centre = vertex(cx / sub->numlines, cy / sub->numlines);
+	if (face != nullptr) face->Texture = texture;
+	std::vector<FVertex> &out = face != nullptr ? face->Vertices : BatchFor(texture);
+	FVertex previous = vertex(sub->firstline[0].v1->fX(), sub->firstline[0].v1->fY());
+	const FVertex first = previous;
+	for (uint32_t i = 1; i <= sub->numlines; ++i)
+	{
+		const FVertex next = i == sub->numlines ? first :
+			vertex(sub->firstline[i].v1->fX(), sub->firstline[i].v1->fY());
+		out.push_back(centre);
+		out.push_back(previous);
+		out.push_back(next);
+		previous = next;
+	}
+}
+
+// The subsector's floor or ceiling.
+void AddFlat(const subsector_t *sub, const sector_t *sector, int which, const DVector3 &eye)
+{
+	const secplane_t &plane = which == sector_t::floor ? sector->floorplane : sector->ceilingplane;
+	// Only the side of the plane the eye sees.
+	const double planeZ = plane.ZatPoint(eye.XY());
+	if (which == sector_t::floor ? eye.Z <= planeZ : eye.Z >= planeZ) return;
+	AddPlane(sub, plane, sector->GetTexture(which), sector, which, sector->lightlevel,
+		Exterior(sector));
+}
+
+// The face a 3D floor part goes into: nullptr when it is opaque (the caller draws it in the
+// batches). Additive ones share a face per texture, the others get their own.
+FFace *FaceFor(const F3DFloor *ff, double depth)
+{
+	const bool additive = (ff->flags & FF_ADDITIVETRANS) != 0;
+	const int alpha = std::clamp(ff->alpha, 0, 255);
+	if (!additive && (!(ff->flags & FF_TRANSLUCENT) || alpha >= 255)) return nullptr;
+	if (FacesUsed == Faces.size()) Faces.push_back(FFace{});
+	FFace &face = Faces[FacesUsed++];
+	face.Vertices.clear();
+	face.Style = additive ? E3DSGpuWorldStyle::Add : E3DSGpuWorldStyle::Translucent;
+	face.Alpha = uint8_t(alpha);
+	face.Depth = float(depth);
+	face.Texture = nullptr;
+	return &face;
+}
+
+double ViewDepth(double x, double y)
+{
+	const FLightContext &c = LightContext;
+	return (x - c.EyeX) * c.TanCos + (y - c.EyeY) * c.TanSin;
+}
+
+// The planes of the sector's 3D floors in one of its subsectors: the top when the eye is above
+// it, the bottom when below (both for FF_BOTHPLANES, such as water seen from inside).
+void AddFFloorPlanes(const subsector_t *sub, const sector_t *sector, const DVector3 &eye)
+{
+	const auto &floors = sector->e->XFloor.ffloors;
+	if (floors.Size() == 0) return;
+	double cx = 0, cy = 0;
+	for (uint32_t i = 0; i < sub->numlines; ++i)
+	{
+		cx += sub->firstline[i].v1->fX();
+		cy += sub->firstline[i].v1->fY();
+	}
+	const double depth = sub->numlines > 0 ? ViewDepth(cx / sub->numlines, cy / sub->numlines) : 0.0;
+	const bool exterior = Exterior(sector);
+	for (unsigned i = 0; i < floors.Size(); ++i)
+	{
+		const F3DFloor *ff = floors[i];
+		if (!(ff->flags & FF_EXISTS) || !(ff->flags & FF_RENDERPLANES) || (ff->flags & FF_FOG)) continue;
+		const bool both = (ff->flags & FF_BOTHPLANES) != 0;
+		const double topZ = ff->top.plane->ZatPoint(eye.XY());
+		const double bottomZ = ff->bottom.plane->ZatPoint(eye.XY());
+		if (eye.Z > topZ || both)
+			AddPlane(sub, *ff->top.plane, *ff->top.texture, ff->top.model, ff->top.isceiling,
+				sector->lightlevel, exterior, FaceFor(ff, depth));
+		if (eye.Z < bottomZ || both)
+			AddPlane(sub, *ff->bottom.plane, *ff->bottom.texture, ff->bottom.model,
+				ff->bottom.isceiling, sector->lightlevel, exterior, FaceFor(ff, depth));
+	}
+}
+
+// The sides of `owner`'s 3D floors on a seg that faces the eye. On a seg between two sectors
+// they are drawn from the neighbour (`other`), unless it holds the same 3D floor (the line is
+// inside it); from the owner itself only for FF_ALLSIDES.
+void AddFFloorSides(const seg_t *seg, const sector_t *owner, const sector_t *other,
+	const DVector2 &a, const DVector2 &b, double along, int lightLevel, bool exterior,
+	bool allSidesOnly)
+{
+	const auto &floors = owner->e->XFloor.ffloors;
+	const double depth = ViewDepth((a.X + b.X) * 0.5, (a.Y + b.Y) * 0.5);
+	for (unsigned i = 0; i < floors.Size(); ++i)
+	{
+		const F3DFloor *ff = floors[i];
+		if (!(ff->flags & FF_EXISTS) || !(ff->flags & FF_RENDERSIDES) || (ff->flags & FF_FOG)) continue;
+		if (allSidesOnly && !(ff->flags & FF_ALLSIDES)) continue;
+		if (ff->master == nullptr || ff->master->sidedef[0] == nullptr) continue;
+		if (other != nullptr)
+		{
+			bool inside = false;
+			const auto &otherFloors = other->e->XFloor.ffloors;
+			for (unsigned j = 0; j < otherFloors.Size() && !inside; ++j)
+				inside = otherFloors[j]->master == ff->master;
+			if (inside) continue;
+		}
+		const side_t *master = ff->master->sidedef[0];
+		FGameTexture *texture = PartTexture(master, side_t::mid);
+		if (texture == nullptr) continue;
+		const double topA = ff->top.plane->ZatPoint(seg->v1), topB = ff->top.plane->ZatPoint(seg->v2);
+		const double bottomA = ff->bottom.plane->ZatPoint(seg->v1);
+		const double bottomB = ff->bottom.plane->ZatPoint(seg->v2);
+		const double height = texture->GetDisplayHeight() / master->GetTextureYScale(side_t::mid);
+		const double ref = (ff->master->flags & ML_DONTPEGBOTTOM) ? bottomA + height : topA;
+		AddWall(texture, a, b, bottomA, bottomB, topA, topB, ref,
+			along + master->GetTextureXOffset(side_t::mid), master, side_t::mid, lightLevel,
+			exterior, false, FaceFor(ff, depth));
+	}
+}
+
 void AddSeg(const seg_t *seg, const DVector2 &eye)
 {
 	const side_t *side = seg->sidedef;
@@ -294,6 +471,10 @@ void AddSeg(const seg_t *seg, const DVector2 &eye)
 	// The front sector's light with the wall's fake contrast, as the swrenderer's wall setup.
 	const int lightLevel = side->GetLightLevel(false, front->lightlevel);
 	const bool exterior = Exterior(front);
+	if (front->e->XFloor.ffloors.Size() != 0)
+		AddFFloorSides(seg, front, seg->backsector, a, b, along, lightLevel, exterior, true);
+	if (seg->backsector != nullptr && seg->backsector->e->XFloor.ffloors.Size() != 0)
+		AddFFloorSides(seg, seg->backsector, front, a, b, along, lightLevel, exterior, false);
 
 	const double frontFloorA = front->floorplane.ZatPoint(seg->v1);
 	const double frontFloorB = front->floorplane.ZatPoint(seg->v2);
@@ -361,61 +542,6 @@ void AddSeg(const seg_t *seg, const DVector2 &eye)
 			AddWall(texture, a, b, frontFloorA, frontFloorB, backFloorA, backFloorB, ref,
 				along + side->GetTextureXOffset(side_t::bottom), side, side_t::bottom, lightLevel, exterior);
 		}
-	}
-}
-
-// The subsector's floor or ceiling: a fan over its (convex) polygon, flats on the map grid.
-void AddFlat(const subsector_t *sub, const sector_t *sector, int which, const DVector3 &eye)
-{
-	const FTextureID id = sector->GetTexture(which);
-	if (!id.isValid() || id == skyflatnum) return;
-	const secplane_t &plane = which == sector_t::floor ? sector->floorplane : sector->ceilingplane;
-	// Only the side of the plane the eye sees.
-	const double planeZ = plane.ZatPoint(eye.XY());
-	if (which == sector_t::floor ? eye.Z <= planeZ : eye.Z >= planeZ) return;
-	FGameTexture *gameTexture = TexMan.GetGameTexture(id, true);
-	if (gameTexture == nullptr || !gameTexture->isValid()) return;
-	F3DSGpuTexture *texture = GpuTexture(gameTexture);
-	if (texture == nullptr || sub->numlines < 3) return;
-	const double width = gameTexture->GetDisplayWidth();
-	const double height = gameTexture->GetDisplayHeight();
-	if (width <= 0 || height <= 0) return;
-	const int lightLevel = sector->lightlevel;
-	const bool exterior = Exterior(sector);
-	// The hardware renderer's flat mapping (hw_SetPlaneTextureRotation): (x / 64, -y / 64)
-	// rotated, scaled to the texture, offset, scaled by the sector's scale; t is minus v.
-	const double angle = -sector->GetAngle(which).Radians();
-	const double cosine = std::cos(angle), sine = std::sin(angle);
-	const double offsetU = sector->GetXOffset(which) / width;
-	const double offsetV = sector->GetYOffset(which) / height;
-	const double scaleU = sector->GetXScale(which), scaleV = sector->GetYScale(which);
-	auto vertex = [&](double x, double y)
-	{
-		const double u0 = x / 64.0, v0 = -y / 64.0;
-		const double u = ((cosine * u0 - sine * v0) * 64.0 / width + offsetU) * scaleU;
-		const double vv = ((sine * u0 + cosine * v0) * 64.0 / height + offsetV) * scaleV;
-		return FVertex{ float(x), float(y), float(plane.ZatPoint(DVector2(x, y))),
-			float(u), float(-vv), VertexColor(x, y, lightLevel, exterior) };
-	};
-	// A fan from the polygon's centre, so that its middle is lit at its own depth too.
-	double cx = 0, cy = 0;
-	for (uint32_t i = 0; i < sub->numlines; ++i)
-	{
-		cx += sub->firstline[i].v1->fX();
-		cy += sub->firstline[i].v1->fY();
-	}
-	const FVertex centre = vertex(cx / sub->numlines, cy / sub->numlines);
-	std::vector<FVertex> &out = BatchFor(texture);
-	FVertex previous = vertex(sub->firstline[0].v1->fX(), sub->firstline[0].v1->fY());
-	const FVertex first = previous;
-	for (uint32_t i = 1; i <= sub->numlines; ++i)
-	{
-		const FVertex next = i == sub->numlines ? first :
-			vertex(sub->firstline[i].v1->fX(), sub->firstline[i].v1->fY());
-		out.push_back(centre);
-		out.push_back(previous);
-		out.push_back(next);
-		previous = next;
 	}
 }
 
@@ -615,6 +741,7 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 	TextureCache.clear();
 	SpriteTextureCache.clear();
 	BatchesUsed = 0;
+	FacesUsed = 0;
 	if (sky) AddSky(level, vp, viewport);
 	const DVector2 eye2(ex, ey);
 	const DVector3 eye3(ex, ey, ez);
@@ -627,6 +754,7 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		for (uint32_t i = 0; i < sub->numlines; ++i) AddSeg(&sub->firstline[i], eye2);
 		AddFlat(sub, sector, sector_t::floor, eye3);
 		AddFlat(sub, sector, sector_t::ceiling, eye3);
+		AddFFloorPlanes(sub, sector, eye3);
 	}
 	// The opaque sprites with the world; the see-through ones after every opaque batch, far
 	// to near (I_3DSGpuWorldQueueBlended draws them in that order).
@@ -636,12 +764,34 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 	for (FSprite &sprite : Sprites)
 	{
 		if (sprite.Style == 0) continue;
-		sprite.Depth = float(((sprite.Ax + sprite.Bx) * 0.5 - ex) * vp.TanCos +
-			((sprite.Ay + sprite.By) * 0.5 - ey) * vp.TanSin);
-		SeeThrough.push_back(&sprite);
+		const float depth = float(ViewDepth((sprite.Ax + sprite.Bx) * 0.5, (sprite.Ay + sprite.By) * 0.5));
+		SeeThrough.push_back(FSeeThrough{ depth, &sprite, nullptr });
+	}
+	// Additive faces commute: those of one texture and alpha become one draw.
+	for (size_t i = 0; i < FacesUsed; ++i)
+	{
+		FFace &face = Faces[i];
+		if (face.Texture == nullptr || face.Vertices.empty()) continue;
+		if (face.Style == E3DSGpuWorldStyle::Add)
+		{
+			bool merged = false;
+			for (size_t j = 0; j < i && !merged; ++j)
+			{
+				FFace &other = Faces[j];
+				if (other.Style == E3DSGpuWorldStyle::Add && other.Texture == face.Texture &&
+					other.Alpha == face.Alpha && !other.Vertices.empty())
+				{
+					other.Vertices.insert(other.Vertices.end(), face.Vertices.begin(), face.Vertices.end());
+					face.Vertices.clear();
+					merged = true;
+				}
+			}
+			if (merged) continue;
+		}
+		SeeThrough.push_back(FSeeThrough{ face.Depth, nullptr, &face });
 	}
 	std::sort(SeeThrough.begin(), SeeThrough.end(),
-		[](const FSprite *a, const FSprite *b) { return a->Depth > b->Depth; });
+		[](const FSeeThrough &a, const FSeeThrough &b) { return a.Depth > b.Depth; });
 
 	uint32_t vertices = 0;
 	for (size_t i = 0; i < BatchesUsed; ++i)
@@ -655,7 +805,20 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		vertices += static_cast<uint32_t>(batch.Vertices.size());
 	}
 
-	for (const FSprite *sprite : SeeThrough) AddSpriteQuad(*sprite);
+	for (const FSeeThrough &item : SeeThrough)
+	{
+		if (item.Sprite != nullptr)
+		{
+			AddSpriteQuad(*item.Sprite);
+			continue;
+		}
+		const FFace &face = *item.Face;
+		FVertex *out = I_3DSGpuWorldQueueBlended(face.Texture, static_cast<int>(face.Vertices.size()),
+			face.Style, face.Alpha);
+		if (out == nullptr) continue;
+		std::memcpy(out, face.Vertices.data(), face.Vertices.size() * sizeof(FVertex));
+		vertices += static_cast<uint32_t>(face.Vertices.size());
+	}
 
 	StatTicks += svcGetSystemTick() - start;
 	StatFrames += 1;

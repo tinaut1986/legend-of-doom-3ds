@@ -32,7 +32,7 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
 
 | Branch | What | State |
 |---|---|---|
-| `fix/clock-keeps-sfx` | the clock pauses only the music, effects keep playing (#15) | Checked by the owner on the New 3DS (2026-10-15); **not merged yet** |
+| `feat/gpu-3d-floors` | 3D floors on the GPU world (MAP01's cave mouths and brick blocks), P2.3 | A/B-checked by Claude against the CPU renderer in 8 spots (identical); **waiting for the owner's eye on the console**, not merged |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
@@ -43,9 +43,8 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
 - `gpu-light-sky` is checked (owner, 2026-10-15): the hit flash, Ghini and a Wizzrobe translucent,
   Ganon invisible, the sky, the fog, a dark cave. What is left of it is #14, low priority.
 
-**Priority** (2026-10-15, owner): the 2DS (P4.1), then #12 (stereo at 48-50 fps), then the GPU world's parity (P2.3:
-3D floors, portals, translucent walls, decals, animated textures, palette flashes); #5, #7 and #14
-last.
+**Priority** (2026-10-15, owner): the 2DS (P4.1), then #12 (stereo at 48-50 fps), then #5, #7 and #14 last. P2.3's parity is closed bar the owner's check
+(see the decisions log, 2026-10-15).
 
 **Start here:**
 0. **The 2DS (P4.1).** Create `allow-old3ds.txt` (merged 2026-10-15, debug builds only; without it
@@ -56,8 +55,8 @@ last.
    top of it. Next steps: size the pool to its real use, drop or merge the reserve, then what
    MAP01's 21.6 MB of engine objects (`gc`) hold. The decisions log of 2026-10-15 has the rest.
 1. **#12** with a debug build and the owner's `test2` save: `lod-link.py perf` in mono and stereo.
-2. **P2.3 parity:** the list in `docs/gpu-renderer-design.md` ("Missing before parity"); look at
-   which ones show in play before doing them all.
+2. **P2.3 parity:** nothing left that this game uses; the owner checks 3D floors (`feat/gpu-3d-floors`)
+   on the console, then it merges.
 3. Nothing is half done or uncommitted.
 
 **On the owner's consoles now (2026-10-15):**
@@ -526,3 +525,13 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
 - **2026-10-15** #15 fixed in `fix/clock-keeps-sfx`: `PowerTimeFreezer` pauses the music only
   (`S_PauseSound(false, true)`) and resumes it with `S_ResumeSound(true)` when the effect ends; the
   effects were paused with it, so the sword was mute. Checked by the owner on the New 3DS.
+- **2026-10-15** P2.3 against the game's own data (the ten maps' UDMF and the ACS): only MAP01 has 3D
+  floors (7 `Sector_Set3dFloor` lines, ~40 sectors of 128x128: additive cave mouths `CAVEENT`/`CAVEENTB`
+  and solid `OBRKB` blocks). No real portals (`portal_ceil_norender` is a flag that draws nothing), no
+  translucent lines, no coloured light or fade, no scrolling, no decals (monsters carry
+  `NOBLOODDECALS`), animated textures only the water flats. So `feat/gpu-3d-floors` (planes and sides of
+  every ffloor, opaque / translucent in depth order / additive batched per texture) completes what the
+  game needs: A/B captures (GPU against `lod3ds_gpu_world 0`) at 8 spots are identical, the water
+  oscillates on the GPU, the flashes ride the GPU 2D. Not looked at: the waterfall `WTRFL01` (not found
+  in MAP01's sidedefs) and views from inside a 3D floor. The ffloor sides' light is the target
+  sector's, not the control sector's.
