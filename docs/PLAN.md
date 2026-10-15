@@ -19,46 +19,55 @@ change (what goes where: the table in `CLAUDE.md`).
   (2026-10-12): almost everything runs on the CPU, it is not known to reach 60 fps
   even on the New 3DS, there is no stereo 3D, and the Old 3DS does not run it.
 
-## Status (2026-10-12)
+## Status (2026-10-15)
 
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.2.1` (on origin). Published: **`v0.2.0`** (2026-10-14, **stable**,
-the first: `main` merged and tagged), with the GPU world, stereo 3D, the NES bottom screen, the
-languages, AUTO UPDATE and the memory fix; before it **`v0.1.0`** (2026-10-12, beta).
+**Release line:** `release/v0.2.4` (on origin; renamed from `release/v0.2.3` right after its tag).
+Published: **`v0.2.3`** beta (2026-10-15), **`v0.2.2`** beta, **`v0.2.1`** stable (2026-10-15),
+**`v0.2.0`** stable (2026-10-14, the first), `v0.1.0` beta. `main` holds the last stable merge.
 
-**Branches:**
+**Branches:** every topic branch up to v0.2.3 is merged and deleted.
 
 | Branch | What | State |
 |---|---|---|
-| _(merged)_ | `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS (stereo depth, sprites, trees and weapon; the bottom screen; nothing static stuck; the FTP button; the game as usual); what each holds and what was measured: [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md). The local `test/stereo-bottom` is now redundant | |
-| _(merged, to check)_ | `feat/ingame-spanish` (U5: the game's own text in Spanish), `fix/updater-channels` (the Beta channel sees stable releases; notes since the installed version; CHANGELOG: ALL), `chore/remove-render-option` (no RENDER option: no effect with the GPU world), `docs/readme-fork` and these notes merged into `release/v0.2.1` 2026-10-15 for the v0.2.1 beta, on the owner's go-ahead, before the console check | Owner: check them on the v0.2.1 beta, then the stable release |
-| _(merged, to check)_ | `fix/toast-over-map` (#6), `fix/press-start-legible`, `fix/untranslated-texts` and these notes merged into `release/v0.2.2` 2026-10-15 for the v0.2.2 beta, on the owner's go-ahead, before the console check | Owner: check them on the v0.2.2 beta |
-| `feat/gpu-light-sky` | P2.3: the GPU world lit as the swrenderer lights it (sector level, fake contrast, fading with depth, MAP01's outdoor distance fog) and the sky as a background cylinder; sprites keep their render style (translucent, additive, the hit flash's stencil; Ganon's invisibility). Built, not yet checked on the console | Branch deleted 2026-10-15: its commits are in `test/2ds-memory`. Owner: MAP01 outdoors (sky, fog far away), a dark dungeon room, hitting a monster, Ghini, a Wizzrobe, Ganon |
-| _(merged, to check)_ | `feat/frames-option-fps-counter` (OPTIONS -> VIDEO -> FRAMES: AUTO 60 / LOCK 30 / NO SKIP; the top counter and the developer overlay show the same figure), `fix/overlay-redraw-cost` (the overlay redraws once a second, `mallinfo` every 4 s) and `fix/menu-top-black` (#8, #9: a menu over a GPU-world level keeps drawing the world dimmed by a GPU quad; the save picture is rendered by the CPU), plus `fix/build-ftp-login` and `fix/gpu-comment-contract-test`, merged into `release/v0.2.3` 2026-10-15 | Owner: FRAMES and the overlay checked on the New 3DS; #8 and #9 seen by Claude only (screenshot of the pause menu, a test save's picture): the owner to look |
-| _(merged, to check on the 2DS)_ | `test/2ds-memory` (with `feat/gpu-light-sky`, `feat/old3ds-boot` and `perf/bsp-distance-cull` inside it) merged into `release/v0.2.3` 2026-10-15 on the owner's go-ahead after the New 3DS checks: P4.1's memory work (ZScript trimmed to this game, map arrays built in place, a 10 MB pool for big TArray blocks), the GPU world's light and sky, one CIA for New and Old 3DS, the toast / progress-bar and message changes | Owner: the 2DS. Next: the pool is full at MAP01 (`pool full` x10) and the 5 MB map-load reserve sits on top of it; then read `fatal.log` and `pool=` in `startup.log` on the 2DS |
-| `perf/bsp-distance-cull` | `walk_ms` and `capture_ms` in the perf recorder (inside `world_ms`), `--ftp` login (merged separately). The BSP pruning itself is **not** done: see the decisions log, 2026-10-15 | Branch deleted 2026-10-15: merged into `test/2ds-memory`. The BSP pruning is not done (decisions log, 2026-10-15) |
-| `feat/old3ds-boot` | P4.1 in progress (pushed, not merged; not yet checked on the New 3DS: the 804 MHz/L2 now come from `osSetSpeedupEnable` through `ptm:sysm`, not the exheader): one CIA for both models (no New 3DS-only SMDH flag; Old 3DS mode 80 MB; 12 MB of linear memory), map WADs stored in the pk3, a 5 MB map-load reserve. On the 2DS it gets 80 MB and the GPU, compiles ZScript, then a 1.3 MB lump fails to load on a fragmented heap (16 MB free) before the title | Branch deleted 2026-10-15: its commits are in `test/2ds-memory`. Not yet checked on the 2DS |
-| _(merged)_ | `feat/stable-dev-ftp-banner` (stable builds: no DEBUG tab or developer overlay, SHOW FPS in VIDEO; the install-only FTP bar with its X), `feat/auto-update` (AUTO UPDATE: the offer at start, YES / NO, notes on the top screen; an installed update restarts the game; ':' and '/' in the NES font) and `feat/install-progress` (FTP install: bars for receiving and installing, relaunch countdown) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS with a stable-mode build posing as 0.0.9 | |
-| _(merged)_ | `feat/gpu-world-default` (the GPU draws the world in every build; stable builds cannot turn it off; owner 2026-10-14: never the CPU) and `docs/release-notes-v0.2.0` merged into `release/v0.1.1` 2026-10-14 after the owner saw it start on the GPU and approved the notes | |
-| _(merged)_ | `fix/texture-memory` (#4: the out-of-memory close after the first dungeon; texture mipmaps skipped while `r_mipmap` is off, the `ibo_data` leak on every map load, lighter map loading, heap logs) merged into `release/v0.1.1` 2026-10-14 after the owner finished the first dungeon and went back to the overworld on the New 3DS with no close (MAP01 at 62.2 MB on both returns) | |
-| _(merged)_ | `feat/gpu-world-spike` (P2.3 first step: walls and flats of the swrenderer's visible set drawn by the PICA200, `lod3ds_gpu_world`, debug builds, off by default; and the bottom map's flicker above 35 fps) merged into `release/v0.1.1` 2026-10-13 after the owner's look on the New 3DS ("60 fuera y 110 en mazmorra", no flicker) | |
-| _(merged)_ | `docs/gpu-path` (P2.1 note, P2.2 decision, the one-shot hwrenderer probe for debug builds) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead | |
-| _(merged)_ | `feat/overlay-anywhere` (the developer overlay with SELECT also over the title and its menus, owner 2026-10-13) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead after Claude saw it work on the New 3DS | |
-| _(merged)_ | `fix/install-relaunch` (#1: the relaunch after `SITE INSTALL` waits 10 s, through libctru's chainloader) merged into `release/v0.1.1` 2026-10-13 after 6 installs in a row on the New 3DS with no loader dump | |
-| _(merged)_ | `feat/gpu-2d` (U2) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("funciona"; gameplay still ~20 fps: the 3D view, P2) | |
-| _(merged)_ | `feat/language` (U1 + U3, with `feat/native-menus`) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("todo ok") | |
-| _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
-| _(merged)_ | `fix/save-load-top` (#10: the save / load preview follows the selection, #11: the game dimmed behind it instead of the hands on black; the picture and text are a GPU layer over the world) and `feat/old3ds-unsupported-screen` (an Old 3DS / 2DS shows a message saying it is not supported yet, instead of closing) merged into `release/v0.2.3` 2026-10-15 after the owner's checks on the New 3DS (debug and production builds); the Old 3DS screen is only seen on an Old 3DS | |
-| _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
+| `feat/old3ds-allow-file` | a debug build skips the Old 3DS "not supported yet" screen when `allow-old3ds.txt` is in the data folder (without it the 2DS cannot be tried at all now) | Pushed, **not merged**: tests pass; the owner to confirm |
 
-**Priority** (2026-10-14, owner, later the same day): v0.2.0 published; next **P4 the 2DS**: boot it and aim for 60 fps
-mono there (P4.1, P4.2), since CPU savings for the Old 3DS help everything; then P3.2 / P2.4
-(stereo at 60 on the New 3DS) and #5 (title and menus at 35 fps). P2.3's parity (light, sky) for
-cost along the way.
+**Waiting for the owner's check** (done by Claude only, or not seen yet):
+- The v0.2.3 beta: that the console's updater (Beta channel) offers it from the v0.2.2 beta and
+  shows its 6 notes; the release workflow was still running when this was written.
+- `gpu-light-sky`'s list: a dark dungeon room, the hit flash on a monster, Ghini, a Wizzrobe, Ganon.
+- #6 (toasts over the map), fixed in the v0.2.2 beta: to look.
+- The Old 3DS screen can only be seen on an Old 3DS / 2DS.
 
+**Priority** (2026-10-15, owner): the 2DS (P4.1) first, then #12 (stereo at 48-50 fps), then the
+GPU world's parity (P2.3: 3D floors, portals, translucent walls, decals, animated textures,
+palette flashes), #5 and #7 last.
 
+**Start here:**
+1. **The 2DS (P4.1).** Merge `feat/old3ds-allow-file` (or the 2DS shows only the message), create
+   `allow-old3ds.txt` in `sdmc:/3ds/Legend of Doom 3DS/` on it, install a debug build over
+   `release/v0.2.4` and read `fatal.log` and the `pool=` figures in `startup.log`. What is known: on
+   the New 3DS MAP01 loads with the heap at 53 MB of 94; the 2DS heap is ~56 MB, so there is ~3 MB
+   of room, the 10 MB pool is full at MAP01 (`pool full` x10) and the 5 MB map-load reserve is on
+   top of it. Next steps: size the pool to its real use, drop or merge the reserve, then what
+   MAP01's 21.6 MB of engine objects (`gc`) hold. The decisions log of 2026-10-15 has the rest.
+2. **#12** with a debug build and the owner's `test2` save: `lod-link.py perf` in mono and stereo.
+3. **P2.3 parity:** the list in `docs/gpu-renderer-design.md` ("Missing before parity"); look at
+   which ones show in play before doing them all.
+4. Nothing is half done or uncommitted.
+
+**On the owner's consoles now (2026-10-15):**
+- **New 3DS**, `192.168.1.141` (the 2DS has used the same address; `.3ds_ftp_ip` holds it): a
+  debug build of this line, `0.2.3-dev.39.7+19aae0c` (v0.2.3's content), FTP server on, an
+  install-only server file `dev-ftp.txt`, saves `save0` ("test", MAP01, the spot Claude loads),
+  `test2` (the 48-50 fps spot of #12) and three autosaves. FRAMES was last left at NO SKIP by
+  Claude; the owner may have changed it.
+- **2DS**: the last build tried is a debug build of `0.0.0-dev+52193bd` plus the memory work
+  (2026-10-15, early morning): it stopped at the title with `operator new failure`. Nothing
+  newer has been installed there; it will show the "not supported yet" message until
+  `allow-old3ds.txt` exists.
 
 Tasks ticked [x] have been checked on the console by the owner; do not re-propose them.
 
