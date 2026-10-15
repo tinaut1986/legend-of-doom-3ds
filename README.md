@@ -5,60 +5,40 @@
 [![Latest release](https://img.shields.io/github/v/release/tinaut1986/legend-of-doom-3ds?include_prereleases&label=latest%20release)](https://github.com/tinaut1986/legend-of-doom-3ds/releases)
 [![Build Nintendo 3DS packages](https://github.com/tinaut1986/legend-of-doom-3ds/actions/workflows/build-3ds.yml/badge.svg)](https://github.com/tinaut1986/legend-of-doom-3ds/actions/workflows/build-3ds.yml)
 
-> **This is tinaut1986's fork** of [EstebanPdN's port](https://github.com/EstebanPdN/legend-of-doom-3ds).
-> Its goal is the New 3DS and the Old 3DS/2DS, with stereoscopic 3D, at 60 fps on the
-> New 3DS (plan: [docs/PLAN.md](docs/PLAN.md)). It has its own versions (`v0.1.0` onwards),
-> releases on [this repository](https://github.com/tinaut1986/legend-of-doom-3ds/releases)
-> and installs as its own app next to the original one: title ID `0x5A2D1`, files in
-> `sdmc:/3ds/Legend of Doom 3DS/`. Report bugs of this fork
-> [here](https://github.com/tinaut1986/legend-of-doom-3ds/issues). The sections below still
-> describe the upstream v1.0 release where they link to it.
+> A fork of [EstebanPdN's port](https://github.com/EstebanPdN/legend-of-doom-3ds) of
+> [Legend of Doom](https://github.com/emawind84/legend-of-doom), the first-person GZDoom
+> conversion of the original *The Legend of Zelda* by DeTwelve Games. It has its own versions
+> and releases, and installs as its own app next to the original port.
 
-Nintendo 3DS port of [Legend of Doom](https://github.com/emawind84/legend-of-doom), the first-person GZDoom conversion of the original *The Legend of Zelda* created by DeTwelve Games.
-
-**[v1.0 is available now](https://github.com/EstebanPdN/legend-of-doom-3ds/releases/tag/v1.0)** for **New Nintendo 3DS, New Nintendo 3DS XL and New Nintendo 2DS XL**. Old Nintendo 3DS, Old Nintendo 3DS XL and Nintendo 2DS are not supported.
+**[v0.2.0 is the latest stable release](https://github.com/tinaut1986/legend-of-doom-3ds/releases/tag/v0.2.0)**, for **New Nintendo 3DS, New 3DS XL and New 2DS XL**. Old Nintendo 3DS / 2DS support is in progress (see [docs/PLAN.md](docs/PLAN.md)) and is not in a release yet.
 
 The port uses GZDoom 4.7.1 and Freedoom: Phase 2. No NES ROM or commercial Doom IWAD is required.
 
+## What this fork adds
+
+- The 3D world is drawn by the PICA200 GPU: about 60 fps on the New 3DS.
+- Stereoscopic 3D with the 3D slider.
+- A bottom screen in the style of the NES pause screen: items, map and hearts.
+- Menus in English and Spanish.
+- An in-game updater that offers new versions at start.
+- Fixed the out-of-memory close after finishing a dungeon (#4): a memory leak on every map load (`ibo_data`), texture mipmaps built while mipmapping was off, and lighter map loading.
+
+Release notes: [docs/release-notes](docs/release-notes/). Roadmap and open work: [docs/PLAN.md](docs/PLAN.md).
+
 ## Download and installation
 
-Download the published packages from [GitHub Releases](https://github.com/EstebanPdN/legend-of-doom-3ds/releases/latest).
+Download the CIA from [GitHub Releases](https://github.com/tinaut1986/legend-of-doom-3ds/releases/latest).
 
-| v1.0 download | Use |
+| v0.2.0 download | Use |
 |---|---|
-| [CIA](https://github.com/EstebanPdN/legend-of-doom-3ds/releases/download/v1.0/legend-of-doom-3ds-v1.0.cia) | Install with FBI. Includes the matching game and engine data. |
-| [Homebrew Launcher ZIP](https://github.com/EstebanPdN/legend-of-doom-3ds/releases/download/v1.0/legend-of-doom-3ds-v1.0.zip) | Includes the 3DSX and the SD data folder. |
-| [Build manifest](https://github.com/EstebanPdN/legend-of-doom-3ds/releases/download/v1.0/BUILD-MANIFEST.txt) / [SHA-256 checksums](https://github.com/EstebanPdN/legend-of-doom-3ds/releases/download/v1.0/SHA256SUMS.txt) | Build identity, component revisions and file verification. |
-
-### CIA / FBI
+| [CIA](https://github.com/tinaut1986/legend-of-doom-3ds/releases/download/v0.2.0/legend-of-doom-3ds-v0.2.0.cia) | Install with FBI. Includes the matching game and engine data. |
+| [Build manifest](https://github.com/tinaut1986/legend-of-doom-3ds/releases/download/v0.2.0/BUILD-MANIFEST.txt) / [SHA-256 checksums](https://github.com/tinaut1986/legend-of-doom-3ds/releases/download/v0.2.0/SHA256SUMS.txt) | Build identity, component revisions and file verification. |
 
 Install the CIA with FBI, or open **Remote Install → Scan QR Code** and scan:
 
-<img src="https://github.com/EstebanPdN/legend-of-doom-3ds/releases/download/v1.0/FBI-v1.0-QR.png" width="220" alt="FBI installation QR code for Legend of Doom 3DS v1.0" />
+<img src="https://github.com/tinaut1986/legend-of-doom-3ds/releases/download/v0.2.0/QR-v0.2.0.png" width="220" alt="FBI installation QR code for Legend of Doom 3DS v0.2.0" />
 
-The CIA contains its game data. Configuration, saves and diagnostic files are stored separately under `sdmc:/3ds/legend-of-doom/`.
-
-### Homebrew Launcher / 3DSX
-
-1. Extract the v1.0 ZIP.
-2. Copy its included `3ds` folder to the root of the SD card.
-3. Launch `sdmc:/3ds/legend-of-doom/legend-of-doom-3ds.3dsx` from the Homebrew Launcher.
-
-Keep the included `data` folder with the executable; the standalone 3DSX download does not include those resources.
-
-```text
-sdmc:/3ds/legend-of-doom/
-├── legend-of-doom-3ds.3dsx
-├── README.txt
-├── CREDITS.md
-├── THIRD-PARTY-LICENSES.md
-├── licenses/
-└── data/
-    ├── LegendOfDoom.pk3
-    ├── freedoom2.wad
-    ├── game_support.pk3
-    └── gzdoom.pk3
-```
+The app uses title ID `0x5A2D1`, so it does not replace the original port. Configuration, saves and diagnostic files are stored under `sdmc:/3ds/Legend of Doom 3DS/`.
 
 ### Audio setup
 
@@ -66,17 +46,18 @@ Audio on a real console requires its own DSP firmware at `sdmc:/3ds/dspfirm.cdc`
 
 ## Features
 
-- Dual-screen menus, touch controls, a bottom-screen map and item selection.
+- New menus drawn natively for the bottom screen: options change in place (button or touch) with no nested submenus, in English and Spanish.
+- NES-style bottom screen during play: items, map and hearts.
 - Circle Pad movement and configurable C-Stick / touch camera input.
 - Save/load menus with previews and the native Nintendo 3DS keyboard.
 - Music and sound effects through OpenAL Soft/NDSP.
-- Adjustable gameplay render scale from 50% to 100%; menus use native 400×240.
-- A built-in CIA updater with stable and experimental channels.
+- A draw distance option.
+- A built-in CIA updater with stable and beta channels.
 - Quick diagnostic capture for bug reports.
 
-The published v1.0 uses the `hardware-hybrid` profile: SoftPoly renders the world on CPU0 and CPU2, and PICA200 scales the completed image to the 400×240 top screen. Gameplay defaults to 320×192. NovaGL world rendering remains a separate developer experiment. Rendering is uncapped; actual frame rate depends on the scene and render scale.
-
 ## Controls
+
+The in-game control reference is authoritative if it differs from this table.
 
 | Nintendo 3DS input | Action |
 |---|---|
@@ -98,13 +79,11 @@ Controller options include C-Stick sensitivity, C-Stick/Touch/Both camera input,
 
 ## Updating
 
-On the CIA build, open **Update** from the title or pause menu. Choose **Stable** for public stable releases. Save your progress before installing an update, because installation closes the game. Saves and configuration remain on the SD card.
+Open **Update** from the title or pause menu, or accept the offer shown at start. Save your progress before installing an update, because installation closes the game. Saves and configuration remain on the SD card. See the [updater guide](platform/3ds/UPDATER.md) for details and troubleshooting.
 
-For 3DSX, download the complete matching ZIP and replace the executable and data together. The in-game updater installs CIA packages only. See the [updater guide](platform/3ds/UPDATER.md) for channel behavior and troubleshooting.
+## Bug reports
 
-## Bug reports and community
-
-For this fork, [open a bug report here](https://github.com/tinaut1986/legend-of-doom-3ds/issues/new?template=bug_report.yml) with your version, console model, installation type and steps to reproduce the problem.
+[Open a bug report](https://github.com/tinaut1986/legend-of-doom-3ds/issues/new?template=bug_report.yml) with your version, console model, installation type and steps to reproduce the problem.
 
 While the issue is visible, press **L + R + A** and attach the complete quick diagnostic folder from:
 
@@ -112,23 +91,21 @@ While the issue is visible, press **L + R + A** and attach the complete quick di
 sdmc:/3ds/Legend of Doom 3DS/dumps/
 ```
 
-For updater errors, also attach `sdmc:/3ds/Legend of Doom 3DS/update.log`. (The upstream app uses `sdmc:/3ds/legend-of-doom/` instead.)
-
-For the original port, join [Esteban's Forge on Discord](https://discord.gg/zy8BqH5ss) for updates, support and other Nintendo 3DS homebrew projects.
+For updater errors, also attach `sdmc:/3ds/Legend of Doom 3DS/update.log`.
 
 ## Building from source
 
 Install devkitPro/devkitARM, libctru, 3ds-cmake, CMake, Python 3, Git, cURL and UnZip, plus a native C/C++ compiler and SDL2 development files for the host tools. CIA packaging also uses `makerom` and `bannertool`.
 
-Build the same renderer profile used by the published v1.0:
+Build the renderer profile used by the published releases:
 
 ```sh
 ./platform/3ds/build.sh hardware-hybrid
 ```
 
-Calling the script without a profile builds the `hardware-safe` CPU-only recovery profile. GitHub Actions also builds that recovery profile; its artifacts are separate from the published v1.0 download. Output packages are written to `build-3ds/dist/` by default.
+Calling the script without a profile builds the `hardware-safe` CPU-only recovery profile. GitHub Actions also builds that recovery profile; its artifacts are separate from the published releases. Output packages are written to `build-3ds/dist/` by default.
 
-See the [3DS build guide](platform/3ds/README.md) for all profiles, dependencies, package names and checks, and the [maintenance roadmap](ROADMAP.md) for the documentation history.
+See the [3DS build guide](platform/3ds/README.md) for all profiles, dependencies, package names and checks.
 
 ## Credits
 
@@ -137,7 +114,8 @@ See the [3DS build guide](platform/3ds/README.md) for all profiles, dependencies
 - [Freedoom contributors](https://github.com/freedoom/freedoom) — Phase 2 IWAD
 - [NovaGL contributors](https://github.com/efimandreev0/NovaGL) — experimental OpenGL-to-Citro3D bridge
 - SDL, ZMusic, OpenAL Soft/NDSP, Citro2D/Citro3D, devkitPro and libctru contributors — platform stack
-- Esteban PDN — Nintendo 3DS port and project maintenance
+- [Esteban PDN](https://github.com/EstebanPdN/legend-of-doom-3ds) — original Nintendo 3DS port this fork is based on
+- tinaut1986 — this fork
 
 See [CREDITS.md](CREDITS.md) and [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for additional notices.
 
