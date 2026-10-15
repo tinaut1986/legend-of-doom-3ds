@@ -1532,12 +1532,13 @@ const std::vector<FMapLine> &MapLines()
 	return lines;
 }
 
+// clipBottom: the first row the GPU must leave alone (the CPU draws something over the map there).
 void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int mapHeight,
-	double worldUnitsPerPixel)
+	double worldUnitsPerPixel, int clipBottom = 1 << 30)
 {
 	const FBottomMapView view = BottomMapView();
 	if (!view.Valid) return;
-	const int scissor[4] = { mapX, mapY, mapX + mapWidth, mapY + mapHeight };
+	const int scissor[4] = { mapX, mapY, mapX + mapWidth, std::min(mapY + mapHeight, clipBottom) };
 	const double halfWidth = mapWidth * 0.5 * worldUnitsPerPixel;
 	const double halfHeight = mapHeight * 0.5 * worldUnitsPerPixel;
 	const double minX = view.CenterX - halfWidth;
@@ -2291,6 +2292,15 @@ void DrawInstallBar(unsigned char *framebuffer)
 		InstallBarY + 7, "X", 1, OverlayIvory);
 }
 
+// The toast's top row, above the install bar when it is there; the screen's height when there
+// is none. The GPU map stops above it (I_3DSOverlayFrame), or it would draw over the toast.
+int BottomToastTop()
+{
+	if (OverlayNotification[0] == '\0') return static_cast<int>(BottomScreenHeight);
+	const int height = OverlayNotificationProgress >= 0 ? 33 : 21;
+	return (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+}
+
 void DrawBottomToast(unsigned char *framebuffer)
 {
 	DrawInstallBar(framebuffer);
@@ -2301,8 +2311,7 @@ void DrawBottomToast(unsigned char *framebuffer)
 	const int width = std::min(304, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
 	const int height = bar ? 33 : 21;
 	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
-	// Above the install bar when it is there.
-	const int y = (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+	const int y = BottomToastTop();
 	OverlayRect(framebuffer, x, y, width, height, OverlayInk);
 	OverlayFrame(framebuffer, x, y, width, height, 1, OverlayBlue);
 	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
@@ -5914,7 +5923,7 @@ void I_3DSOverlayFrame()
 	{
 		using namespace BottomLayout;
 		QueueGpuMap(E3DSGpuScreen::Bottom, MapX, MapY, MapWidth, MapHeight,
-			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear);
+			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear, BottomToastTop());
 	}
 }
 
