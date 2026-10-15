@@ -21,6 +21,8 @@ void I_3DSWriteFatalLog(const char *message);
 // These functions draw a tiny framebuffer-only progress screen without
 // creating a GZDoom window or a NovaGL context. The final image remains on the
 // LCD until the first real GPU frame replaces it.
+// True when this is an Old 3DS / 2DS: a message was shown and the game must exit (main).
+bool I_3DSUnsupportedConsoleScreen();
 void I_3DSLoadingScreenStart();
 void I_3DSLoadingScreenFinish();
 
