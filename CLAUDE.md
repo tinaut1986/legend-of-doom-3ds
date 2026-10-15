@@ -11,7 +11,9 @@ a fork of an EstebanPdN port, set up the same way.
 
 **Start every session by reading [`docs/PLAN.md`](docs/PLAN.md).** It holds the
 phase roadmap, the task specs with acceptance criteria, and the decisions log.
-The next session starts from that file, not from chat history.
+The next session starts from that file, not from chat history. To leave it current at the end
+of a session, run `/document` (`.claude/skills/document`): it writes the status, the decisions and
+the memory, then commits and pushes the docs.
 
 Each fact lives in one place; keep that place current in the same change that alters it:
 
