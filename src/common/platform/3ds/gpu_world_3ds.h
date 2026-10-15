@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 // The 3D world on the PICA200, P2.3 spike (gpu_world_3ds.cpp).
 
 namespace swrenderer { class RenderThread; }
@@ -12,9 +13,11 @@ struct sector_t;
 void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *thread);
 // A sprite the walk projected (RenderSprite::Project): its billboard from (ax, ay) to (bx, by)
 // in map units, bottom to top, the image mirrored or not, its sector's light level, whether it is
-// fullbright, and its sector (for MAP01's outdoor distance fog).
+// fullbright, its sector (for MAP01's outdoor distance fog), and how it is drawn: style 0 opaque,
+// 1 translucent, 2 additive, 3 a stencil of stencilColor (0xRRGGBB); alpha 0 to 1.
 void I_3DSGpuWorldAddSprite(FGameTexture *texture, double ax, double ay, double bx, double by,
-	double bottom, double top, bool flipX, int lightLevel, bool fullbright, const sector_t *sector);
+	double bottom, double top, bool flipX, int lightLevel, bool fullbright, const sector_t *sector,
+	int style = 0, double alpha = 1.0, uint32_t stencilColor = 0xffffff);
 
 // After the swrenderer's opaque pass of the main view: builds what it found visible for the
 // GPU (always, unless lod3ds_gpu_world is turned off in a debug build).

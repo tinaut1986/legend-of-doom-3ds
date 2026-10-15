@@ -127,6 +127,12 @@ void I_3DSGpuWorldBegin(const float matrix[16], const float *rightMatrix, uint32
 // (sprites). Sky: drawn before everything else, with no depth test or write (the background).
 F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool masked = false,
 	bool sky = false);
+// A see-through sprite (masked), drawn after every opaque draw in the order queued (far to
+// near), depth-tested but not writing depth: Translucent mixes it in by alpha (0-255), Add adds
+// it times alpha, Stencil draws its shape in the vertex colour, mixed in by alpha.
+enum class E3DSGpuWorldStyle : uint8_t { Translucent, Add, Stencil };
+F3DSGpuWorldVertex *I_3DSGpuWorldQueueBlended(F3DSGpuTexture *texture, int count,
+	E3DSGpuWorldStyle style, uint8_t alpha);
 // The part of a texture's copy the image fills (it is padded to powers of two unless wrapped).
 void I_3DSGpuTextureScale(const F3DSGpuTexture *texture, float &scaleS, float &scaleT);
 // GPU time of the last frame (citro3d's drawing time), in ms.

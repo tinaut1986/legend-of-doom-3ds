@@ -157,6 +157,9 @@ struct FWorldDraw
 	bool Textured;
 	bool Masked;
 	bool Sky;
+	bool Blended; // I_3DSGpuWorldQueueBlended: Style and Alpha
+	E3DSGpuWorldStyle Style;
+	uint8_t Alpha;
 	uint32_t First;
 	uint32_t Count;
 };
@@ -703,14 +706,25 @@ void DrawWorld(F3DSGpuWorldVertex *vertices, C3D_Mtx &matrix)
 	const C3D_Tex *bound = nullptr;
 	bool anyBound = false;
 	bool masked = false;
-	for (int pass = 0; pass < 2; ++pass)
+	// Passes: 0 the sky, 1 the opaque and masked world, 2 the see-through sprites.
+	for (int pass = 0; pass < 3; ++pass)
 	for (const FWorldDraw &draw : WorldDraws)
 	{
-		const bool sky = pass == 0;
-		if (draw.Sky != sky) continue;
-		C3D_DepthTest(!sky, GPU_GREATER, sky ? GPU_WRITE_COLOR : GPU_WRITE_ALL);
+		if ((draw.Sky ? 0 : draw.Blended ? 2 : 1) != pass) continue;
+		C3D_DepthTest(pass != 0, GPU_GREATER, pass == 1 ? GPU_WRITE_ALL : GPU_WRITE_COLOR);
 		const C3D_Tex *texture = draw.Textured ? &draw.Texture : nullptr;
-		if (!anyBound || texture != bound || draw.Masked != masked)
+		if (pass == 2)
+		{
+			C3D_BlendingColor(static_cast<u32>(draw.Alpha) << 24);
+			C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_CONSTANT_ALPHA,
+				draw.Style == E3DSGpuWorldStyle::Add ? GPU_ONE : GPU_ONE_MINUS_CONSTANT_ALPHA,
+				GPU_ONE, GPU_ZERO);
+			ApplyWorldMode(draw.Style == E3DSGpuWorldStyle::Stencil ? EMode::Stencil : EMode::Normal);
+			C3D_TexBind(0, const_cast<C3D_Tex *>(texture));
+			C3D_AlphaTest(true, GPU_GREATER, 0);
+			anyBound = false;
+		}
+		else if (!anyBound || texture != bound || draw.Masked != masked)
 		{
 			ApplyWorldMode(texture == nullptr ? EMode::NoTexture :
 				(draw.Masked ? EMode::Normal : EMode::Opaque));
@@ -1247,6 +1261,7 @@ F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool 
 	draw.Textured = texture != nullptr;
 	draw.Masked = masked;
 	draw.Sky = sky;
+	draw.Blended = false;
 	if (texture != nullptr) draw.Texture = texture->Texture;
 	draw.First = static_cast<uint32_t>(WorldUsed);
 	draw.Count = static_cast<uint32_t>(count);
@@ -1254,7 +1269,7 @@ F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool 
 	{
 		// Same texture as the previous draw and contiguous: one draw.
 		FWorldDraw &last = WorldDraws.back();
-		if (last.Textured == draw.Textured && last.Masked == draw.Masked && last.Sky == draw.Sky &&
+		if (!last.Blended && last.Textured == draw.Textured && last.Masked == draw.Masked && last.Sky == draw.Sky &&
 			last.First + last.Count == draw.First &&
 			(!draw.Textured || last.Texture.data == draw.Texture.data))
 		{
@@ -1263,6 +1278,27 @@ F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool 
 			return out;
 		}
 	}
+	WorldDraws.push_back(draw);
+	WorldUsed += static_cast<size_t>(count);
+	return out;
+}
+
+F3DSGpuWorldVertex *I_3DSGpuWorldQueueBlended(F3DSGpuTexture *texture, int count,
+	E3DSGpuWorldStyle style, uint8_t alpha)
+{
+	if (!WorldQueued || texture == nullptr || count <= 0 ||
+		WorldUsed + static_cast<size_t>(count) > WorldArenaVertices)
+		return nullptr;
+	F3DSGpuWorldVertex *out = WorldArenas[CurrentArena] + WorldUsed;
+	FWorldDraw draw{};
+	draw.Textured = true;
+	draw.Masked = true;
+	draw.Blended = true;
+	draw.Style = style;
+	draw.Alpha = alpha;
+	draw.Texture = texture->Texture;
+	draw.First = static_cast<uint32_t>(WorldUsed);
+	draw.Count = static_cast<uint32_t>(count);
 	WorldDraws.push_back(draw);
 	WorldUsed += static_cast<size_t>(count);
 	return out;
@@ -1499,6 +1535,10 @@ bool I_3DSGpuInit() { return false; }
 void I_3DSGpuWorldBegin(const float *, const float *, uint32_t, uint32_t) {}
 void I_3DSGpuBottomNewTic() {}
 F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *, int, bool, bool) { return nullptr; }
+F3DSGpuWorldVertex *I_3DSGpuWorldQueueBlended(F3DSGpuTexture *, int, E3DSGpuWorldStyle, uint8_t)
+{
+	return nullptr;
+}
 void I_3DSGpuTextureScale(const F3DSGpuTexture *, float &scaleS, float &scaleT) { scaleS = scaleT = 1.0f; }
 float I_3DSGpuLastDrawingTime() { return 0.0f; }
 void I_3DSGpuShutdown() {}

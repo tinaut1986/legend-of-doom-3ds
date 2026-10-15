@@ -84,8 +84,13 @@ struct FSprite
 	bool Fullbright;
 	bool Exterior;
 	uint8_t Light;
+	uint8_t Style; // I_3DSGpuWorldAddSprite's: 0 opaque, 1 translucent, 2 additive, 3 stencil
+	uint8_t Alpha;
+	uint32_t StencilColor;
+	float Depth;   // for drawing the see-through ones far to near
 };
 std::vector<FSprite> Sprites;
+std::vector<FSprite *> SeeThrough;
 // This frame's GPU copies of the textures met, as I_3DSGpuGameTexture finds them.
 std::unordered_map<FGameTexture *, F3DSGpuTexture *> TextureCache;
 std::unordered_map<FGameTexture *, F3DSGpuTexture *> SpriteTextureCache;
@@ -181,19 +186,31 @@ void AddSpriteQuad(const FSprite &sprite)
 	const float s0 = sprite.FlipX ? scaleS : 0.0f;
 	const float s1 = sprite.FlipX ? 0.0f : scaleS;
 	const float tTop = 1.0f, tBottom = 1.0f - scaleT;
-	const uint32_t color = VertexColor((sprite.Ax + sprite.Bx) * 0.5, (sprite.Ay + sprite.By) * 0.5,
+	uint32_t color = VertexColor((sprite.Ax + sprite.Bx) * 0.5, (sprite.Ay + sprite.By) * 0.5,
 		sprite.Light, sprite.Exterior, sprite.Fullbright);
+	if (sprite.Style == 3)
+	{
+		// The stencil colour, lit: the light is in R (= G = B), the fog in A.
+		const uint32_t light = color & 0xff;
+		auto lit = [&](int shift) { return uint8_t(((sprite.StencilColor >> shift) & 0xff) * light / 255); };
+		color = I_3DSGpuColor(lit(16), lit(8), lit(0), uint8_t(color >> 24));
+	}
 	const FVertex topLeft{ sprite.Ax, sprite.Ay, sprite.Top, s0, tTop, color };
 	const FVertex bottomLeft{ sprite.Ax, sprite.Ay, sprite.Bottom, s0, tBottom, color };
 	const FVertex topRight{ sprite.Bx, sprite.By, sprite.Top, s1, tTop, color };
 	const FVertex bottomRight{ sprite.Bx, sprite.By, sprite.Bottom, s1, tBottom, color };
+	const FVertex quad[6] = { topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight };
+	if (sprite.Style != 0)
+	{
+		// Its own draw, after the opaque world (the caller queues them far to near).
+		static constexpr E3DSGpuWorldStyle styles[] = { E3DSGpuWorldStyle::Translucent,
+			E3DSGpuWorldStyle::Translucent, E3DSGpuWorldStyle::Add, E3DSGpuWorldStyle::Stencil };
+		if (FVertex *out = I_3DSGpuWorldQueueBlended(texture, 6, styles[sprite.Style], sprite.Alpha))
+			std::memcpy(out, quad, sizeof(quad));
+		return;
+	}
 	std::vector<FVertex> &out = BatchFor(texture, true);
-	out.push_back(topLeft);
-	out.push_back(bottomLeft);
-	out.push_back(topRight);
-	out.push_back(topRight);
-	out.push_back(bottomLeft);
-	out.push_back(bottomRight);
+	out.insert(out.end(), quad, quad + 6);
 }
 
 bool Exterior(const sector_t *sector)
@@ -494,13 +511,19 @@ void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *thread)
 }
 
 void I_3DSGpuWorldAddSprite(FGameTexture *texture, double ax, double ay, double bx, double by,
-	double bottom, double top, bool flipX, int lightLevel, bool fullbright, const sector_t *sector)
+	double bottom, double top, bool flipX, int lightLevel, bool fullbright, const sector_t *sector,
+	int style, double alpha, uint32_t stencilColor)
 {
 	if (!Active || texture == nullptr) return;
+	const int alphaByte = static_cast<int>(std::lround(std::clamp(alpha, 0.0, 1.0) * 255.0));
+	// Invisible (Ganon's A_SetTranslucent(0)): not drawn at all.
+	if (style != 0 && alphaByte == 0) return;
+	if (style == 1 && alphaByte == 255) style = 0;
 	Sprites.push_back(FSprite{ texture, float(ax), float(ay), float(bx), float(by),
 		float(bottom), float(top), flipX, fullbright,
 		sector != nullptr && Is3DSMap01ExteriorSector(sector),
-		uint8_t(std::clamp(lightLevel, 0, 255)) });
+		uint8_t(std::clamp(lightLevel, 0, 255)), uint8_t(style), uint8_t(alphaByte), stencilColor,
+		0.0f });
 }
 
 void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
@@ -586,7 +609,20 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		AddFlat(sub, sector, sector_t::floor, eye3);
 		AddFlat(sub, sector, sector_t::ceiling, eye3);
 	}
-	for (const FSprite &sprite : Sprites) AddSpriteQuad(sprite);
+	// The opaque sprites with the world; the see-through ones after every opaque batch, far
+	// to near (I_3DSGpuWorldQueueBlended draws them in that order).
+	for (const FSprite &sprite : Sprites)
+		if (sprite.Style == 0) AddSpriteQuad(sprite);
+	SeeThrough.clear();
+	for (FSprite &sprite : Sprites)
+	{
+		if (sprite.Style == 0) continue;
+		sprite.Depth = float(((sprite.Ax + sprite.Bx) * 0.5 - ex) * vp.TanCos +
+			((sprite.Ay + sprite.By) * 0.5 - ey) * vp.TanSin);
+		SeeThrough.push_back(&sprite);
+	}
+	std::sort(SeeThrough.begin(), SeeThrough.end(),
+		[](const FSprite *a, const FSprite *b) { return a->Depth > b->Depth; });
 
 	uint32_t vertices = 0;
 	for (size_t i = 0; i < BatchesUsed; ++i)
@@ -599,6 +635,8 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		std::memcpy(out, batch.Vertices.data(), batch.Vertices.size() * sizeof(FVertex));
 		vertices += static_cast<uint32_t>(batch.Vertices.size());
 	}
+
+	for (const FSprite *sprite : SeeThrough) AddSpriteQuad(*sprite);
 
 	StatTicks += svcGetSystemTick() - start;
 	StatFrames += 1;
@@ -616,7 +654,7 @@ bool I_3DSGpuWorldActive()
 
 void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *) {}
 void I_3DSGpuWorldAddSprite(FGameTexture *, double, double, double, double, double, double, bool,
-	int, bool, const sector_t *) {}
+	int, bool, const sector_t *, int, double, uint32_t) {}
 void I_3DSGpuWorldCapture(swrenderer::RenderThread *) {}
 bool I_3DSGpuWorldActive() { return false; }
 
