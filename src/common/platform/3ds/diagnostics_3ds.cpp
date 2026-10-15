@@ -533,6 +533,15 @@ bool UnsupportedConsoleScreen()
 	}
 #endif
 	if (isNew3DS) return false;
+#if LOD3DS_DEBUG_TOOLS
+	// For working on the Old 3DS / 2DS port itself: an allow-old3ds.txt in the data folder lets a
+	// debug build try to run (it may still run out of memory; see fatal.log).
+	if (FILE *allowed = std::fopen(LOD3DS_APP_DIR "/allow-old3ds.txt", "rb"))
+	{
+		std::fclose(allowed);
+		return false;
+	}
+#endif
 
 	u16 physicalWidth = 0;
 	u16 physicalHeight = 0;
