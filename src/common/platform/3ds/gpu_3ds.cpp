@@ -1325,7 +1325,7 @@ void I_3DSGpuBottomChanged()
 	if (!Ready) return;
 	BottomDirty = true;
 	// Nothing presented lately (a dump, a level load): show it now. Not through a citro3d
-	// frame: one with no draw is never submitted, and the next C3D_FrameBegin then waits for
+	// frame: one with no draw is never submitted, and the next frame then waits for
 	// it forever. With the GPU idle the CPU copies the buffer into the framebuffer instead;
 	// BottomDirty stays set, so the next GPU frame outputs it again into both buffers.
 	if (osGetTime() - LastPresentMilliseconds < 200u) return;
