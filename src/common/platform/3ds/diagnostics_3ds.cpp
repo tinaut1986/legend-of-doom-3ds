@@ -6236,3 +6236,8 @@ const char *I_3DSTranslate(const char *english)
 {
 	return Tr(english);
 }
+
+void I_3DSToast(const char *english)
+{
+	SetOverlayNotification(english);
+}

@@ -56,7 +56,7 @@ size_t M_3DSPoolUsed(size_t *high);
 void M_3DSLogHeap(const char *stage)
 {
 	const struct mallinfo heap = mallinfo();
-	Printf("[3DS memory] %s: used=%d arena=%d free=%d engine=%zu linear=%lu\n",
+	Printf(PRINT_LOG, "[3DS memory] %s: used=%d arena=%d free=%d engine=%zu linear=%lu\n",
 		stage, heap.uordblks, heap.arena, heap.fordblks, GC::AllocBytes,
 		(unsigned long)linearSpaceFree());
 	char full[160];
