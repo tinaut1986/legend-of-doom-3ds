@@ -2535,8 +2535,13 @@ static void CheckCmdLine()
 static void NewFailure ()
 {
 #ifdef __3DS__
-    M_3DSLogHeap("operator new failure");
-    Printf("[3DS memory] failed C++ allocation: %zu bytes from %p\n",
+    {
+        char what[96];
+        snprintf(what, sizeof(what), "operator new failure: %zu bytes, caller 0x%08lx",
+            I_3DSLastFailedNewRequest(), static_cast<unsigned long>(I_3DSLastFailedNewCaller()));
+        M_3DSLogHeap(what);
+    }
+    Printf(PRINT_LOG, "[3DS memory] failed C++ allocation: %zu bytes from %p\n",
         I_3DSLastFailedNewRequest(), (void *)I_3DSLastFailedNewCaller());
     I_FatalError("Failed to allocate %zu bytes from system heap (caller 0x%08lx)",
         I_3DSLastFailedNewRequest(),

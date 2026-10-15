@@ -143,10 +143,23 @@ namespace swrenderer
 		{
 			if (!isSpriteShadow)
 			{
+				// How it is drawn (I_3DSGpuWorldAddSprite's style): a stencil of its fill colour,
+				// added, mixed in by alpha, or opaque; STYLEOP_None is not drawn.
+				FRenderStyle style = thing->RenderStyle;
+				if (r_UseVanillaTransparency && (thing->renderflags & RF_ZDOOMTRANS))
+					style = LegacyRenderStyles[STYLE_Normal];
+				if (style.BlendOp == STYLEOP_None) return;
+				const double alpha = (style.Flags & STYLEF_Alpha1) ? 1.0 : thing->Alpha;
+				const bool opaque = style.BlendOp == STYLEOP_Add && style.SrcAlpha == STYLEALPHA_One &&
+					style.DestAlpha == STYLEALPHA_Zero;
+				const int gpuStyle = (style.Flags & STYLEF_ColorIsFixed) ? 3 :
+					(style.BlendOp == STYLEOP_Add && style.DestAlpha == STYLEALPHA_One) ? 2 :
+					opaque ? 0 : 1;
 				const DVector2 origin = viewport->viewpoint.Pos.XY();
 				I_3DSGpuWorldAddSprite(tex->GetTexture(), origin.X + pt1.X, origin.Y + pt1.Y,
 					origin.X + pt2.X, origin.Y + pt2.Y, gzb, gzt, (renderflags & RF_XFLIP) != 0,
-					lightlevel);
+					lightlevel, !foggy && ((renderflags & RF_FULLBRIGHT) || (thing->flags5 & MF5_BRIGHT)),
+					thing->Sector, gpuStyle, alpha, uint32_t(thing->fillcolor) & 0xffffff);
 			}
 			return;
 		}

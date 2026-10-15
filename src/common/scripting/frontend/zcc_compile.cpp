@@ -638,12 +638,24 @@ void ZCCCompiler::Warn(ZCC_TreeNode *node, const char *msg, ...)
 //
 //==========================================================================
 
+extern FString ScriptErrorSummary;
+
 void ZCCCompiler::Error(ZCC_TreeNode *node, const char *msg, ...)
 {
 	va_list argptr;
 	va_start(argptr, msg);
+	va_list copy;
+	va_copy(copy, argptr);
 	MessageV(node, TEXTCOLOR_RED, msg, argptr);
 	va_end(argptr);
+
+	// Kept for the fatal log, which is all the 3DS has of a console (see sc_man.cpp).
+	if (ScriptErrorSummary.Len() < 3000)
+	{
+		ScriptErrorSummary.AppendFormat("\n%s:%d: ", node->SourceName->GetChars(), node->SourceLoc);
+		ScriptErrorSummary.VAppendFormat(msg, copy);
+	}
+	va_end(copy);
 
 	FScriptPosition::ErrorCounter++;
 }

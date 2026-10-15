@@ -211,7 +211,7 @@ void S_CreateStream()
 			// that the compressed stream was identified.
 			const bool started = musicStream->Play(true, 1);
 #ifdef __3DS__
-			Printf("[3DS audio] Music stream '%s': %s; %s; decoder: %s\n",
+			Printf(PRINT_LOG, "[3DS audio] Music stream '%s': %s; %s; decoder: %s\n",
 				mus_playing.name.GetChars(), started ? "started" : "start failed",
 				musicStream->GetStats().GetChars(), ZMusic_GetStats(mus_playing.handle));
 #endif
