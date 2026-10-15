@@ -5190,7 +5190,22 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		// The first frame of the menu: the game (or title) as it was, dimmed, kept for the
 		// frames that follow, which D_Display does not render (I_3DSNativeMenuFrozen).
 		const unsigned brightness = NativeMenuCurrentBrightness();
-		if (brightness != 255u)
+		if (gamestate == GS_LEVEL && I_3DSGpuWorldActive())
+		{
+			// The GPU draws the world: this canvas holds none of it, only the weapon the engine
+			// put there. The menus that come this way (save and load, which show their own
+			// picture) keep a plain black background, not the player's hands on black (#11).
+			for (int y = 0; y < height; ++y)
+			{
+				unsigned char *row = pixels + static_cast<size_t>(y) * pitchBytes;
+				for (int x = 0; x < width * 4; x += 4)
+				{
+					row[x + 0] = row[x + 1] = row[x + 2] = 0;
+					row[x + 3] = 255;
+				}
+			}
+		}
+		else if (brightness != 255u)
 		{
 			for (int y = 0; y < height; ++y)
 			{
