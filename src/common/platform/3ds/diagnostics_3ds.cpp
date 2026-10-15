@@ -5150,12 +5150,11 @@ bool I_3DSNativeMenuOwnsFrame()
 
 // A native menu over a level whose world the GPU draws keeps drawing that world behind it, dimmed
 // by a GPU quad: the canvas the old route froze does not have the world in it (the GPU draws it
-// at the present), so the top screen came out black. The menus that put their own picture on
-// the top canvas (the save and load menus) keep the frozen route.
+// at the present), so the top screen came out black. The save and load menus put their picture
+// and text in a layer of their own, shown by the GPU over the dimmed world.
 bool NativeMenuKeepsWorld()
 {
-	return NativeMenuSupported() && gamestate == GS_LEVEL && I_3DSGpuWorldActive() &&
-		!NativeSaveLoadMenuVisible();
+	return NativeMenuSupported() && gamestate == GS_LEVEL && I_3DSGpuWorldActive();
 }
 
 bool I_3DSNativeMenuFrozen()
@@ -5179,6 +5178,39 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		const unsigned brightness = NativeMenuCurrentBrightness();
 		if (brightness != 255u)
 			I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 255u - brightness);	// 0xRRGGBBAA: black
+		if (NativeSaveLoadMenuVisible())
+		{
+			// The selected save's picture and text, drawn on a transparent layer and shown over
+			// the dimmed world; uploaded to the GPU only when it changes.
+			static std::vector<unsigned char> layer;
+			static std::vector<uint32_t> rgba;
+			static std::vector<uint32_t> shown;
+			static F3DSGpuImage *image = nullptr;
+			layer.assign(bytes, 0);
+			DrawNativeMenuTop(layer.data(), pitchBytes, width, height);
+			rgba.resize(static_cast<size_t>(width) * height);
+			for (int y = 0; y < height; ++y)
+			{
+				const unsigned char *row = layer.data() + static_cast<size_t>(y) * pitchBytes;
+				for (int x = 0; x < width; ++x, row += 4)
+				{
+					rgba[static_cast<size_t>(y) * width + x] = (static_cast<uint32_t>(row[2]) << 24) |
+						(static_cast<uint32_t>(row[1]) << 16) | (static_cast<uint32_t>(row[0]) << 8) |
+						row[3];
+				}
+			}
+			if (image == nullptr) image = I_3DSGpuImageCreate(width, height);
+			if (image != nullptr)
+			{
+				if (shown != rgba)
+				{
+					I_3DSGpuImageUpload(image, rgba.data(), width);
+					shown = rgba;
+				}
+				I_3DSGpuOverlayImage(image, 0.0f, 0.0f, static_cast<float>(width),
+					static_cast<float>(height));
+			}
+		}
 	}
 	else if (!NativeMenuFrozenTop.empty() && NativeMenuFrozenWidth == width &&
 		NativeMenuFrozenHeight == height && NativeMenuFrozenPitch == pitchBytes)
@@ -5190,7 +5222,22 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		// The first frame of the menu: the game (or title) as it was, dimmed, kept for the
 		// frames that follow, which D_Display does not render (I_3DSNativeMenuFrozen).
 		const unsigned brightness = NativeMenuCurrentBrightness();
-		if (brightness != 255u)
+		if (gamestate == GS_LEVEL && I_3DSGpuWorldActive())
+		{
+			// The GPU draws the world: this canvas holds none of it, only the weapon the engine
+			// put there. The menus that come this way (save and load, which show their own
+			// picture) keep a plain black background, not the player's hands on black (#11).
+			for (int y = 0; y < height; ++y)
+			{
+				unsigned char *row = pixels + static_cast<size_t>(y) * pitchBytes;
+				for (int x = 0; x < width * 4; x += 4)
+				{
+					row[x + 0] = row[x + 1] = row[x + 2] = 0;
+					row[x + 3] = 255;
+				}
+			}
+		}
+		else if (brightness != 255u)
 		{
 			for (int y = 0; y < height; ++y)
 			{
@@ -5218,7 +5265,7 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		BottomPresentation = EBottomPresentation::NativeMenu;
 		OverlayLastDrawMilliseconds = osGetTime();
 	}
-	DrawNativeMenuTop(pixels, pitchBytes, width, height);
+	if (!keepsWorld) DrawNativeMenuTop(pixels, pitchBytes, width, height);
 	if (gpuOverlays) QueueGpuFpsOverlay();
 	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
 }

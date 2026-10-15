@@ -748,6 +748,11 @@ void DrawNativeMessageBox(unsigned char *framebuffer)
 struct FNesPreviewCache
 {
 	FGameTexture *Texture = nullptr;
+	// What the picture belonged to: the engine may free a picture and make the next one at the same
+	// address, and may reuse one texture object for every slot, so the pointer alone says nothing.
+	const void *Source = nullptr;
+	int Selected = -1;
+	FString Filename;
 	int Width = 0, Height = 0;
 	std::vector<uint32_t> Pixels; // BGRA, already scaled
 };
@@ -778,9 +783,17 @@ void DrawNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int hei
 	const int previewX = (width - previewWidth) / 2;
 	constexpr int PreviewY = 8;
 	FGameTexture *picture = savegameManager.GetSavePic();
-	if (picture != NesPreview.Texture || NesPreview.Width != previewWidth)
+	FSaveGameNode *selectedNode = savegameManager.GetSavegame(selected);
+	const FString selectedFile = selectedNode != nullptr ? selectedNode->Filename : FString();
+	const void *source = picture != nullptr ? static_cast<const void *>(picture->GetTexture()) : nullptr;
+	if (picture != NesPreview.Texture || source != NesPreview.Source ||
+		selected != NesPreview.Selected || selectedFile != NesPreview.Filename ||
+		NesPreview.Width != previewWidth)
 	{
 		NesPreview.Texture = picture;
+		NesPreview.Source = source;
+		NesPreview.Selected = selected;
+		NesPreview.Filename = selectedFile;
 		NesPreview.Width = previewWidth;
 		NesPreview.Height = previewHeight;
 		NesPreview.Pixels.clear();
