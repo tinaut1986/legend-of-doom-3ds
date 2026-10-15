@@ -11,6 +11,7 @@
 #include <cstring>
 #include <vector>
 
+#include "c_cvars.h"
 #include "v_2ddrawer.h"
 #include "v_video.h"
 #include "hw_material.h"
@@ -21,6 +22,10 @@
 
 #include "gpu_3ds_shbin.h"
 #include "present_pixels.h"
+
+// World textures in 16 bits (565 or 5551) when they allow it; read when a texture is built, so a
+// change shows after the next map load. Debug builds can turn it off to compare.
+CVAR(Bool, lod3ds_gpu_texture16, true, CVAR_NOSAVE)
 
 extern "C" void C3Di_RenderQueueWaitDone(void);
 
@@ -156,6 +161,10 @@ struct FWorldDraw
 	C3D_Tex Texture;
 	bool Textured;
 	bool Masked;
+	bool Sky;
+	bool Blended; // I_3DSGpuWorldQueueBlended: Style and Alpha
+	E3DSGpuWorldStyle Style;
+	uint8_t Alpha;
 	uint32_t First;
 	uint32_t Count;
 };
@@ -169,6 +178,7 @@ C3D_Mtx WorldMatrix;
 C3D_Mtx WorldMatrixRight;
 bool WorldStereo;
 uint32_t WorldClearColor;
+uint32_t WorldFogColor; // TevColor
 bool WorldQueued;
 
 // Last state sent to citro3d, to skip redundant changes within a frame.
@@ -503,14 +513,60 @@ bool BuildTexture(C3D_Tex &texture, float &scaleS, float &scaleT, DCanvas *image
 	int textureHeight = std::min(NextPowerOfTwo(height), MaxTextureSize);
 	const bool stretchX = wrap || width > MaxTextureSize;
 	const bool stretchY = wrap || height > MaxTextureSize;
+	const int pitch = image->GetPitch();
+	const uint32_t *source = reinterpret_cast<const uint32_t *>(image->GetPixels());
+	// World textures (wrap: filling the texture, no padding) in 16 bits when their alpha allows:
+	// 565 if opaque, 5551 if every texel is either solid or fully clear. Half the memory and half
+	// the texture reads of RGBA8; anything with partial alpha keeps 8888.
+	GPU_TEXCOLOR format = GPU_RGBA8;
+	if (wrap && lod3ds_gpu_texture16)
+	{
+		bool opaque = true, binary = true;
+		for (int y = 0; y < height && binary; ++y)
+		{
+			const uint32_t *row = source + static_cast<size_t>(y) * pitch;
+			for (int x = 0; x < width; ++x)
+			{
+				const uint32_t alpha = row[x] >> 24;
+				if (alpha != 255)
+				{
+					opaque = false;
+					if (alpha != 0) { binary = false; break; }
+				}
+			}
+		}
+		if (binary) format = opaque ? GPU_RGB565 : GPU_RGBA5551;
+	}
 	if (!C3D_TexInit(&texture, static_cast<u16>(textureWidth),
-		static_cast<u16>(textureHeight), GPU_RGBA8))
+		static_cast<u16>(textureHeight), format))
 	{
 		return false;
 	}
+	if (format != GPU_RGBA8)
+	{
+		uint16_t *texels = static_cast<uint16_t *>(texture.data);
+		for (int y = 0; y < textureHeight; ++y)
+		{
+			const int sourceY = stretchY ? y * height / textureHeight : y;
+			const uint32_t *row = source + static_cast<size_t>(sourceY) * pitch;
+			for (int x = 0; x < textureWidth; ++x)
+			{
+				const int sourceX = stretchX ? x * width / textureWidth : x;
+				const uint32_t pixel = row[sourceX]; // 0xAARRGGBB
+				const uint32_t r = (pixel >> 16) & 0xff, g = (pixel >> 8) & 0xff, b = pixel & 0xff;
+				uint16_t texel;
+				if (format == GPU_RGB565)
+					texel = uint16_t(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+				else
+					texel = uint16_t(((r >> 3) << 11) | ((g >> 3) << 6) | ((b >> 3) << 1) |
+						((pixel >> 24) != 0 ? 1u : 0u));
+				texels[TiledOffset(x, y, textureWidth)] = texel;
+			}
+		}
+	}
+	else
+	{
 	uint32_t *texels = static_cast<uint32_t *>(texture.data);
-	const int pitch = image->GetPitch();
-	const uint32_t *source = reinterpret_cast<const uint32_t *>(image->GetPixels());
 	for (int y = 0; y < textureHeight; ++y)
 	{
 		const int sourceY = stretchY ? y * height / textureHeight : y;
@@ -528,6 +584,7 @@ bool BuildTexture(C3D_Tex &texture, float &scaleS, float &scaleT, DCanvas *image
 			}
 			texels[TiledOffset(x, y, textureWidth)] = texel;
 		}
+	}
 	}
 	C3D_TexFlush(&texture);
 	C3D_TexSetFilter(&texture, GPU_NEAREST, GPU_NEAREST);
@@ -661,8 +718,24 @@ void DrawBottom()
 	BottomRedraw = false;
 }
 
-// The world's draws, first in the top target, depth-tested; the 2D pass starts afterwards from
-// BeginPass(), which turns the depth test off again.
+// A world mode, then stage 1: the texel lit by stage 0 kept by the vertex alpha against the fog
+// colour (lerp(fog, lit, alpha)), as the swrenderer's MAP01 distance fog fades to its colour.
+void ApplyWorldMode(EMode mode)
+{
+	ApplyMode(mode, 0);
+	C3D_TexEnv *env = C3D_GetTexEnv(1);
+	C3D_TexEnvInit(env);
+	C3D_TexEnvSrc(env, C3D_RGB, GPU_PREVIOUS, GPU_CONSTANT, GPU_PRIMARY_COLOR);
+	C3D_TexEnvOpRgb(env, GPU_TEVOP_RGB_SRC_COLOR, GPU_TEVOP_RGB_SRC_COLOR,
+		GPU_TEVOP_RGB_SRC_ALPHA);
+	C3D_TexEnvFunc(env, C3D_RGB, GPU_INTERPOLATE);
+	C3D_TexEnvSrc(env, C3D_Alpha, GPU_PREVIOUS, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+	C3D_TexEnvFunc(env, C3D_Alpha, GPU_REPLACE);
+	C3D_TexEnvColor(env, WorldFogColor);
+}
+
+// The world's draws, first in the top target: the sky draws as the background, then the rest
+// depth-tested; the 2D pass starts afterwards from BeginPass(), which turns the depth test off.
 void DrawWorld(F3DSGpuWorldVertex *vertices, C3D_Mtx &matrix)
 {
 	C3D_BindProgram(&WorldProgram);
@@ -681,17 +754,32 @@ void DrawWorld(F3DSGpuWorldVertex *vertices, C3D_Mtx &matrix)
 	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
 	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
 	AppliedModeValid = false;
-	ApplyMode(EMode::Opaque, 0);
+	ApplyWorldMode(EMode::Opaque);
 	const C3D_Tex *bound = nullptr;
 	bool anyBound = false;
 	bool masked = false;
+	// Passes: 0 the sky, 1 the opaque and masked world, 2 the see-through sprites.
+	for (int pass = 0; pass < 3; ++pass)
 	for (const FWorldDraw &draw : WorldDraws)
 	{
+		if ((draw.Sky ? 0 : draw.Blended ? 2 : 1) != pass) continue;
+		C3D_DepthTest(pass != 0, GPU_GREATER, pass == 1 ? GPU_WRITE_ALL : GPU_WRITE_COLOR);
 		const C3D_Tex *texture = draw.Textured ? &draw.Texture : nullptr;
-		if (!anyBound || texture != bound || draw.Masked != masked)
+		if (pass == 2)
 		{
-			ApplyMode(texture == nullptr ? EMode::NoTexture :
-				(draw.Masked ? EMode::Normal : EMode::Opaque), 0);
+			C3D_BlendingColor(static_cast<u32>(draw.Alpha) << 24);
+			C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_CONSTANT_ALPHA,
+				draw.Style == E3DSGpuWorldStyle::Add ? GPU_ONE : GPU_ONE_MINUS_CONSTANT_ALPHA,
+				GPU_ONE, GPU_ZERO);
+			ApplyWorldMode(draw.Style == E3DSGpuWorldStyle::Stencil ? EMode::Stencil : EMode::Normal);
+			C3D_TexBind(0, const_cast<C3D_Tex *>(texture));
+			C3D_AlphaTest(true, GPU_GREATER, 0);
+			anyBound = false;
+		}
+		else if (!anyBound || texture != bound || draw.Masked != masked)
+		{
+			ApplyWorldMode(texture == nullptr ? EMode::NoTexture :
+				(draw.Masked ? EMode::Normal : EMode::Opaque));
 			C3D_TexBind(0, const_cast<C3D_Tex *>(texture));
 			C3D_AlphaTest(draw.Masked, GPU_GREATER, 0);
 			bound = texture;
@@ -1202,19 +1290,21 @@ void TiltMatrix(C3D_Mtx &m, const float matrix[16])
 }
 }
 
-void I_3DSGpuWorldBegin(const float matrix[16], const float *rightMatrix, uint32_t clearColor)
+void I_3DSGpuWorldBegin(const float matrix[16], const float *rightMatrix, uint32_t clearColor,
+	uint32_t fogColor)
 {
 	if (!Ready || !WorldProgramReady) return;
 	TiltMatrix(WorldMatrix, matrix);
 	WorldStereo = rightMatrix != nullptr;
 	if (WorldStereo) TiltMatrix(WorldMatrixRight, rightMatrix);
 	WorldClearColor = clearColor;
+	WorldFogColor = TevColor(fogColor >> 24, (fogColor >> 16) & 0xff, (fogColor >> 8) & 0xff);
 	WorldDraws.clear();
 	WorldUsed = 0;
 	WorldQueued = true;
 }
 
-F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool masked)
+F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool masked, bool sky)
 {
 	if (!WorldQueued || count <= 0 || WorldUsed + static_cast<size_t>(count) > WorldArenaVertices)
 		return nullptr;
@@ -1222,6 +1312,8 @@ F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool 
 	FWorldDraw draw{};
 	draw.Textured = texture != nullptr;
 	draw.Masked = masked;
+	draw.Sky = sky;
+	draw.Blended = false;
 	if (texture != nullptr) draw.Texture = texture->Texture;
 	draw.First = static_cast<uint32_t>(WorldUsed);
 	draw.Count = static_cast<uint32_t>(count);
@@ -1229,7 +1321,7 @@ F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool 
 	{
 		// Same texture as the previous draw and contiguous: one draw.
 		FWorldDraw &last = WorldDraws.back();
-		if (last.Textured == draw.Textured && last.Masked == draw.Masked &&
+		if (!last.Blended && last.Textured == draw.Textured && last.Masked == draw.Masked && last.Sky == draw.Sky &&
 			last.First + last.Count == draw.First &&
 			(!draw.Textured || last.Texture.data == draw.Texture.data))
 		{
@@ -1238,6 +1330,27 @@ F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *texture, int count, bool 
 			return out;
 		}
 	}
+	WorldDraws.push_back(draw);
+	WorldUsed += static_cast<size_t>(count);
+	return out;
+}
+
+F3DSGpuWorldVertex *I_3DSGpuWorldQueueBlended(F3DSGpuTexture *texture, int count,
+	E3DSGpuWorldStyle style, uint8_t alpha)
+{
+	if (!WorldQueued || texture == nullptr || count <= 0 ||
+		WorldUsed + static_cast<size_t>(count) > WorldArenaVertices)
+		return nullptr;
+	F3DSGpuWorldVertex *out = WorldArenas[CurrentArena] + WorldUsed;
+	FWorldDraw draw{};
+	draw.Textured = true;
+	draw.Masked = true;
+	draw.Blended = true;
+	draw.Style = style;
+	draw.Alpha = alpha;
+	draw.Texture = texture->Texture;
+	draw.First = static_cast<uint32_t>(WorldUsed);
+	draw.Count = static_cast<uint32_t>(count);
 	WorldDraws.push_back(draw);
 	WorldUsed += static_cast<size_t>(count);
 	return out;
@@ -1264,7 +1377,7 @@ void I_3DSGpuBottomChanged()
 	if (!Ready) return;
 	BottomDirty = true;
 	// Nothing presented lately (a dump, a level load): show it now. Not through a citro3d
-	// frame: one with no draw is never submitted, and the next C3D_FrameBegin then waits for
+	// frame: one with no draw is never submitted, and the next frame then waits for
 	// it forever. With the GPU idle the CPU copies the buffer into the framebuffer instead;
 	// BottomDirty stays set, so the next GPU frame outputs it again into both buffers.
 	if (osGetTime() - LastPresentMilliseconds < 200u) return;
@@ -1471,9 +1584,13 @@ void I_3DSGpuOverlayRect(float x, float y, float width, float height, uint32_t r
 #else
 
 bool I_3DSGpuInit() { return false; }
-void I_3DSGpuWorldBegin(const float *, const float *, uint32_t) {}
+void I_3DSGpuWorldBegin(const float *, const float *, uint32_t, uint32_t) {}
 void I_3DSGpuBottomNewTic() {}
-F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *, int, bool) { return nullptr; }
+F3DSGpuWorldVertex *I_3DSGpuWorldQueue(F3DSGpuTexture *, int, bool, bool) { return nullptr; }
+F3DSGpuWorldVertex *I_3DSGpuWorldQueueBlended(F3DSGpuTexture *, int, E3DSGpuWorldStyle, uint8_t)
+{
+	return nullptr;
+}
 void I_3DSGpuTextureScale(const F3DSGpuTexture *, float &scaleS, float &scaleT) { scaleS = scaleT = 1.0f; }
 float I_3DSGpuLastDrawingTime() { return 0.0f; }
 void I_3DSGpuShutdown() {}

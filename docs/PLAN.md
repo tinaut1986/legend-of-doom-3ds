@@ -19,40 +19,57 @@ change (what goes where: the table in `CLAUDE.md`).
   (2026-10-12): almost everything runs on the CPU, it is not known to reach 60 fps
   even on the New 3DS, there is no stereo 3D, and the Old 3DS does not run it.
 
-## Status (2026-10-12)
+## Status (2026-10-15)
 
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.2.1` (on origin). Published: **`v0.2.0`** (2026-10-14, **stable**,
-the first: `main` merged and tagged), with the GPU world, stereo 3D, the NES bottom screen, the
-languages, AUTO UPDATE and the memory fix; before it **`v0.1.0`** (2026-10-12, beta).
+**Release line:** `release/v0.2.4` (on origin; renamed from `release/v0.2.3` right after its tag).
+Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`** beta, **`v0.2.1`** stable (2026-10-15),
+**`v0.2.0`** stable (2026-10-14, the first), `v0.1.0` beta. `main` holds the last stable merge.
 
 **Branches:**
 
 | Branch | What | State |
 |---|---|---|
-| _(merged)_ | `perf/frame-parts`, `perf/static-thinkers`, `feat/overlay-ftp-button`, `feat/bottom-nes` (U4), `feat/stereo-3d` (P3) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS (stereo depth, sprites, trees and weapon; the bottom screen; nothing static stuck; the FTP button; the game as usual); what each holds and what was measured: [`docs/handoff-2026-10-14.md`](handoff-2026-10-14.md). The local `test/stereo-bottom` is now redundant | |
-| _(merged, to check)_ | `feat/ingame-spanish` (U5: the game's own text in Spanish), `fix/updater-channels` (the Beta channel sees stable releases; notes since the installed version; CHANGELOG: ALL), `chore/remove-render-option` (no RENDER option: no effect with the GPU world), `docs/readme-fork` and these notes merged into `release/v0.2.1` 2026-10-15 for the v0.2.1 beta, on the owner's go-ahead, before the console check | Owner: check them on the v0.2.1 beta, then the stable release |
-| `feat/old3ds-boot` | P4.1 in progress (pushed, not merged; not yet checked on the New 3DS: the 804 MHz/L2 now come from `osSetSpeedupEnable` through `ptm:sysm`, not the exheader): one CIA for both models (no New 3DS-only SMDH flag; Old 3DS mode 80 MB; 12 MB of linear memory), map WADs stored in the pk3, a 5 MB map-load reserve. On the 2DS it gets 80 MB and the GPU, compiles ZScript, then a 1.3 MB lump fails to load on a fragmented heap (16 MB free) before the title | Next session: memory reduction first (decisions log, 2026-10-14) |
-| _(merged)_ | `feat/stable-dev-ftp-banner` (stable builds: no DEBUG tab or developer overlay, SHOW FPS in VIDEO; the install-only FTP bar with its X), `feat/auto-update` (AUTO UPDATE: the offer at start, YES / NO, notes on the top screen; an installed update restarts the game; ':' and '/' in the NES font) and `feat/install-progress` (FTP install: bars for receiving and installing, relaunch countdown) merged into `release/v0.1.1` 2026-10-14 after the owner's checks on the New 3DS with a stable-mode build posing as 0.0.9 | |
-| _(merged)_ | `feat/gpu-world-default` (the GPU draws the world in every build; stable builds cannot turn it off; owner 2026-10-14: never the CPU) and `docs/release-notes-v0.2.0` merged into `release/v0.1.1` 2026-10-14 after the owner saw it start on the GPU and approved the notes | |
-| _(merged)_ | `fix/texture-memory` (#4: the out-of-memory close after the first dungeon; texture mipmaps skipped while `r_mipmap` is off, the `ibo_data` leak on every map load, lighter map loading, heap logs) merged into `release/v0.1.1` 2026-10-14 after the owner finished the first dungeon and went back to the overworld on the New 3DS with no close (MAP01 at 62.2 MB on both returns) | |
-| _(merged)_ | `feat/gpu-world-spike` (P2.3 first step: walls and flats of the swrenderer's visible set drawn by the PICA200, `lod3ds_gpu_world`, debug builds, off by default; and the bottom map's flicker above 35 fps) merged into `release/v0.1.1` 2026-10-13 after the owner's look on the New 3DS ("60 fuera y 110 en mazmorra", no flicker) | |
-| _(merged)_ | `docs/gpu-path` (P2.1 note, P2.2 decision, the one-shot hwrenderer probe for debug builds) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead | |
-| _(merged)_ | `feat/overlay-anywhere` (the developer overlay with SELECT also over the title and its menus, owner 2026-10-13) merged into `release/v0.1.1` 2026-10-13 on the owner's go-ahead after Claude saw it work on the New 3DS | |
-| _(merged)_ | `fix/install-relaunch` (#1: the relaunch after `SITE INSTALL` waits 10 s, through libctru's chainloader) merged into `release/v0.1.1` 2026-10-13 after 6 installs in a row on the New 3DS with no loader dump | |
-| _(merged)_ | `feat/gpu-2d` (U2) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("funciona"; gameplay still ~20 fps: the 3D view, P2) | |
-| _(merged)_ | `feat/language` (U1 + U3, with `feat/native-menus`) merged into `release/v0.1.1` 2026-10-13 after the owner's check on the New 3DS ("todo ok") | |
-| _(merged)_ | `fix/ftp-stop-freeze` (from another session, merged before its check): checked on the New 3DS 2026-10-13 with build `67b4f76`, FTP SERVER turned off and on several times, once with a client connected; each stop logged `ftp stop: done` in under 0.5 s | |
-| _(none other open)_ | Merged into `release/v0.1.1` 2026-10-13 after the owner's checks on the New 3DS: `feat/console-link` (P1.4/P1.5; not yet tried: `touch` in gameplay, `console map`, the updater with the server on), `feat/perf-recorder` (P1.3), `fix/save-settings-on-quit` | |
+| `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
 
-**Priority** (2026-10-14, owner, later the same day): v0.2.0 published; next **P4 the 2DS**: boot it and aim for 60 fps
-mono there (P4.1, P4.2), since CPU savings for the Old 3DS help everything; then P3.2 / P2.4
-(stereo at 60 on the New 3DS) and #5 (title and menus at 35 fps). P2.3's parity (light, sky) for
-cost along the way.
+**Waiting for the owner's check** (done by Claude only, or not seen yet):
+- The v0.2.3 beta: that the console's updater (Beta channel) offers it from the v0.2.2 beta and
+  shows its 6 notes.
+- #6 (toasts over the map), fixed in the v0.2.2 beta: to look.
+- The Old 3DS screen can only be seen on an Old 3DS / 2DS.
+- `gpu-light-sky` is checked (owner, 2026-10-15): the hit flash, Ghini and a Wizzrobe translucent,
+  Ganon invisible, the sky, the fog, a dark cave. What is left of it is #14, low priority.
 
+**Priority** (2026-10-15, owner): the 2DS (P4.1), then #5, #7 and #14 last. P2.3's parity is closed bar the owner's check
+(see the decisions log, 2026-10-15).
 
+**Start here:**
+0. **The 2DS (P4.1).** Create `allow-old3ds.txt` (merged 2026-10-15, debug builds only; without it
+   the 2DS shows only the "not supported yet" message) in `sdmc:/3ds/Legend of Doom 3DS/` on it, install a debug build over
+   `release/v0.2.4` and read `fatal.log` and the `pool=` figures in `startup.log`. What is known: on
+   the New 3DS MAP01 loads with the heap at 53 MB of 94; the 2DS heap is ~56 MB, so there is ~3 MB
+   of room, the 10 MB pool is full at MAP01 (`pool full` x10) and the 5 MB map-load reserve is on
+   top of it. Next steps: size the pool to its real use, drop or merge the reserve, then what
+   MAP01's 21.6 MB of engine objects (`gc`) hold. The decisions log of 2026-10-15 has the rest.
+1. **#12** is done (16-bit textures, merged); no further work planned.
+2. **P2.3 parity:** nothing left that this game uses; the owner checks 3D floors (`feat/gpu-3d-floors`)
+   on the console, then it merges.
+3. Nothing is half done or uncommitted.
+
+**On the owner's consoles now (2026-10-15):**
+- **New 3DS**, `192.168.1.141` (the 2DS has used the same address; `.3ds_ftp_ip` holds it): a
+  debug build `0.2.4-dev.56.1+b4d6b62`: this line plus the parked `fix/horizon-fog-fade` (the sky
+  fade, the only difference from the release), FTP server on, the install-only marker
+  `dev-ftp.txt`, saves `save0` ("test", MAP01, the spot Claude loads), `test2` (the 48-50 fps spot
+  of #12) and three autosaves. DISTANCE is HIGH (the owner's setting); FRAMES was last left at
+  NO SKIP by Claude; `sv_cheats` is 0 again (Claude set it to warp). The player stands near
+  MAP01 (8030, -92) after Claude's warps.
+- **2DS**: the last build tried is a debug build of `0.0.0-dev+52193bd` plus the memory work
+  (2026-10-15, early morning): it stopped at the title with `operator new failure`. Nothing
+  newer has been installed there; it will show the "not supported yet" message until
+  `allow-old3ds.txt` exists.
 
 Tasks ticked [x] have been checked on the console by the owner; do not re-propose them.
 
@@ -461,3 +478,67 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   **reduce the memory the game needs first** (next session): measure what holds the heap after
   the compile and in MAP01, then compile only the actors this game uses (gzdoom.pk3 compiles
   Doom, Heretic, Hexen, Strife and Chex), then 8-bit textures, the doubled sides, caches.
+- **2026-10-15** ZScript for the 2DS: `gzdoom.pk3` compiles Doom, Heretic, Hexen, Strife and Chex;
+  this game needs only Doom's base. Dropping 136 includes (`zscript.txt`) cut the compile's heap
+  peak from ~45 MB to ~37 MB, but the files cannot just go: the kept ZScript and the mod name some
+  of their classes (`BossSpot`, `BloodySkull`, `A_AlertMonsters`, `ArtiFly`, `ArtiPoisonBag1-3`,
+  `Coin`; copied or stubbed in `lod_kept.zs`), and the engine needs to tolerate unknown classes in
+  the spawn / conversation id maps, decal generators, key groups and bot weapons. A static check by
+  class name missed all of it; what finds the rest is the compiler's own messages, which the 3DS
+  has no console for, so `fatal.log` now carries them (`ScriptErrorSummary`).
+- **2026-10-15** The 2DS heap fails on **fragmentation**, not on size: a 0.5 MB request failed with
+  9-11 MB free in pieces. What helped, in order: building the level's sides / sectors / vertices in
+  place instead of a second copy (`udmf.cpp`), reserving the big arrays while the heap the previous
+  map freed is whole, and a 10 MB pool for TArray blocks of 192 KB or more (`m_alloc.cpp`,
+  `M_ReallocBig`). The pool and the 5 MB map-load reserve together may leave the heap too small at
+  the title: measure with `pool=` in `startup.log` before keeping both.
+- **2026-10-15** Frame time on the New 3DS at MAP01, overlay closed (`perf-analyze`, debug build):
+  looking at the sea 110 fps (world 3.3 ms), looking inland 70 fps (world 5.9: BSP walk 3.3, GPU
+  hand-over 1.0; present 3.5; logic 2.4). Nothing dominates, so no pruning of the BSP is worth it
+  alone; and a node-level distance prune is not safe as it stands (a far subtree can still own the
+  columns that keep the sky out: `FarClipLine` exists for that). With FRAMES = AUTO both spots hold
+  60.00 fps, 1% low 60.
+- **2026-10-15** The "bottom-screen redraw spikes" first read from the recorder were the developer
+  overlay (CPU drawing 8 times a second, 24 ms each, 15 of them one `mallinfo()` call on a
+  fragmented heap), not the game's NES screen (`bottom_ms` 0.5 ms with the overlay closed). The
+  pause and title menus run at 35 fps because the loop waits for the next tic when nothing moves
+  (#5); that is idle time, not work.
+- **2026-10-15** #8 and #9 had one cause: with the GPU world the canvas has no world in it. A
+  native menu over a level now keeps rendering it (about 3 ms) and dims it with a GPU quad; the
+  save and load menus put their picture and text on a transparent layer of their own, shown by
+  the GPU over it (#10, #11: the picture's cache is keyed by the slot, not the texture pointer).
+  The save picture is rendered with the GPU world suspended.
+- **2026-10-15** Distant walls pop (#14): the tall mountains at the horizon are dropped at the
+  cull distance (1536 + DISTANCE x 512) and a whole pale block appears between two frames, in
+  front of the clouds; fading the sky to the fog colour (`fix/horizon-fog-fade`) does not hide
+  it. The fix is to keep drawing the far tall segments, or fade them to transparent over a margin.
+  Not done: MAP01's TEXTMAP has every sector at height 0 (ACS / the level postprocessor builds
+  the relief at load), so "tall" would have to be read from the live planes each frame. Owner:
+  "if it is a lot of work, it is not that serious".
+- **2026-10-15** Owner's decisions: no dynamic lights from fire for now (#13 closed); the clock
+  muting every sound is wanted fixed (#15); DISTANCE stays HIGH on the New 3DS.
+- **2026-10-15** Production build checked on the New 3DS by the owner (`--mode prod`, `debug_tools=0`):
+  runs, no DEBUG tab or overlay, FRAMES works, the messages and the progress bar are right. A
+  production build's FTP is install-only: the saves and logs cannot be read until a debug build
+  is installed again (`--install` works over it).
+- **2026-10-15** #15 fixed in `fix/clock-keeps-sfx`: `PowerTimeFreezer` pauses the music only
+  (`S_PauseSound(false, true)`) and resumes it with `S_ResumeSound(true)` when the effect ends; the
+  effects were paused with it, so the sword was mute. Checked by the owner on the New 3DS.
+- **2026-10-15** `feat/gpu-3d-floors` merged into the release line after the owner walked MAP01's cave mouths
+  (entering one teleports to its interior, by design). P2.3 against the game's own data (the ten maps' UDMF and the ACS): only MAP01 has 3D
+  floors (7 `Sector_Set3dFloor` lines, ~40 sectors of 128x128: additive cave mouths `CAVEENT`/`CAVEENTB`
+  and solid `OBRKB` blocks). No real portals (`portal_ceil_norender` is a flag that draws nothing), no
+  translucent lines, no coloured light or fade, no scrolling, no decals (monsters carry
+  `NOBLOODDECALS`), animated textures only the water flats. So `feat/gpu-3d-floors` (planes and sides of
+  every ffloor, opaque / translucent in depth order / additive batched per texture) completes what the
+  game needs: A/B captures (GPU against `lod3ds_gpu_world 0`) at 8 spots are identical, the water
+  oscillates on the GPU, the flashes ride the GPU 2D. Not looked at: the waterfall `WTRFL01` (not found
+  in MAP01's sidedefs) and views from inside a 3D floor. The ffloor sides' light is the target
+  sector's, not the control sector's.
+- **2026-10-15** #12 measured at `test2` (save slot 1) on the New 3DS, overlay closed, fresh boots: the
+  GPU is the limit, not the CPU (12 draws, 3.4k vertices; GPU 13.5 ms mono, 17.7 stereo, with
+  `capture` 2.5 ms and `walk` 3.7 ms), so the world's RGBA8 textures read from linear RAM were the
+  cost. World textures (walls, flats, sky) are now built as 565 when opaque, 5551 when their alpha is
+  binary, 8888 otherwise (`BuildTexture`, cvar `lod3ds_gpu_texture16`, debug builds): stereo
+  48.2 -> 61.4 fps, mono 76.7 -> 86.0, and half the memory of those textures (good for P4). Textures are
+  kept across map loads, so the cvar only shows on a fresh boot. Sprites and 2D stay 8888.

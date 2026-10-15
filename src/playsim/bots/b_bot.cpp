@@ -305,7 +305,9 @@ void InitBotStuff()
 	static const char *warnbotmissiles[] = { "PlasmaBall", "Ripper", "HornRodFX1" };
 	for(unsigned i=0;i<countof(warnbotmissiles);i++)
 	{
-		AActor *a = GetDefaultByName (warnbotmissiles[i]);
+		// HornRodFX1 is a Heretic class, not compiled on the 3DS (zscript.txt): look it up first.
+		PClass *acls = PClass::FindClass(warnbotmissiles[i]);
+		AActor *a = acls != nullptr ? (AActor *)acls->Defaults : nullptr;
 		if (a != nullptr)
 		{
 			a->flags3|=MF3_WARNBOT;

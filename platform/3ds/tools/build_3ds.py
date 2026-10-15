@@ -308,6 +308,38 @@ def install_into_running_game(cia, host, port):
         return 1
 
 
+def upload_to_cias(cia, host, port, remote_name):
+    """Uploads the CIA to cias/ on the console. Works with ftpd/FBI (any login) and with the game's own
+    server (needs its login; ALLO gives the size, so the progress bar on the console has a total).
+    Returns 0 on success."""
+    try:
+        ftp = ftplib.FTP()
+        ftp.connect(host, port, timeout=30)
+        try:
+            ftp.login(*ftp_login())
+        except ftplib.error_perm:
+            ftp.login()  # a server that wants no login at all
+        try:
+            ftp.mkd("cias")
+        except ftplib.error_perm:
+            pass  # already there
+        try:
+            ftp.sendcmd(f"ALLO {os.path.getsize(cia)}")
+        except ftplib.error_perm:
+            pass  # not every server knows it
+        with open(cia, "rb") as f:
+            ftp.storbinary("STOR cias/" + remote_name, f, blocksize=64 * 1024)
+        try:
+            ftp.quit()
+        except (OSError, EOFError, ftplib.Error):
+            pass
+        return 0
+    except (OSError, EOFError, ftplib.Error) as e:
+        print(f"\n{BOLD}{RED}✗ Upload failed: {e}{RESET}")
+        print(f"{DIM}Is an FTP server (ftpd, or the game's with OPTIONS -> DEVELOPER -> FTP SERVER) running on {host}:{port}?{RESET}")
+        return 1
+
+
 def run_step(cmd, env, verbose, what):
     """Run one build step. Returns (returncode, captured output)."""
     if verbose:
@@ -353,10 +385,6 @@ def run_build(debug=True, send_ftp=False, ftp_host="", ftp_port=5000, clean=Fals
     if clean:
         steps.append(("Cleaning (build-3ds/game)", ["rm", "-rf", GAME_DIR]))
     steps.append(("Building the CIA", ["bash", BUILD_SH, profile]))
-    if send_ftp and not install:
-        # The CIA's path is only known once the build has written its manifest.
-        steps.append((f"Sending to {ftp_host}:{ftp_port}", ["curl", "--ftp-create-dirs", "-T", cia_path,
-                      f"ftp://{ftp_host}:{ftp_port}/cias/{remote_name}"]))
 
     for n, (label, cmd) in enumerate(steps, 1):
         cmd = [c() if callable(c) else c for c in cmd] if not dry_run else \
@@ -368,6 +396,13 @@ def run_build(debug=True, send_ftp=False, ftp_host="", ftp_port=5000, clean=Fals
         rc, _ = run_step(cmd, env, verbose, label)
         if rc != 0:
             return rc
+
+    if send_ftp and not install:
+        print(f"{BOLD}{CYAN}[{len(steps) + 1}/{len(steps) + 1}]{RESET} Sending to {ftp_host}:{ftp_port}...")
+        if dry_run:
+            print(f"      {DIM}ALLO + STOR cias/{remote_name}{RESET}")
+        elif upload_to_cias(cia_path(), ftp_host, ftp_port, remote_name) != 0:
+            return 1
 
     if install:
         print(f"{BOLD}{CYAN}[{len(steps) + 1}/{len(steps) + 1}]{RESET} Installing over the running game at {ftp_host}:{ftp_port}...")

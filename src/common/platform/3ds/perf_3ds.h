@@ -24,6 +24,9 @@ enum class E3DSPerfPart
 	Sound,      // positional sounds and music (S_UpdateSounds, S_UpdateMusic)
 	FrameStart, // texture animations, the sky, PolyFrameBuffer::BeginFrame (the canvas clear)
 	Hud,        // the view border, the status bar / HUD, messages (engine 2D recording)
+	// Inside World, so left out of the "covered" sum (other_ms) and written as extra columns:
+	Walk,       // the swrenderer's BSP walk (OpaquePass::RenderScene)
+	Capture,    // handing the visible set to the GPU world (I_3DSGpuWorldCapture)
 	Count
 };
 

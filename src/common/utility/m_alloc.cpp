@@ -51,13 +51,19 @@
 #include "printf.h"
 #include "common/platform/3ds/diagnostics_3ds.h"
 
+size_t M_3DSPoolUsed(size_t *high);
+
 void M_3DSLogHeap(const char *stage)
 {
 	const struct mallinfo heap = mallinfo();
-	Printf("[3DS memory] %s: used=%d arena=%d free=%d engine=%zu linear=%lu\n",
+	Printf(PRINT_LOG, "[3DS memory] %s: used=%d arena=%d free=%d engine=%zu linear=%lu\n",
 		stage, heap.uordblks, heap.arena, heap.fordblks, GC::AllocBytes,
 		(unsigned long)linearSpaceFree());
-	I_3DSStartupLog(stage);
+	char full[160];
+	size_t high = 0;
+	const size_t used = M_3DSPoolUsed(&high);
+	snprintf(full, sizeof(full), "%s pool=%zu/%zu", stage, used, high);
+	I_3DSStartupLog(full);
 }
 
 // caller: the return address in M_Malloc/M_Realloc, for addr2line on the build's ELF.
@@ -238,6 +244,18 @@ void *M_Realloc_Dbg(void *memblock, size_t size, const char *file, int lineno)
 #endif
 
 #if !defined(__solaris__) && !defined(__OpenBSD__) && !defined(__DragonFly__)
+#ifdef __3DS__
+namespace { bool InPool(const void *p); void PoolFree(void *p); }
+void M_Free (void *block)
+{
+	if (block != NULL)
+	{
+		if (InPool(block)) { PoolFree(block); return; }
+		GC::AllocBytes -= _msize(block);
+		free(block);
+	}
+}
+#else
 void M_Free (void *block)
 {
 	if (block != NULL)
@@ -246,6 +264,7 @@ void M_Free (void *block)
 		free(block);
 	}
 }
+#endif
 #else
 void M_Free (void *block)
 {
@@ -254,5 +273,138 @@ void M_Free (void *block)
 		GC::AllocBytes -= _msize(block);
 		free(((size_t*) block)-1);
 	}
+}
+#endif
+
+#ifdef __3DS__
+// Large-array pool ------------------------------------------------------------------------------
+// The 2DS gives the game a ~55 MB heap and map loading asks for several multi-megabyte arrays at
+// once; by then the heap holds 10 MB free in pieces smaller than 0.5 MB and the request fails
+// (MAP01, 2026-10-15). TArray's big blocks come from a pool taken at the first allocation instead,
+// as a first-fit list with coalescing. A block that does not fit the pool falls back to the heap.
+namespace
+{
+	constexpr size_t PoolBytes = 10u * 1024u * 1024u;
+	constexpr size_t PoolMin = 192u * 1024u;		// smaller requests stay on the heap
+	struct PoolHeader { size_t size; size_t used; size_t pad0, pad1; };	// 16 bytes
+	char *Pool = nullptr;
+	bool PoolTried = false;
+	size_t PoolHigh = 0;
+
+	void PoolInit()
+	{
+		if (PoolTried) return;
+		PoolTried = true;
+		Pool = (char *)malloc(PoolBytes);
+		if (Pool != nullptr)
+		{
+			PoolHeader *h = (PoolHeader *)Pool;
+			h->size = PoolBytes;
+			h->used = 0;
+		}
+	}
+
+	bool InPool(const void *p) { return Pool != nullptr && (const char *)p > Pool && (const char *)p < Pool + PoolBytes; }
+
+	size_t PoolUsed()
+	{
+		size_t used = 0;
+		for (char *c = Pool; c < Pool + PoolBytes; c += ((PoolHeader *)c)->size)
+			if (((PoolHeader *)c)->used) used += ((PoolHeader *)c)->size;
+		return used;
+	}
+
+	void PoolCoalesce()
+	{
+		for (char *c = Pool; c < Pool + PoolBytes;)
+		{
+			PoolHeader *h = (PoolHeader *)c;
+			char *n = c + h->size;
+			if (!h->used && n < Pool + PoolBytes && !((PoolHeader *)n)->used)
+				h->size += ((PoolHeader *)n)->size;
+			else
+				c = n;
+		}
+	}
+
+	void *PoolAlloc(size_t size)
+	{
+		const size_t need = ((size + 15) & ~(size_t)15) + sizeof(PoolHeader);
+		for (char *c = Pool; c < Pool + PoolBytes; c += ((PoolHeader *)c)->size)
+		{
+			PoolHeader *h = (PoolHeader *)c;
+			if (h->used || h->size < need) continue;
+			if (h->size - need >= 64)
+			{
+				PoolHeader *rest = (PoolHeader *)(c + need);
+				rest->size = h->size - need;
+				rest->used = 0;
+				h->size = need;
+			}
+			h->used = 1;
+			const size_t used = PoolUsed();
+			if (used > PoolHigh) PoolHigh = used;
+			return c + sizeof(PoolHeader);
+		}
+		return nullptr;
+	}
+
+	size_t PoolSize(void *p) { return ((PoolHeader *)((char *)p - sizeof(PoolHeader)))->size - sizeof(PoolHeader); }
+
+	void PoolFree(void *p)
+	{
+		((PoolHeader *)((char *)p - sizeof(PoolHeader)))->used = 0;
+		PoolCoalesce();
+	}
+}
+
+size_t M_3DSPoolUsed(size_t *high)
+{
+	if (high != nullptr) *high = PoolHigh;
+	return Pool != nullptr ? PoolUsed() : 0;
+}
+
+void *M_ReallocBig(void *memblock, size_t size)
+{
+	PoolInit();
+	if (Pool == nullptr) return M_Realloc(memblock, size);
+
+	if (memblock != nullptr && InPool(memblock))
+	{
+		const size_t have = PoolSize(memblock);
+		if (size <= have) return memblock;	// the pool does not give memory back by shrinking
+		void *nb = PoolAlloc(size);
+		if (nb == nullptr)
+		{
+			// Pool full: move the array out to the heap (its content is copied there).
+			void *hb = malloc(size);
+			if (hb == nullptr) M_FatalOutOfMemory("realloc", size, __builtin_return_address(0));
+			memcpy(hb, memblock, have);
+			PoolFree(memblock);
+			GC::AllocBytes += _msize(hb);
+			return hb;
+		}
+		memcpy(nb, memblock, have);
+		PoolFree(memblock);
+		return nb;
+	}
+	if (size >= PoolMin)
+	{
+		void *nb = PoolAlloc(size);
+		if (nb != nullptr)
+		{
+			if (memblock != nullptr)
+			{
+				const size_t have = _msize(memblock);
+				memcpy(nb, memblock, have < size ? have : size);
+				M_Free(memblock);
+			}
+			return nb;
+		}
+		char stage[64];
+		snprintf(stage, sizeof(stage), "pool full: %zu (high %zu)", size, PoolHigh);
+		I_3DSStartupLog(stage);
+	}
+	return M_Realloc(memblock, size);
 }
 #endif

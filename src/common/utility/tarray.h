@@ -499,8 +499,18 @@ public:
 		// first destroys all content and then rebuilds the array.
 		if (Count > 0) DoDelete(0, Count - 1);
 		Count = 0;
+		// A block reserved ahead (map loading) that is big enough is kept as it is, without shrinking it.
+		// Otherwise free the old block first: growing it by half and then shrinking it needs two blocks
+		// at once, which a fragmented 3DS heap cannot give (map load, 2026-10-15).
+		const bool keep = Array != NULL && Most >= amount && Most - amount <= amount / 4;
+		if (!keep && Array != NULL && Most != amount)
+		{
+			M_Free(Array);
+			Array = NULL;
+			Most = 0;
+		}
 		Resize(amount);
-		ShrinkToFit();
+		if (!keep) ShrinkToFit();
 	}
 	// Reserves amount entries at the end of the array, but does nothing
 	// with them.
@@ -571,7 +581,7 @@ private:
 	void DoResize ()
 	{
 		size_t allocsize = sizeof(T)*Most;
-		Array = (T *)M_Realloc (Array, allocsize);
+		Array = (T *)M_ReallocBig (Array, allocsize);
 	}
 
 	void DoDelete (unsigned int first, unsigned int last)

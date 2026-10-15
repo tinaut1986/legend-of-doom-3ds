@@ -759,7 +759,7 @@ OpenALSoundRenderer::OpenALSoundRenderer()
 #ifdef __3DS__
 	// Keep this in the boot log: source allocation is the first end-to-end
 	// confirmation that the NDSP-backed OpenAL context is usable.
-	Printf("[3DS audio] OpenAL source pool: %u sources\n", Sources.Size());
+	Printf(PRINT_LOG, "[3DS audio] OpenAL source pool: %u sources\n", Sources.Size());
 #endif
 
 	WasInWater = false;

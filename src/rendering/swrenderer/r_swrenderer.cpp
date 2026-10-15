@@ -32,6 +32,9 @@
 **
 */
 
+#ifdef __3DS__
+#include "common/platform/3ds/gpu_world_3ds.h"
+#endif
 #include <cstring>
 #include <vector>
 
@@ -209,6 +212,7 @@ void FSoftwareRenderer::WriteSavePic (player_t *player, FileWriter *file, int wi
 	DCanvas pic(width, height, true);
 	std::memset(pic.GetPixels(), 0, pic.GetPitch() * height * 4);
 	mScene.MainThread()->Viewport->RenderingSavePicture = true;
+	I_3DSGpuWorldSuspend(true);
 #else
 	DCanvas pic(width, height, false);
 #endif
@@ -219,6 +223,7 @@ void FSoftwareRenderer::WriteSavePic (player_t *player, FileWriter *file, int wi
 	r_viewwindow = mScene.MainThread()->Viewport->viewwindow;
 #ifdef __3DS__
 	mScene.MainThread()->Viewport->RenderingSavePicture = false;
+	I_3DSGpuWorldSuspend(false);
 	std::vector<uint8_t> rgb(width * height * 3);
 	for (int y = 0; y < height; ++y)
 		for (int x = 0; x < width; ++x)

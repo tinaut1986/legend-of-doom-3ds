@@ -200,6 +200,8 @@ int main (int argc, char **argv)
 	// makes the New 3DS-only performance policy explicit.
 	osSetSpeedupEnable(true);
 	I_3DSStartupLog("main-enter");
+	I_3DSStartupLog(I_3DSReserveMapLoadMemory()
+		? "map-load-reserve-ready" : "map-load-reserve-unavailable");
 	#ifdef LOD3DS_SAFE_SOFTWARE
 	I_3DSStartupLog(I_3DSReserveRendererMemory()
 		? "renderer-reserve-ready" : "renderer-reserve-unavailable");
@@ -231,6 +233,8 @@ int main (int argc, char **argv)
 	// dump 00000101, where a pre-SDL CPU write targeted protected VRAM.
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) >= 0)
 	{
+		// An Old 3DS / 2DS gets a message instead of the memory failure that follows.
+		if (I_3DSUnsupportedConsoleScreen()) return 0;
 		I_3DSLoadingScreenStart();
 	}
 	I_3DSStartupLog("sdl-core-ready");

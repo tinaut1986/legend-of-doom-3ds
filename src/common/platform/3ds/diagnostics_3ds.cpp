@@ -4,6 +4,7 @@
 #include "app_paths_3ds.h"
 #include "cia_install_3ds.h"
 #include "ftp_server_3ds.h"
+#include "gpu_world_3ds.h"
 #include "gpu_3ds.h"
 #include "lod3ds_version.h"
 
@@ -81,6 +82,7 @@ CVAR(Bool, lod3ds_map_collisions, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 // (ftp_server_3ds.h, debug_link_3ds.h). Archived, so it comes back after a relaunch.
 CVAR(Bool, lod3ds_ftp_server, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 extern uint64_t LastCount;
+const char *I_3DSSystemLanguage();
 extern double LastFrameMilliseconds;
 
 #ifndef LOD3DS_BUILD_PROFILE_NAME
@@ -154,6 +156,12 @@ uint32_t SuppressedComboMask;
 constexpr unsigned BottomScreenWidth = 320;
 constexpr unsigned BottomScreenHeight = 240;
 constexpr uint64_t OverlayRefreshMilliseconds = 125;
+// The developer overlay's figures change once a second at most (the FPS box shows the last whole
+// second), and a redraw is ~9 ms of CPU drawing in the game's own frame: 8 of them a second
+// pulled a 110 fps game down to 66 with spikes of 25 ms (2026-10-15).
+constexpr uint64_t DeveloperOverlayRefreshMilliseconds = 1000;
+// mallinfo() walks the whole heap: ~15 ms on a 55-96 MB heap in pieces. Read it rarely.
+constexpr uint64_t HeapInfoRefreshMilliseconds = 4000;
 constexpr uint64_t OverlayNotificationMilliseconds = 4000;
 uint64_t OverlayLastDrawMilliseconds;
 uint64_t OverlayNotificationUntilMilliseconds;
@@ -163,6 +171,8 @@ char OverlayNotification[48];
 uint32_t OverlayNotificationSerial;
 // A bar under the toast's text, in thousandths (an FTP install's progress), or -1 for none.
 int OverlayNotificationProgress = -1;
+// Whether the bar's percentage is written beside it (a transfer) or not (a countdown).
+bool OverlayNotificationPercent = false;
 bool DiagnosticProgressActive;
 EDiagnosticDumpMode DiagnosticProgressMode = EDiagnosticDumpMode::None;
 uint64_t DiagnosticProgressValue;
@@ -502,6 +512,104 @@ bool DrawTriforceAnimationFrame(unsigned frame)
 	return true;
 }
 
+// An Old 3DS / 2DS cannot run the game yet (it runs out of memory loading the first map): say so
+// on the top screen instead of closing with no word. One CIA serves both families (the SMDH has
+// no New 3DS-only flag), so the check is at run time. Returns true when the screen was shown
+// and the game should exit. Debug builds can show it on a New 3DS: a force-old3ds.txt in the
+// data folder.
+bool UnsupportedConsoleScreen()
+{
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+#if LOD3DS_DEBUG_TOOLS
+	if (isNew3DS)
+	{
+		FILE *forced = std::fopen(LOD3DS_APP_DIR "/force-old3ds.txt", "rb");
+		if (forced != nullptr)
+		{
+			std::fclose(forced);
+			isNew3DS = false;
+		}
+	}
+#endif
+	if (isNew3DS) return false;
+#if LOD3DS_DEBUG_TOOLS
+	// For working on the Old 3DS / 2DS port itself: an allow-old3ds.txt in the data folder lets a
+	// debug build try to run (it may still run out of memory; see fatal.log).
+	if (FILE *allowed = std::fopen(LOD3DS_APP_DIR "/allow-old3ds.txt", "rb"))
+	{
+		std::fclose(allowed);
+		return false;
+	}
+#endif
+
+	u16 physicalWidth = 0;
+	u16 physicalHeight = 0;
+	unsigned char *framebuffer = gfxGetFramebuffer(GFX_TOP, GFX_LEFT,
+		&physicalWidth, &physicalHeight);
+	if (framebuffer == nullptr || physicalWidth != 240 || physicalHeight != 400) return false;
+
+	const bool spanish = std::strcmp(I_3DSSystemLanguage(), "es") == 0;
+	const char *const english[] = {
+		"THIS CONSOLE IS NOT SUPPORTED YET", "",
+		"THE OLD 3DS / 2DS VERSION IS STILL", "IN DEVELOPMENT. WE ARE TRYING",
+		"TO MAKE IT WORK.", "",
+		"FOR NOW IT NEEDS A NEW 3DS.", "", "PRESS A OR START TO EXIT" };
+	const char *const castellano[] = {
+		"ESTA CONSOLA TODAVIA NO ES COMPATIBLE", "",
+		"LA VERSION PARA OLD 3DS / 2DS SIGUE", "EN DESARROLLO. ESTAMOS INTENTANDO",
+		"QUE FUNCIONE.", "",
+		"DE MOMENTO NECESITA UNA NEW 3DS.", "", "PULSA A O START PARA SALIR" };
+	const char *const *lines = spanish ? castellano : english;
+
+	auto put = [&](int x, int y, unsigned char red, unsigned char green, unsigned char blue)
+	{
+		if (x < 0 || x >= 400 || y < 0 || y >= 240) return;
+		const size_t offset = 4u * (static_cast<size_t>(x) * 240u + (239u - static_cast<unsigned>(y)));
+		framebuffer[offset + 0] = 255;
+		framebuffer[offset + 1] = blue;
+		framebuffer[offset + 2] = green;
+		framebuffer[offset + 3] = red;
+	};
+	auto text = [&](int x, int y, const char *line, int scale, unsigned char red,
+		unsigned char green, unsigned char blue)
+	{
+		for (; *line != '\0'; ++line, x += 6 * scale)
+		{
+			const uint8_t *rows = LoadingFindGlyph(*line);
+			if (rows == nullptr) continue;
+			for (int row = 0; row < 7; ++row)
+				for (int column = 0; column < 5; ++column)
+					if ((rows[row] & (1u << (4 - column))) != 0)
+						for (int dy = 0; dy < scale; ++dy)
+							for (int dx = 0; dx < scale; ++dx)
+								put(x + column * scale + dx, y + row * scale + dy, red, green, blue);
+		}
+	};
+	std::memset(framebuffer, 0, 400u * 240u * 4u);
+	for (int x = 0; x < 400; ++x) { put(x, 40, 217, 74, 25); put(x, 41, 217, 74, 25); }
+	const char *title = "LEGEND OF DOOM 3DS";
+	text((400 - LoadingTextWidth(title, 2)) / 2, 16, title, 2, 245, 151, 49);
+	int y = 62;
+	for (int i = 0; i < 9; ++i, y += 14)
+	{
+		const bool last = i == 8;
+		text((400 - LoadingTextWidth(lines[i], 1)) / 2, last ? y + 14 : y, lines[i], 1,
+			last ? 132 : 242, last ? 183 : 236, last ? 232 : 213);
+	}
+	I_3DSCleanDataCache(framebuffer, 400u * 240u * 4u);
+	gfxScreenSwapBuffers(GFX_TOP, false);
+	I_3DSStartupLog("unsupported-console-screen");
+
+	while (aptMainLoop())
+	{
+		hidScanInput();
+		if (hidKeysDown() & (KEY_A | KEY_START | KEY_B)) break;
+		gspWaitForVBlank();
+	}
+	return true;
+}
+
 void TriforceAnimationMain(void *)
 {
 	unsigned frame = 1;
@@ -544,6 +652,8 @@ void OverlayTextSized(unsigned char *framebuffer, int x, int y, const char *text
 	int glyphWidth, int glyphHeight, int advance, FOverlayColor color);
 void OverlayCenteredText(unsigned char *framebuffer, int x, int width, int y,
 	const char *text, int scale, FOverlayColor color);
+// The interface's language (native_menu_3ds.inc).
+const char *Tr(const char *english);
 
 void OverlayPutPixel(unsigned char *framebuffer, int x, int y, FOverlayColor color)
 {
@@ -1350,7 +1460,7 @@ void DrawBottomAutomap(unsigned char *framebuffer, int mapX = 31, int mapY = 38,
 	if (!view.Valid)
 	{
 		OverlayCenteredText(framebuffer, MapX, MapWidth, MapY + MapHeight / 2 - 4,
-			"MAP UNAVAILABLE", 1, OverlayIvory);
+			Tr("MAP UNAVAILABLE"), 1, OverlayIvory);
 		return;
 	}
 	if (BottomMapTerrainOnGpu) return;
@@ -1532,12 +1642,13 @@ const std::vector<FMapLine> &MapLines()
 	return lines;
 }
 
+// clipBottom: the first row the GPU must leave alone (the CPU draws something over the map there).
 void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int mapHeight,
-	double worldUnitsPerPixel)
+	double worldUnitsPerPixel, int clipBottom = 1 << 30)
 {
 	const FBottomMapView view = BottomMapView();
 	if (!view.Valid) return;
-	const int scissor[4] = { mapX, mapY, mapX + mapWidth, mapY + mapHeight };
+	const int scissor[4] = { mapX, mapY, mapX + mapWidth, std::min(mapY + mapHeight, clipBottom) };
 	const double halfWidth = mapWidth * 0.5 * worldUnitsPerPixel;
 	const double halfHeight = mapHeight * 0.5 * worldUnitsPerPixel;
 	const double minX = view.CenterX - halfWidth;
@@ -2291,6 +2402,15 @@ void DrawInstallBar(unsigned char *framebuffer)
 		InstallBarY + 7, "X", 1, OverlayIvory);
 }
 
+// The toast's top row, above the install bar when it is there; the screen's height when there
+// is none. The GPU map stops above it (I_3DSOverlayFrame), or it would draw over the toast.
+int BottomToastTop()
+{
+	if (OverlayNotification[0] == '\0') return static_cast<int>(BottomScreenHeight);
+	const int height = OverlayNotificationProgress >= 0 ? 33 : 21;
+	return (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+}
+
 void DrawBottomToast(unsigned char *framebuffer)
 {
 	DrawInstallBar(framebuffer);
@@ -2301,17 +2421,29 @@ void DrawBottomToast(unsigned char *framebuffer)
 	const int width = std::min(304, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
 	const int height = bar ? 33 : 21;
 	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
-	// Above the install bar when it is there.
-	const int y = (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+	const int y = BottomToastTop();
 	OverlayRect(framebuffer, x, y, width, height, OverlayInk);
 	OverlayFrame(framebuffer, x, y, width, height, 1, OverlayBlue);
 	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
 	if (bar)
 	{
-		const int barWidth = width - 24;
+		// The percentage sits beside the bar, not in the text above it: the text, in Spanish
+		// especially, has the whole width of the toast.
+		char percent[8] = {};
+		int percentWidth = 0;
+		if (OverlayNotificationPercent)
+		{
+			std::snprintf(percent, sizeof(percent), "%d%%",
+				std::min(OverlayNotificationProgress, 1000) / 10);
+			percentWidth = NesTextWidth("100%", 1) + 6;
+		}
+		const int barWidth = width - 24 - percentWidth;
 		OverlayRect(framebuffer, x + 12, y + 20, barWidth, 6, FOverlayColor{ 60, 60, 60 });
 		OverlayRect(framebuffer, x + 12, y + 20,
 			barWidth * std::min(OverlayNotificationProgress, 1000) / 1000, 6, OverlayRed);
+		if (percentWidth > 0)
+			NesText(framebuffer, x + width - 12 - NesTextWidth(percent, 1), y + 19, percent, 1,
+				OverlayIvory);
 	}
 }
 
@@ -2338,11 +2470,13 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 	OverlayText(framebuffer, 312 - LoadingTextWidth(upstream, 1), 17, upstream, 1, OverlayIvory);
 	OverlayRect(framebuffer, 0, 29, BottomScreenWidth, 2, OverlayBlue);
 
-	const double frameMilliseconds = std::clamp(LastFrameMilliseconds, 0.0, 999.9);
-	const double fps = frameMilliseconds > 0.0 ? 1000.0 / frameMilliseconds : LastCount;
+	// The same figure as the counter on the top screen: the frames of the last whole second (and
+	// their mean time), not the smoothed time of the last frame, which swings with every spike.
+	const double fps = static_cast<double>(std::min<uint64_t>(LastCount, 999u));
+	const double frameMilliseconds = fps > 0.0 ? 1000.0 / fps : 0.0;
 	char fpsText[16] = {};
 	char frameText[24] = {};
-	std::snprintf(fpsText, sizeof(fpsText), "%.1f", std::clamp(fps, 0.0, 999.9));
+	std::snprintf(fpsText, sizeof(fpsText), "%.0f", fps);
 	std::snprintf(frameText, sizeof(frameText), "FRAME %.1fMS", frameMilliseconds);
 	OverlayFrame(framebuffer, 8, 38, 104, 89, 2, OverlayBlue);
 	OverlayText(framebuffer, 15, 44, "PERFORMANCE", 1, OverlayIvory);
@@ -2354,7 +2488,15 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 	OverlayText(framebuffer, 126, 44, "MEMORY", 1, OverlayIvory);
 	bool isNew3DS = false;
 	APT_CheckNew3DS(&isNew3DS);
-	const struct mallinfo heap = mallinfo();
+	static struct mallinfo cachedHeap;
+	static uint64_t cachedHeapAt = 0;
+	const uint64_t nowMs = osGetTime();
+	if (cachedHeapAt == 0 || nowMs - cachedHeapAt >= HeapInfoRefreshMilliseconds)
+	{
+		cachedHeap = mallinfo();
+		cachedHeapAt = nowMs;
+	}
+	const struct mallinfo &heap = cachedHeap;
 	char heapText[24] = {};
 	char linearText[24] = {};
 	std::snprintf(heapText, sizeof(heapText), "HEAP FREE %luKB",
@@ -2616,7 +2758,7 @@ bool DrawNativeSaveLoadBottomFrame(unsigned char *framebuffer,
 	if (saveCount == 0)
 	{
 		OverlayCenteredText(framebuffer, SectionLeft, SectionWidth,
-			116, "NO SAVE GAMES", 2, OverlayIvory);
+			116, Tr("NO SAVE GAMES"), 2, OverlayIvory);
 		return true;
 	}
 
@@ -3255,9 +3397,9 @@ void ComposeNativeSaveLoadTop(unsigned char *pixels, const unsigned char *menuSo
 
 void FormatFpsLabel(char *label, size_t size)
 {
-	std::snprintf(label, size, "FPS %llu  %.1fMS",
-		static_cast<unsigned long long>(std::min<uint64_t>(LastCount, 999u)),
-		std::clamp(LastFrameMilliseconds, 0.0, 999.9));
+	const uint64_t fps = std::min<uint64_t>(LastCount, 999u);
+	std::snprintf(label, size, "FPS %llu  %.1fMS", static_cast<unsigned long long>(fps),
+		fps > 0u ? 1000.0 / static_cast<double>(fps) : 0.0);
 }
 
 // The FPS counter and the crosshair as GPU overlays (gpu_3ds.h): drawn once into small images
@@ -3522,7 +3664,8 @@ void DrawBottomOverlay(bool force)
 		drawnSignature = signature;
 	}
 	else if (!force && BottomPresentation == desired &&
-		now - OverlayLastDrawMilliseconds < OverlayRefreshMilliseconds)
+		now - OverlayLastDrawMilliseconds < (desired == EBottomPresentation::DeveloperOverlay ?
+			DeveloperOverlayRefreshMilliseconds : OverlayRefreshMilliseconds))
 	{
 		return;
 	}
@@ -3566,11 +3709,17 @@ void DrawBottomOverlay(bool force)
 			else
 				DrawMenuBottomScreen(framebuffer,
 					target == EBottomPresentation::MenuDimmed ? 71u : 255u);
-			if (target == EBottomPresentation::Menu && NewSmallFont != nullptr && (now / 600u) % 2u == 0u)
+			if (target == EBottomPresentation::Menu && NewSmallFont != nullptr)
 			{
+				// On a box like the toasts': the picture behind it is light. The text blinks.
 				LoadNesFont();
 				const char *prompt = Tr("PRESS START TO BEGIN");
-				NesText(framebuffer, (320 - NesTextWidth(prompt, 1)) / 2, 116, prompt, 1, OverlayIvory);
+				const int width = NesTextWidth(prompt, 1) + 24;
+				const int x = (320 - width) / 2;
+				OverlayRect(framebuffer, x, 109, width, 21, OverlayInk);
+				OverlayFrame(framebuffer, x, 109, width, 21, 1, OverlayBlue);
+				if ((now / 600u) % 2u == 0u)
+					NesText(framebuffer, x + 12, 116, prompt, 1, OverlayIvory);
 			}
 		}
 		else
@@ -5098,9 +5247,18 @@ bool I_3DSNativeMenuOwnsFrame()
 	return NativeMenuSupported();
 }
 
+// A native menu over a level whose world the GPU draws keeps drawing that world behind it, dimmed
+// by a GPU quad: the canvas the old route froze does not have the world in it (the GPU draws it
+// at the present), so the top screen came out black. The save and load menus put their picture
+// and text in a layer of their own, shown by the GPU over the dimmed world.
+bool NativeMenuKeepsWorld()
+{
+	return NativeMenuSupported() && gamestate == GS_LEVEL && I_3DSGpuWorldActive();
+}
+
 bool I_3DSNativeMenuFrozen()
 {
-	if (!NativeMenuSupported())
+	if (!NativeMenuSupported() || NativeMenuKeepsWorld())
 	{
 		if (!NativeMenuFrozenTop.empty()) ReleaseNativeMenuFreeze();
 		return false;
@@ -5113,7 +5271,47 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 {
 	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0) return;
 	const size_t bytes = static_cast<size_t>(pitchBytes) * static_cast<size_t>(height);
-	if (!NativeMenuFrozenTop.empty() && NativeMenuFrozenWidth == width &&
+	const bool keepsWorld = gpuOverlays && NativeMenuKeepsWorld();
+	if (keepsWorld)
+	{
+		const unsigned brightness = NativeMenuCurrentBrightness();
+		if (brightness != 255u)
+			I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 255u - brightness);	// 0xRRGGBBAA: black
+		if (NativeSaveLoadMenuVisible())
+		{
+			// The selected save's picture and text, drawn on a transparent layer and shown over
+			// the dimmed world; uploaded to the GPU only when it changes.
+			static std::vector<unsigned char> layer;
+			static std::vector<uint32_t> rgba;
+			static std::vector<uint32_t> shown;
+			static F3DSGpuImage *image = nullptr;
+			layer.assign(bytes, 0);
+			DrawNativeMenuTop(layer.data(), pitchBytes, width, height);
+			rgba.resize(static_cast<size_t>(width) * height);
+			for (int y = 0; y < height; ++y)
+			{
+				const unsigned char *row = layer.data() + static_cast<size_t>(y) * pitchBytes;
+				for (int x = 0; x < width; ++x, row += 4)
+				{
+					rgba[static_cast<size_t>(y) * width + x] = (static_cast<uint32_t>(row[2]) << 24) |
+						(static_cast<uint32_t>(row[1]) << 16) | (static_cast<uint32_t>(row[0]) << 8) |
+						row[3];
+				}
+			}
+			if (image == nullptr) image = I_3DSGpuImageCreate(width, height);
+			if (image != nullptr)
+			{
+				if (shown != rgba)
+				{
+					I_3DSGpuImageUpload(image, rgba.data(), width);
+					shown = rgba;
+				}
+				I_3DSGpuOverlayImage(image, 0.0f, 0.0f, static_cast<float>(width),
+					static_cast<float>(height));
+			}
+		}
+	}
+	else if (!NativeMenuFrozenTop.empty() && NativeMenuFrozenWidth == width &&
 		NativeMenuFrozenHeight == height && NativeMenuFrozenPitch == pitchBytes)
 	{
 		std::memcpy(pixels, NativeMenuFrozenTop.data(), bytes);
@@ -5123,7 +5321,22 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		// The first frame of the menu: the game (or title) as it was, dimmed, kept for the
 		// frames that follow, which D_Display does not render (I_3DSNativeMenuFrozen).
 		const unsigned brightness = NativeMenuCurrentBrightness();
-		if (brightness != 255u)
+		if (gamestate == GS_LEVEL && I_3DSGpuWorldActive())
+		{
+			// The GPU draws the world: this canvas holds none of it, only the weapon the engine
+			// put there. The menus that come this way (save and load, which show their own
+			// picture) keep a plain black background, not the player's hands on black (#11).
+			for (int y = 0; y < height; ++y)
+			{
+				unsigned char *row = pixels + static_cast<size_t>(y) * pitchBytes;
+				for (int x = 0; x < width * 4; x += 4)
+				{
+					row[x + 0] = row[x + 1] = row[x + 2] = 0;
+					row[x + 3] = 255;
+				}
+			}
+		}
+		else if (brightness != 255u)
 		{
 			for (int y = 0; y < height; ++y)
 			{
@@ -5151,7 +5364,7 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		BottomPresentation = EBottomPresentation::NativeMenu;
 		OverlayLastDrawMilliseconds = osGetTime();
 	}
-	DrawNativeMenuTop(pixels, pitchBytes, width, height);
+	if (!keepsWorld) DrawNativeMenuTop(pixels, pitchBytes, width, height);
 	if (gpuOverlays) QueueGpuFpsOverlay();
 	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
 }
@@ -5914,7 +6127,7 @@ void I_3DSOverlayFrame()
 	{
 		using namespace BottomLayout;
 		QueueGpuMap(E3DSGpuScreen::Bottom, MapX, MapY, MapWidth, MapHeight,
-			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear);
+			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear, BottomToastTop());
 	}
 }
 
@@ -6073,6 +6286,7 @@ void I_3DSServiceConsoleLink()
 	// happens without a warning.
 	char text[sizeof(OverlayNotification)] = {};
 	int progress = -1;
+	bool percentShown = false;
 	if (relaunchAt != 0)
 	{
 		const u64 now = std::min<u64>(osGetTime(), relaunchAt);
@@ -6087,9 +6301,9 @@ void I_3DSServiceConsoleLink()
 		if (total > 0)
 		{
 			progress = static_cast<int>(std::min<unsigned long long>(done * 1000u / total, 1000u));
-			std::snprintf(text, sizeof(text), "%s %d%%", Tr(notice), progress / 10);
+			percentShown = true;
 		}
-		else std::snprintf(text, sizeof(text), "%s", Tr(notice));
+		std::snprintf(text, sizeof(text), "%s", Tr(notice));
 	}
 	static char shownText[sizeof(OverlayNotification)] = {};
 	static int shownProgress = -1;
@@ -6099,6 +6313,7 @@ void I_3DSServiceConsoleLink()
 		if (text[0] != '\0') SetOverlayNotification(text, 10u * 60u * 1000u);
 		else if (shownText[0] != '\0') SetOverlayNotification(nullptr, 0);
 		OverlayNotificationProgress = progress;
+		OverlayNotificationPercent = percentShown;
 		std::snprintf(shownText, sizeof(shownText), "%s", text);
 		shownProgress = progress;
 	}
@@ -6166,4 +6381,14 @@ void I_3DSServiceSettingsSave()
 const char *I_3DSTranslate(const char *english)
 {
 	return Tr(english);
+}
+
+void I_3DSToast(const char *english)
+{
+	SetOverlayNotification(english);
+}
+
+bool I_3DSUnsupportedConsoleScreen()
+{
+	return UnsupportedConsoleScreen();
 }

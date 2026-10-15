@@ -147,7 +147,8 @@ trimmed) plus the capture. MAP01 reaches the LCD's 60 Hz with the walk untrimmed
 time (citro3d's drawing time for the whole frame, 2D and bottom screen included) is well inside
 a frame. The estimate of the proposal holds.
 
-Missing before parity (P2.3): light (sector level and the software falloff, fog LUTs), sky,
+Missing before parity (P2.3; written at the spike, 2026-10-13: light, sky, sprites, masked mids, flat
+transforms and 3D floors have landed since, see the PLAN's decisions log of 2026-10-15): light (sector level and the software falloff, fog LUTs), sky,
 sprites and the weapon, masked mid-textures, 3D floors (MAP01), portals, slopes' texture
 alignment, flat offsets/rotation/scale, texture animation and wall scrolling (they come from
 the engine's texture lookups each frame, untested), and the swrenderer's walk trimmed to

@@ -173,7 +173,7 @@ class HardwareSafeContractTests(unittest.TestCase):
         rsf = (ROOT / "platform/3ds/cia/legend-of-doom-3ds.rsf").read_text(
             encoding="utf-8"
         )
-        self.assertIn("SystemMode: 96MB", rsf)
+        self.assertIn("SystemMode: 80MB", rsf)
         self.assertIn("SystemModeExt: 124MB", rsf)
 
     def test_safe_renderer_has_a_contiguous_startup_reserve(self):

@@ -29,6 +29,9 @@
 #include <memory>
 
 #include "i_time.h"
+#ifdef __3DS__
+#include "common/platform/3ds/diagnostics_3ds.h"
+#endif
 #include "templates.h"
 #include "version.h"
 #include "doomdef.h" 
@@ -2491,11 +2494,21 @@ void G_DoSaveGame (bool okForQuicksave, bool forceQuicksave, FString filename, c
 		savegameManager.NotifyNewSave(filename, description, okForQuicksave, forceQuicksave);
 		BackupSaveName = filename;
 
+#ifdef __3DS__
+		// A toast in the game's style, not the engine's generic notify line over the top screen.
+		const bool autosaved = description != nullptr && strncmp(description, "Autosave", 8) == 0;
+		I_3DSToast(autosaved ? "AUTOSAVED" : "GAME SAVED");
+		Printf(PRINT_LOG, "%s (%s)\n", GStrings("GGSAVED"), filename.GetChars());
+#else
 		if (longsavemessages) Printf("%s (%s)\n", GStrings("GGSAVED"), filename.GetChars());
 		else Printf("%s\n", GStrings("GGSAVED"));
+#endif
 	}
 	else
 	{
+#ifdef __3DS__
+		I_3DSToast("SAVE FAILED");
+#endif
 		Printf(PRINT_HIGH, "%s\n", GStrings("TXT_SAVEFAILED"));
 	}
 

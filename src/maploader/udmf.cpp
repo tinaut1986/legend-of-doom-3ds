@@ -2127,7 +2127,45 @@ public:
 			}
 		}
 		unsigned numlines = ParsedLines.Size();
-		Level->sides.Alloc(sidecount);
+		// A second 2.5 MB block for the final sides does not fit the 2DS heap (MAP01: 11 MB free in
+		// pieces). When every parsed side is used by exactly one line, which is nearly always, the
+		// parsed array is put in line order in place and becomes Level->sides.
+		bool inplace = false;
+#ifdef __3DS__
+		if ((unsigned)sidecount == ParsedSides.Size() && ParsedSideTextures.Size() == ParsedSides.Size())
+		{
+			TArray<int> dest;
+			dest.Resize(sidecount);
+			for (int i = 0; i < sidecount; i++) dest[i] = -1;
+			int next = 0;
+			inplace = true;
+			for (unsigned l = 0; l < numlines && inplace; l++)
+			{
+				for (int sd = 0; sd < 2; sd++)
+				{
+					if (ParsedLines[l].sidedef[sd] == NULL) continue;
+					const int m = int(intptr_t(ParsedLines[l].sidedef[sd])) - 1;
+					if (m < 0 || m >= sidecount || dest[m] != -1) { inplace = false; break; }
+					dest[m] = next++;
+				}
+			}
+			if (inplace)
+			{
+				for (int i = 0; i < sidecount; i++)
+				{
+					while (dest[i] != i)
+					{
+						const int j = dest[i];
+						std::swap(ParsedSides[i], ParsedSides[j]);
+						std::swap(ParsedSideTextures[i], ParsedSideTextures[j]);
+						std::swap(dest[i], dest[j]);
+					}
+				}
+				Level->sides.Swap(ParsedSides);
+			}
+		}
+#endif
+		if (!inplace) Level->sides.Alloc(sidecount);
 		Level->lines.Alloc(numlines);
 		int line, side;
 		auto lines = &Level->lines[0];
@@ -2146,12 +2184,12 @@ public:
 					int mapside = int(intptr_t(lines[line].sidedef[sd]))-1;
 					if (mapside < sidecount)
 					{
-						sides[side] = ParsedSides[mapside];
+						if (!inplace) sides[side] = ParsedSides[mapside];
 						sides[side].linedef = &lines[line];
 						sides[side].sector = &Level->sectors[intptr_t(sides[side].sector)];
 						lines[line].sidedef[sd] = &sides[side];
 
-						loader->ProcessSideTextures(!isExtended, &sides[side], sides[side].sector, &ParsedSideTextures[mapside],
+						loader->ProcessSideTextures(!isExtended, &sides[side], sides[side].sector, &ParsedSideTextures[inplace ? side : mapside],
 							lines[line].special, lines[line].args[0], &tempalpha[sd], missingTex);
 
 						side++;
@@ -2240,6 +2278,9 @@ public:
 		loader->MapThingsConverted.Grow(counts[0]);
 		ParsedLines.Grow(counts[1]);
 		ParsedSides.Grow(counts[2]);
+		// The final lines are the same size again: take them now, while the heap the previous map
+		// freed is still in one piece. The sides are not copied at all (see ProcessLineDefs).
+		Level->lines.Grow(counts[1]);
 		ParsedSideTextures.Grow(counts[2]);
 		ParsedSectors.Grow(counts[3]);
 		ParsedVertices.Grow(counts[4]);
@@ -2406,12 +2447,22 @@ public:
 		if (BadCoordinates)				I_Error("Map has out of range coordinates");
 
 		// Create the real vertices
+#ifdef __3DS__
+		// The parsed array already is the final one: a second block per array does not fit the
+		// fragmented 2DS heap (a 0.5 MB request failed with 9 MB free).
+		Level->vertexes.Swap(ParsedVertices);
+#else
 		Level->vertexes.Alloc(ParsedVertices.Size());
 		memcpy(&Level->vertexes[0], &ParsedVertices[0], Level->vertexes.Size() * sizeof(vertex_t));
+#endif
 
 		// Create the real sectors
+#ifdef __3DS__
+		Level->sectors.Swap(ParsedSectors);
+#else
 		Level->sectors.Alloc(ParsedSectors.Size());
 		memcpy(&Level->sectors[0], &ParsedSectors[0], Level->sectors.Size() * sizeof(sector_t));
+#endif
 		Level->extsectors.Alloc(Level->sectors.Size());
 		for(unsigned i = 0; i < Level->sectors.Size(); i++)
 		{

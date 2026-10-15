@@ -14,6 +14,10 @@ constexpr u32 PageMask = 0xFFF;
 constexpr u32 HeapRetryStepBytes = 4 * 1024 * 1024;
 constexpr u32 MinimumUsableHeapBytes = 24 * 1024 * 1024;
 constexpr u32 LinearHeapCapacityBytes = 32 * 1024 * 1024;
+// What the GPU path needs in linear memory (render targets, textures, vertex arenas, audio): the
+// New 3DS gets ~18 MB and uses ~9. On the Old 3DS (80 MB mode) the heap would otherwise take all
+// but 4 MB and the GPU presenter falls back to SDL (2DS, 2026-10-14).
+constexpr u32 LinearHeapTargetBytes = 12 * 1024 * 1024;
 constexpr u32 ConventionalHeapAddressCapacity = OS_HEAP_AREA_END - OS_HEAP_AREA_BEGIN;
 constexpr u32 ConventionalHeapSafetyMargin = 4 * 1024 * 1024;
 constexpr u32 ConventionalHeapMaximum =
@@ -62,6 +66,24 @@ void I_3DSReleaseRendererMemory()
 {
 }
 #endif
+
+namespace
+{
+constexpr size_t MapLoadReserveBytes = 5 * 1024 * 1024; // 8 MB: ZScript ran out on the 2DS
+void *MapLoadReserve;
+}
+
+bool I_3DSReserveMapLoadMemory()
+{
+	if (MapLoadReserve == nullptr) MapLoadReserve = std::malloc(MapLoadReserveBytes);
+	return MapLoadReserve != nullptr;
+}
+
+void I_3DSReleaseMapLoadMemory()
+{
+	std::free(MapLoadReserve);
+	MapLoadReserve = nullptr;
+}
 
 static void *AllocateWithNewHandler(size_t size, uintptr_t caller)
 {
@@ -149,6 +171,11 @@ extern "C"
 		}
 
 		u32 heapBytes = remaining - MinimumLinearHeapBytes;
+		if (remaining > LinearHeapTargetBytes + MinimumUsableHeapBytes &&
+			heapBytes > remaining - LinearHeapTargetBytes)
+		{
+			heapBytes = remaining - LinearHeapTargetBytes;
+		}
 		if (heapBytes > ConventionalHeapMaximum)
 		{
 			heapBytes = ConventionalHeapMaximum;
