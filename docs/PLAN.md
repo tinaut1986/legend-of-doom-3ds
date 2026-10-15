@@ -24,9 +24,9 @@ change (what goes where: the table in `CLAUDE.md`).
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.2.4` (on origin; renamed from `release/v0.2.3` right after its tag).
-Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`** beta, **`v0.2.1`** stable (2026-10-15),
-**`v0.2.0`** stable (2026-10-14, the first), `v0.1.0` beta. `main` holds the last stable merge.
+**Release line:** `release/v0.2.5` (renamed from `release/v0.2.4` right after its tag).
+Published: **`v0.2.4`** stable (2026-10-15, built by the tag workflow), `v0.2.3` and `v0.2.2` betas,
+**`v0.2.1`** stable, **`v0.2.0`** stable (the first), `v0.1.0` beta. `main` holds `v0.2.4`.
 
 **Branches:**
 
@@ -35,9 +35,8 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
-- The v0.2.3 beta: that the console's updater (Beta channel) offers it from the v0.2.2 beta and
-  shows its 6 notes.
-- #6 (toasts over the map), fixed in the v0.2.2 beta: to look.
+- The v0.2.4 stable: that the console's updater (Release channel) offers it from v0.2.1 and shows its
+  6 notes (the production build itself was checked by the owner on the New 3DS).
 - The Old 3DS screen can only be seen on an Old 3DS / 2DS.
 - `gpu-light-sky` is checked (owner, 2026-10-15): the hit flash, Ghini and a Wizzrobe translucent,
   Ganon invisible, the sky, the fog, a dark cave. What is left of it is #14, low priority.
