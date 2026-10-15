@@ -13,7 +13,7 @@ static json_t *make(const char *tag, bool pre, bool homebrew) {
 }
 static int parse(json_t *r,bool pre,bool hb,UpdateRelease *out) {
  json_t *list=json_is_array(r)?json_incref(r):json_pack("[o]",json_incref(r));
- char *s=json_dumps(list,JSON_COMPACT);json_decref(list);int result=Update_ParseRelease(s,strlen(s),pre,hb,out);free(s);return result;
+ char *s=json_dumps(list,JSON_COMPACT);json_decref(list);int result=Update_ParseRelease(s,strlen(s),pre,hb,NULL,out);free(s);return result;
 }
 int main(int argc,char **argv) {
  assert(Update_IsNewer("v1.0", "0.8-E3"));
@@ -57,7 +57,17 @@ int main(int argc,char **argv) {
  json_decref(r);r=make("v3.1",false,false);json_object_set_new(r,"draft",json_true());assert(parse(r,false,false,&out)==0);json_decref(r);
  r=json_array();assert(parse(r,true,false,&out)==0);
  json_array_append_new(r,make("v3.2-E2",true,false));json_array_append_new(r,make("v3.2-E10",true,false));
- json_array_append_new(r,make("v3.3",false,false));assert(parse(r,true,false,&out)==1&&!strcmp(out.version,"v3.2-E10"));json_decref(r);
+ json_array_append_new(r,make("v3.3",false,false));
+ // The beta channel sees stable releases too: the newest of both is offered.
+ assert(parse(r,true,false,&out)==1&&!strcmp(out.version,"v3.3")&&!out.prerelease);
+ assert(parse(r,false,false,&out)==1&&!strcmp(out.version,"v3.3"));json_decref(r);
+ // A beta is its stable number's -beta: the stable release of the same number wins,
+ // a beta of a higher number beats an older stable, and the stable channel never sees betas.
+ r=json_array();json_array_append_new(r,make("v0.2.0",true,false));json_array_append_new(r,make("v0.2.0",false,false));
+ assert(parse(r,true,false,&out)==1&&!strcmp(out.version,"v0.2.0")&&!out.prerelease);json_decref(r);
+ r=json_array();json_array_append_new(r,make("v0.2.0",false,false));json_array_append_new(r,make("v0.2.1",true,false));
+ assert(parse(r,true,false,&out)==1&&!strcmp(out.version,"v0.2.1")&&out.prerelease);
+ assert(parse(r,false,false,&out)==1&&!strcmp(out.version,"v0.2.0"));json_decref(r);
  r=make("v3.1",false,true);assert(parse(r,false,true,&out)==1);json_decref(r);
  // Accept this port's build output, but not another profile or an ambiguous asset.
  r=make("v0.48",false,false);a=json_array_get(json_object_get(r,"assets"),0);
@@ -72,13 +82,50 @@ int main(int argc,char **argv) {
  json_array_append_new(r,make("v1.0",false,false));assert(parse(r,false,false,&out)==1&&!strcmp(out.version,"v1.0"));
  json_t *newest=make("v1.1",false,false);json_object_set_new(newest,"assets",json_array());
  json_array_append_new(r,newest);assert(parse(r,false,false,&out)==-1);json_decref(r);
- assert(Update_ParseRelease("{}garbage",9,false,false,&out)==-1);
- assert(Update_ParseRelease("{\"draft\":false,\"draft\":true}",28,false,false,&out)==-1);
+ assert(Update_ParseRelease("{}garbage",9,false,false,NULL,&out)==-1);
+ assert(Update_ParseRelease("{\"draft\":false,\"draft\":true}",28,false,false,NULL,&out)==-1);
+ // Notes: everything published since the installed version, newest first.
+ {
+  const char *tags[]={"v0.1.0","v0.2.0","v0.2.1","v0.2.2","v0.3.0","v0.3.1"};
+  bool betas[]={true,false,true,true,false,true};
+  r=json_array();
+  for(int i=0;i<6;i++){json_t *o=make(tags[i],betas[i],false);char body[200];
+   snprintf(body,sizeof(body),"QR\n<!-- lod-notes -->\n## What's new\n\n- notes of %s\n<!-- /lod-notes -->\n## Changelog\n- commits",tags[i]);
+   json_object_set_new(o,"body",json_string(body));json_array_append_new(r,o);}
+  char *raw=json_dumps(r,JSON_COMPACT);
+  // Stable channel from the 0.1.0 beta: the stables 0.3.0 and 0.2.0 (each covers its betas).
+  assert(Update_ParseRelease(raw,strlen(raw),false,false,"0.1.0-beta",&out)==1&&!strcmp(out.version,"v0.3.0"));
+  assert(strstr(out.notes,"## v0.3.0\n")&&strstr(out.notes,"notes of v0.3.0")&&strstr(out.notes,"notes of v0.2.0"));
+  assert(strstr(out.notes,"notes of v0.3.0")<strstr(out.notes,"notes of v0.2.0"));
+  assert(!strstr(out.notes,"v0.2.1")&&!strstr(out.notes,"v0.1.0")&&!strstr(out.notes,"commits"));
+  count=Update_FormatNotes(out.notes,lines,384);
+  assert(!strcmp(lines[0],"v0.3.0")&&!strcmp(lines[1],"- notes of v0.3.0"));
+  // Beta channel from 0.2.0: the 0.3.1 beta, then 0.3.0, which covers 0.2.1 and 0.2.2.
+  assert(Update_ParseRelease(raw,strlen(raw),true,false,"0.2.0",&out)==1&&!strcmp(out.version,"v0.3.1"));
+  assert(strstr(out.notes,"## v0.3.1 BETA\n")&&strstr(out.notes,"notes of v0.3.0")&&!strstr(out.notes,"v0.2.2"));
+  // The whole changelog: every release the channel sees, newest first.
+  static char history[UPDATE_HISTORY_MAX];
+  assert(Update_ReleaseHistory(raw,strlen(raw),false,history,sizeof(history))==2);
+  assert(strstr(history,"## v0.3.0\n")<strstr(history,"## v0.2.0\n")&&!strstr(history,"BETA"));
+  assert(Update_ReleaseHistory(raw,strlen(raw),true,history,sizeof(history))==6);
+  assert(strstr(history,"## v0.3.1 BETA")<strstr(history,"## v0.3.0\n")&&strstr(history,"## v0.3.0\n")<strstr(history,"## v0.2.2 BETA"));
+  assert(strstr(history,"## v0.1.0 BETA")&&strstr(history,"notes of v0.1.0")&&!strstr(history,"commits"));
+  assert(Update_ReleaseHistory("{}garbage",9,true,history,sizeof(history))==-1);
+  // Beta channel from the 0.3.0 stable: only 0.3.1, with its own body.
+  assert(Update_ParseRelease(raw,strlen(raw),true,false,"0.3.0",&out)==1&&!strncmp(out.notes,"QR",2));
+  // No stable since 0.2.0: the betas one by one.
+  json_t *later=json_array();for(int i=0;i<4;i++)json_array_append(later,json_array_get(r,i));
+  free(raw);raw=json_dumps(later,JSON_COMPACT);json_decref(later);
+  assert(Update_ParseRelease(raw,strlen(raw),true,false,"0.2.1-beta",&out)==1&&!strcmp(out.version,"v0.2.2"));
+  assert(!strncmp(out.notes,"QR",2));
+  assert(Update_ParseRelease(raw,strlen(raw),true,false,"0.2.0",&out)==1&&strstr(out.notes,"## v0.2.2 BETA")&&strstr(out.notes,"## v0.2.1 BETA"));
+  free(raw);json_decref(r);
+ }
  for(int i=1;i<argc;i++) {
    FILE *f=fopen(argv[i],"rb");assert(f);fseek(f,0,SEEK_END);long n=ftell(f);rewind(f);
    char *data=malloc(n);assert(fread(data,1,n,f)==(size_t)n);fclose(f);
-   bool pre=i==2;int result=Update_ParseRelease(data,n,pre,false,&out);free(data);
+   bool pre=i==2;int result=Update_ParseRelease(data,n,pre,false,NULL,&out);free(data);
    assert(result>=0);printf("Live %s response: %d %s\n",pre?"pre-release":"stable",result,out.version);
  }
- puts("PASS: version order, channels, assets, malformed JSON, digest/size/URL/draft guards");
+ puts("PASS: version order, channels, gathered notes, assets, malformed JSON, digest/size/URL/draft guards");
 }

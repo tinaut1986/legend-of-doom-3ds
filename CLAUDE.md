@@ -79,11 +79,9 @@ Other local checkouts: `../zelda-tmc-3ds`, `../sm-3ds` and `../mzm`, the referen
   mergeable on its own. The one exception is a task that truly needs another
   unmerged branch; say so in PLAN's branch table.
 - Never commit directly on `main` or `release/*`. Commit only when the owner asks.
-- **`main` has no `CLAUDE.md` or `docs/PLAN.md` until the first release merge**: it is
-  still upstream's v1.0 and GitHub's default branch, so a fresh clone lands on it
-  without these instructions. Check out the active release branch first
-  (`git checkout release/vX.Y.Z`; PLAN's Status names it) and cut topic branches from
-  there.
+- `main` holds the last stable release (v0.2.0 was the first merged into it, 2026-10-14), so
+  a fresh clone has these instructions; work still happens on the active release branch
+  (PLAN's Status names it): check it out and cut topic branches from there.
 
 ### Versions
 

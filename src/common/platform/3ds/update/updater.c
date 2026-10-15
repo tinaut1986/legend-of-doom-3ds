@@ -29,6 +29,7 @@ static void UpdateLog(const char *format, ...) {
 static LightLock lock;
 static UpdateStatus status;
 static UpdateRelease release;
+static char history[UPDATE_HISTORY_MAX];
 static Thread worker;
 static bool initialized, homebrew, busy, cancel, download_job;
 static char launch_file[768];
@@ -270,16 +271,23 @@ static void run_job(void *arg) {
       goto done;
     }
     UpdateRelease candidate;
-    int result = Update_ParseRelease(t.data, t.size, s.prerelease, homebrew, &candidate);
+    const char *installed = LOD3DS_PORT_IS_BETA ? LOD3DS_PORT_VERSION "-beta" : LOD3DS_PORT_VERSION;
+    int result = Update_ParseRelease(t.data, t.size, s.prerelease, homebrew, installed, &candidate);
     if (result < 0) { publish(UPDATE_ERROR, "INVALID RELEASE DATA"); goto done; }
     if (!result) { publish(UPDATE_EMPTY, s.prerelease ? "NO BETA RELEASE" : "NO STABLE RELEASE YET"); ok = true; goto done; }
-    LightLock_Lock(&lock); release = candidate; strcpy(status.version, release.version); LightLock_Unlock(&lock);
-    // A beta channel tag is the same number as the stable release it leads to,
-    // so it is compared as "-beta"; an installed beta is "-beta" too, so the same
-    // number is not newer, while the stable release of that number is.
+    // The whole changelog (CHANGELOG: ALL in the Update menu), from the same response.
+    static char fetched_history[UPDATE_HISTORY_MAX];
+    if (Update_ReleaseHistory(t.data, t.size, s.prerelease, fetched_history, sizeof(fetched_history)) < 0)
+      fetched_history[0] = 0;
+    LightLock_Lock(&lock); release = candidate; strcpy(status.version, release.version);
+    memcpy(history, fetched_history, sizeof(history)); LightLock_Unlock(&lock);
+    // A beta's tag is the same number as the stable release it leads to, so it is
+    // compared as "-beta"; an installed beta is "-beta" too, so the same number is not
+    // newer, while the stable release of that number is.
     char candidate_version[64];
-    snprintf(candidate_version, sizeof(candidate_version), "%s%s", release.version, s.prerelease ? "-beta" : "");
-    bool newer = Update_IsNewer(candidate_version, LOD3DS_PORT_IS_BETA ? LOD3DS_PORT_VERSION "-beta" : LOD3DS_PORT_VERSION);
+    snprintf(candidate_version, sizeof(candidate_version), "%s%s", release.version,
+             release.prerelease && !strchr(release.version, '-') ? "-beta" : "");
+    bool newer = Update_IsNewer(candidate_version, installed);
     publish(newer ? UPDATE_AVAILABLE : UPDATE_CURRENT, newer ? "UPDATE AVAILABLE" : "YOU ARE UP TO DATE");
     ok = true;
   } else {
@@ -370,9 +378,17 @@ void Updater_Shutdown(void) {
   Updater_Cancel();
   if (worker) { threadJoin(worker, UINT64_MAX); threadFree(worker); worker = NULL; }
   initialized = false;
-  memset(&status, 0, sizeof(status)); memset(&release, 0, sizeof(release));
+  memset(&status, 0, sizeof(status)); memset(&release, 0, sizeof(release)); history[0] = 0;
 }
 
+unsigned Updater_GetHistory(char *out, unsigned capacity) {
+  if (!initialized || !capacity) return 0;
+  LightLock_Lock(&lock);
+  snprintf(out, capacity, "%s", history);
+  unsigned revision = status.revision;
+  LightLock_Unlock(&lock);
+  return revision;
+}
 unsigned Updater_GetNotes(char *out, unsigned capacity) {
   if (!initialized || !capacity) return 0;
   LightLock_Lock(&lock);
