@@ -78,6 +78,9 @@
 #include "s_music.h"
 #include "v_video.h"
 #include "texturemanager.h"
+#ifdef __3DS__
+#include "common/platform/3ds/diagnostics_3ds.h"
+#endif
 
 	// P-codes for ACS scripts
 	enum
@@ -8651,6 +8654,10 @@ scriptwait:
 				{
 					screen = screen->target;
 				}
+#ifdef __3DS__
+				// Legend of Doom's compiled ACS prints English; show it in the player's language.
+				work = I_3DSTranslate(work.GetChars());
+#endif
 				if (pcd == PCD_ENDPRINTBOLD || screen == NULL ||
 					screen->CheckLocalView())
 				{
@@ -8674,6 +8681,10 @@ scriptwait:
 			{
 				optstart = sp;
 			}
+#ifdef __3DS__
+			// The NPCs' dialogue (Legend of Doom's NpcDialog script), in the player's language.
+			work = I_3DSTranslate(work.GetChars());
+#endif
 			if (Level->isPrimaryLevel())
 			{
 				AActor *screen = activator;

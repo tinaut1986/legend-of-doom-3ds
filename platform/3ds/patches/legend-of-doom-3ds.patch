@@ -13,7 +13,7 @@ index 39eba6e..6816cd3 100644
              Goto ReadyNoShow;
          Select:
 diff --git a/actors/weapons/Bow.zs b/actors/weapons/Bow.zs
-index e28575f..dfe5b53 100644
+index e28575f..ae02748 100644
 --- a/actors/weapons/Bow.zs
 +++ b/actors/weapons/Bow.zs
 @@ -10,7 +10,6 @@ class Bow : Weapon
@@ -22,7 +22,16 @@ index e28575f..dfe5b53 100644
          +WEAPON.NOAUTOSWITCHTO
 -        +WEAPON.TWOHANDED
      }
-
+ 
+     States
+@@ -146,7 +145,7 @@ class ZeldaSilverArrow : Inventory
+         Inventory.Amount 1;
+         Inventory.MaxAmount 1;
+         Inventory.PickupSound "zelda/fanfare";
+-        Inventory.PickupMessage "You got the silver arrows!";
++        Inventory.PickupMessage "$LOD_YOU_GOT_THE_SILVER_ARROWS";
+     }
+ 
      States
 diff --git a/actors/weapons/Candle.zs b/actors/weapons/Candle.zs
 index 9cbcac6..98c1aa2 100644
@@ -34,19 +43,21 @@ index 9cbcac6..98c1aa2 100644
          +WEAPON.NO_AUTO_SWITCH
 -        +WEAPON.TWOHANDED
      }
-
+ 
      States
 diff --git a/actors/weapons/Meat.zs b/actors/weapons/Meat.zs
-index d3be909..bba32d4 100644
+index d3be909..b6ce04f 100644
 --- a/actors/weapons/Meat.zs
 +++ b/actors/weapons/Meat.zs
-@@ -9,7 +9,6 @@ class ZeldaMeat : ZeldaWeapon
+@@ -8,8 +8,7 @@ class ZeldaMeat : ZeldaWeapon
+ 		Weapon.AmmoUse 0;
          Weapon.SlotNumber 9;
          Inventory.MaxAmount 1;
-         Inventory.PickupMessage "You picked up meat!";
+-        Inventory.PickupMessage "You picked up meat!";
 -        +WEAPON.TWOHANDED
++        Inventory.PickupMessage "$LOD_YOU_PICKED_UP_MEAT";
      }
-
+ 
      States
 diff --git a/actors/weapons/Potions.zs b/actors/weapons/Potions.zs
 index 51f9ae0..fd31a6e 100644
@@ -58,28 +69,50 @@ index 51f9ae0..fd31a6e 100644
  		Inventory.Pickupmessage "Picked up a potion!";
 -        +WEAPON.TWOHANDED
  	}
-
+ 
      States
 diff --git a/actors/weapons/Swords.zs b/actors/weapons/Swords.zs
-index eb58538..1ef9a84 100644
+index eb58538..e34383a 100644
 --- a/actors/weapons/Swords.zs
 +++ b/actors/weapons/Swords.zs
-@@ -15,7 +15,6 @@ class ZeldaSwordWood : ZeldaSword
- 		Inventory.PickupMessage "You got the wooden sword!";
+@@ -12,10 +12,9 @@ class ZeldaSwordWood : ZeldaSword
+ 	Default
+ 	{
+ 		//$Title Wep Sword Wood
+-		Inventory.PickupMessage "You got the wooden sword!";
++		Inventory.PickupMessage "$LOD_YOU_GOT_THE_WOODEN_SWORD";
          ZeldaSword.SwordProjectile "ZeldaSwordMissleWood";
  		Tag "$TAG_WOODSWORD";
 -		+WEAPON.TWOHANDED
  	}
-
+ 
  	States
+@@ -69,7 +68,7 @@ class ZeldaSwordSilver : ZeldaSword
+ 	Default
+ 	{
+ 		//$Title Wep Sword Silver
+-		Inventory.PickupMessage "You got the silver sword!";
++		Inventory.PickupMessage "$LOD_YOU_GOT_THE_SILVER_SWORD";
+         ZeldaSword.SwordProjectile "ZeldaSwordMissleSilver";
+ 		Tag "$TAG_SILVERSWORD";
+ 	}
+@@ -138,7 +137,7 @@ class ZeldaSwordMaster : ZeldaSword
+ 	Default
+ 	{
+ 		//$Title Wep Sword Master
+-		Inventory.PickupMessage "You got the master sword!";
++		Inventory.PickupMessage "$LOD_YOU_GOT_THE_MASTER_SWORD";
+         ZeldaSword.SwordProjectile "ZeldaSwordMissleMaster";
+ 		Tag "$TAG_MASTERSWORD";
+ 	}
 @@ -234,8 +233,6 @@ class ZeldaSword : ZeldaWeapon abstract
  	{
          if (player == null) return;
-
+ 
 -		int alflags = invoker.bOffhandWeapon ? ALF_ISOFFHAND : 0;
 -
  		A_WeaponOffset(offsetX, offsetY);
-
+ 
  		if (invoker.SpawnedSword || player.Health < player.mo.GetMaxHealth())
 @@ -244,7 +241,7 @@ class ZeldaSword : ZeldaWeapon abstract
  		}
@@ -91,17 +124,29 @@ index eb58538..1ef9a84 100644
  	}
  }
 diff --git a/actors/weapons/Wand.zs b/actors/weapons/Wand.zs
-index 887e5b8..6d29b1f 100644
+index 887e5b8..164af02 100644
 --- a/actors/weapons/Wand.zs
 +++ b/actors/weapons/Wand.zs
-@@ -15,7 +15,6 @@ class FireCrystal : ZeldaWeapon
+@@ -13,9 +13,8 @@ class FireCrystal : ZeldaWeapon
+     Default
+     {
          Weapon.YAdjust 0;
-         Inventory.PickupMessage "You got the wand!";
+-        Inventory.PickupMessage "You got the wand!";
++        Inventory.PickupMessage "$LOD_YOU_GOT_THE_WAND";
          -BLOODSPLATTER
 -        +WEAPON.TWOHANDED
      }
-
+ 
    States
+@@ -103,7 +102,7 @@ class ZeldaBook : UniqueItem
+     Default
+     {
+         //$Title Book
+-        Inventory.PickupMessage "Picked up a spell book!";
++        Inventory.PickupMessage "$LOD_PICKED_UP_A_SPELL_BOOK";
+         Inventory.PickupSound "zelda/fanfare";
+         Scale 0.5;
+     }
 diff --git a/actors/weapons/Whistle.zs b/actors/weapons/Whistle.zs
 index 7a9f250..aeddbd1 100644
 --- a/actors/weapons/Whistle.zs
@@ -112,13 +157,14 @@ index 7a9f250..aeddbd1 100644
          Scale 0.5;
 -        +WEAPON.TWOHANDED
      }
-
+ 
      States
 diff --git a/actors/weapons/ZeldaWeapon.zs b/actors/weapons/ZeldaWeapon.zs
-index 029f40d..fbd3247 100644
+index 029f40d..4dbcc20 100644
 --- a/actors/weapons/ZeldaWeapon.zs
 +++ b/actors/weapons/ZeldaWeapon.zs
-@@ -16,11 +16,11 @@ class ZeldaWeapon : Weapon abstract
+@@ -15,13 +15,13 @@ class ZeldaWeapon : Weapon abstract
+ 
          ShieldReady:
              SLDW A 0 A_OverlayFlags(OverlayID(), PSPF_ADDWEAPON | PSPF_ADDBOB, 1);
 -            SLDW A 1 A_OverlayOffset(OverlayID(), 32, 170);
@@ -132,10 +178,11 @@ index 029f40d..fbd3247 100644
 +            SLDH A 1 A_OverlayOffset(OverlayID(), 51, 170);
              SLDH A 1;
              Wait;
+ 
 @@ -35,15 +35,13 @@ class ZeldaWeapon : Weapon abstract
-
+ 
                  if (!player) return;
-
+ 
 -                int alflags = invoker.bOffhandWeapon ? ALF_ISOFFHAND : 0;
 -
                  if (player.CountInv("BoomerangBlue") >= 1)
@@ -150,17 +197,16 @@ index 029f40d..fbd3247 100644
                  }
              }
              Goto Ready;
-@@ -56,20 +54,21 @@ class ZeldaWeapon : Weapon abstract
-     action void A_RaiseShield()
+@@ -57,19 +55,20 @@ class ZeldaWeapon : Weapon abstract
      {
          A_WeaponReady();
-+
+ 
 +        // Keep the ready weapon and shield together as one centered group on
 +        // the 3DS wide top screen. Attack-state offsets remain authoritative.
 +        A_WeaponOffset(35, 32);
- 
++
          A_SpawnItemEx("SHEELD", 30, 0, 15, flags: SXF_SETTARGET);
-
+ 
          // Draw shield overlay when weapon is not firing.
 -        if (player == null)
 -        {
@@ -168,19 +214,19 @@ index 029f40d..fbd3247 100644
 -        }
 +        let player = players[consoleplayer].mo;
 +        if (!player) return;
-
+ 
 -        let wep = invoker == player.OffhandWeapon ? player.OffhandWeapon : player.ReadyWeapon;
 +        let wep = players[consoleplayer].ReadyWeapon;
          if (!wep) return;
 -        let psplayer = wep.bOffhandWeapon ? PSP_OFFHANDWEAPON : PSP_WEAPON;
-
+ 
 -        let psp = players[consoleplayer].GetPSprite(psplayer);
 +        let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
-
+ 
          let isReady =
              players[consoleplayer].AttackDown == false ||
 diff --git a/MENUDEF b/MENUDEF
-index c7c6d33..9ddcbc3 100644
+index c7c6d33..a281e48 100644
 --- a/MENUDEF
 +++ b/MENUDEF
 @@ -1,50 +1,126 @@
@@ -339,7 +385,7 @@ index c7c6d33..9ddcbc3 100644
  }
  
  // //-------------------------------------------------------------------------------------------
-@@ -57,3 +124,14 @@ ListMenu "EpisodeMenu"
+@@ -57,3 +133,14 @@ ListMenu "EpisodeMenu"
  // {
  // 	Option "High Resolution Voxel Graphics",		"r_drawvoxels", "OnOff"
  // }
@@ -355,22 +401,110 @@ index c7c6d33..9ddcbc3 100644
 +    Command "BACK", ""
 +}
 diff --git a/ZMAPINFO b/ZMAPINFO
-index c3ad34f..852fc07 100644
+index 8b89194..81c8b8e 100644
 --- a/ZMAPINFO
 +++ b/ZMAPINFO
-@@ -10,7 +10,7 @@ GameInfo
+@@ -8,11 +8,11 @@ GameInfo
+     InfoPage = "Info"
+     TitleMusic = "ZTITLE"
      CursorPic = "Cursor"
 -	DrawReadThis = false
 +    DrawReadThis = false
      DimColor = "Black"
 -    DimAmount = 0.95
-+    DimAmount = 0.72
 -	BorderFlat = "Black"
 -	QuitMessages = "Leave Hyrule in darkness?", "Let Ganon's rule unfold?", "Doom the princess?"
++    DimAmount = 0.72
 +    BorderFlat = "Black"
 +    QuitMessages = "Leave Hyrule in darkness?", "Let Ganon's rule unfold?", "Doom the princess?"
  
-@@ -215,45 +215,45 @@ skill baby
+ 	AddEventHandlers = "SpawnController"
+ 	AddEventHandlers = "UniqueItemController"
+@@ -21,7 +21,7 @@ GameInfo
+ 	AddEventHandlers = "LootController"
+ }
+ 
+-Map MAP01 "Hyrule"
++Map MAP01 lookup "LOD_HYRULE"
+ {
+ 	Music = ZOVRWRLD
+ 	Sky1 = SKYWW
+@@ -29,63 +29,63 @@ Map MAP01 "Hyrule"
+ 	NoIntermission
+     F1 = HDMap
+ }
+-Map MAP02 "Eagle"
++Map MAP02 lookup "LOD_EAGLE"
+ {
+ 	Music = ZDUNGEON
+ 	Cluster = 1
+ 	NoIntermission
+     F1 = MAP1
+ }
+-Map MAP03 "Moon"
++Map MAP03 lookup "LOD_MOON"
+ {
+ 	Music = ZDUNGEON
+ 	Cluster = 1
+ 	NoIntermission
+     F1 = MAP2
+ }
+-Map MAP04 "Manji"
++Map MAP04 lookup "LOD_MANJI"
+ {
+ 	Music = ZDUNGEON
+ 	Cluster = 1
+ 	NoIntermission
+     F1 = MAP3
+ }
+-Map MAP05 "Snake"
++Map MAP05 lookup "LOD_SNAKE"
+ {
+ 	Music = ZDUNGEON
+ 	Cluster = 1
+ 	NoIntermission
+     F1 = MAP4
+ }
+-Map MAP06 "Lizard"
++Map MAP06 lookup "LOD_LIZARD"
+ {
+ 	Music = ZDUNGEON
+ 	Cluster = 1
+ 	NoIntermission
+     F1 = MAP5
+ }
+-Map MAP07 "Dragon"
++Map MAP07 lookup "LOD_DRAGON"
+ {
+ 	Music = ZDUNGEON
+ 	Cluster = 1
+ 	NoIntermission
+     F1 = MAP6
+ }
+-Map MAP08 "Demon"
++Map MAP08 lookup "LOD_DEMON"
+ {
+ 	Music = ZDUNGEON
+ 	Cluster = 1
+ 	NoIntermission
+     F1 = MAP7
+ }
+-Map MAP09 "Lion"
++Map MAP09 lookup "LOD_LION"
+ {
+ 	Music = ZDUNGEON
+ 	Cluster = 1
+ 	NoIntermission
+     F1 = MAP8
+ }
+-Map MAP10 "Death Mountain"
++Map MAP10 lookup "LOD_DEATH_MOUNTAIN"
+ {
+ 	Music = ZDEATH
+ 	Cluster = 1
+@@ -213,47 +213,47 @@ DoomEdNums
+ 
+ skill baby
  {
 -	AutoUseHealth
 -	AmmoFactor = 2
@@ -444,7 +578,7 @@ index c3ad34f..852fc07 100644
 +    Key = "n"
  }
 diff --git a/ZSCRIPT b/ZSCRIPT
-index f9342af..b4b976f 100644
+index ed22291..fef1c23 100644
 --- a/ZSCRIPT
 +++ b/ZSCRIPT
 @@ -1,5 +1,6 @@
@@ -456,7 +590,7 @@ index f9342af..b4b976f 100644
  #include "actors/Decorations.zs"
 diff --git a/actors/LegendPauseMenu.zs b/actors/LegendPauseMenu.zs
 new file mode 100644
-index 0000000..5364849
+index 0000000..8eb2a99
 --- /dev/null
 +++ b/actors/LegendPauseMenu.zs
 @@ -0,0 +1,198 @@
@@ -659,9 +793,10 @@ index 0000000..5364849
 +    }
 +}
 diff --git a/actors/monsters/SnakeMonster.zs b/actors/monsters/SnakeMonster.zs
+index 600383c..c706d3a 100644
 --- a/actors/monsters/SnakeMonster.zs
 +++ b/actors/monsters/SnakeMonster.zs
-@@ -59,7 +59,7 @@
+@@ -59,7 +59,7 @@ class SnakeMonster : ZeldaMonster abstract
  	// Reset Bodies' targets, when ONLY the Head was destroyed
  	void RetargetBodies(actor Whom, bool HeadDestroyed = true)
  	{
@@ -670,7 +805,7 @@ diff --git a/actors/monsters/SnakeMonster.zs b/actors/monsters/SnakeMonster.zs
  		{
  			NumOfBodies[0].Destroy();
  
-@@ -82,7 +82,7 @@
+@@ -82,7 +82,7 @@ class SnakeMonster : ZeldaMonster abstract
  			let Body = SnakeMonsterBody(NumOfBodies[i]);
  			if (Body)
  			{
@@ -680,9 +815,10 @@ diff --git a/actors/monsters/SnakeMonster.zs b/actors/monsters/SnakeMonster.zs
  					if (NumOfBodies[i-1])
  					{
 diff --git a/actors/monsters/Ganon.zs b/actors/monsters/Ganon.zs
+index f718b23..154c58f 100644
 --- a/actors/monsters/Ganon.zs
 +++ b/actors/monsters/Ganon.zs
-@@ -82,8 +82,11 @@
+@@ -82,8 +82,11 @@ class Ganon : ZeldaMonster
      {
          FCheckPosition fCheckPos;
          let spawnDest = GetPosition();
@@ -696,10 +832,10 @@ diff --git a/actors/monsters/Ganon.zs b/actors/monsters/Ganon.zs
  
 diff --git a/language.csv b/language.csv
 new file mode 100644
-index 0000000..1111111
+index 0000000..f20c4af
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,245 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -864,3 +1000,464 @@ index 0000000..1111111
 +YOUR MEMORY IS FULL,LOD_YOUR_MEMORY_IS_FULL,,,LA MEMORIA ESTÁ LLENA
 +ZOOM IN,LOD_ZOOM_IN,,,ACERCAR
 +ZOOM OUT,LOD_ZOOM_OUT,,,ALEJAR
++,,"Legend of Doom's own text: NPC dialogue (ACS, through Tr() in p_acs.cpp), pickups, obituaries, level names",,
++IT'S DANGEROUS TO GO ALONE! TAKE THIS.,LOD_IT_S_DANGEROUS_TO_GO_ALONE_TAKE_THIS,,,¡ES PELIGROSO IR SOLO! TOMA ESTO.
++TAKE ANY ONE YOU WANT.,LOD_TAKE_ANY_ONE_YOU_WANT,,,ELIGE EL QUE QUIERAS.
++IT'S A SECRET TO EVERYBODY.,LOD_IT_S_A_SECRET_TO_EVERYBODY,,,ES UN SECRETO PARA TODOS.
++SHOW THIS TO THE ELDERLY WOMAN.,LOD_SHOW_THIS_TO_THE_ELDERLY_WOMAN,,,ENSEÑA ESTO A LA ANCIANA.
++YOU OWE FOR THE DOOR REPAIRS! NOW PAY UP!,LOD_YOU_OWE_FOR_THE_DOOR_REPAIRS_NOW_PAY_UP,,,¡ME DEBES LA REPARACIÓN DE LA PUERTA! ¡PAGA YA!
++CHOOSE YOUR PATH.,LOD_CHOOSE_YOUR_PATH,,,ELIGE TU CAMINO.
++"GUMBLE, GRUMBLE...",LOD_GUMBLE_GRUMBLE,,,"GRR, GRRR..."
++DODONGOS HATE SMOKE,LOD_DODONGOS_HATE_SMOKE,,,LOS DODONGOS ODIAN EL HUMO.
++BECOME STRONGER AND YOU SHALL HAVE THIS.,LOD_BECOME_STRONGER_AND_YOU_SHALL_HAVE_THIS,,,HAZTE MÁS FUERTE Y ESTO SERÁ TUYO.
++CARE TO PLAY A MONEY MAKING GAME?,LOD_CARE_TO_PLAY_A_MONEY_MAKING_GAME,,,¿JUGAMOS A UN JUEGO PARA GANAR DINERO?
++SOUTH OF THE ARROW MARK HIDES GREAT WISDOM.,LOD_SOUTH_OF_THE_ARROW_MARK_HIDES_GREAT_WISDOM,,,AL SUR DE LA FLECHA SE OCULTA UNA GRAN SABIDURÍA.
++DID YOU GET THE SWORD FROM THE OLD MAN ON TOP OF THE WATERFALL?,LOD_DID_YOU_GET_THE_SWORD_FROM_THE_OLD_MAN_ON_TOP_OF_THE_WATERFALL,,,¿TIENES LA ESPADA DEL ANCIANO DE LO ALTO DE LA CASCADA?
++WALK INTO THE WATERFALL.,LOD_WALK_INTO_THE_WATERFALL,,,ENTRA EN LA CASCADA.
++DIGDOGGERS LOATHE CERTAIN KINDS OF SOUND.,LOD_DIGDOGGERS_LOATHE_CERTAIN_KINDS_OF_SOUND,,,LOS DIGDOGGER DETESTAN CIERTOS SONIDOS.
++DO YOU WISH TO CARRY MORE BOMBS?,LOD_DO_YOU_WISH_TO_CARRY_MORE_BOMBS,,,¿QUIERES LLEVAR MÁS BOMBAS?
++"FOLLOW THE ARROW MARK TO THE END, AND YOU SHAL FIND...",LOD_FOLLOW_THE_ARROW_MARK_TO_THE_END_AND_YOU_SHAL_FIND,,,SIGUE LA FLECHA HASTA EL FINAL Y ENCONTRARÁS...
++AIM FOR THE EYE OF GOHMA.,LOD_AIM_FOR_THE_EYE_OF_GOHMA,,,APUNTA AL OJO DE GOHMA.
++I WON'T TALK FOR FREE!,LOD_I_WON_T_TALK_FOR_FREE,,,¡NO HABLO GRATIS!
++GO WAY UP AHEAD ON THE MOUNTAIN.,LOD_GO_WAY_UP_AHEAD_ON_THE_MOUNTAIN,,,SUBE HASTA LO MÁS ALTO DE LA MONTAÑA.
++BUY SOMTHIN' WILL YA.,LOD_BUY_SOMTHIN_WILL_YA,,,"¡CÓMPRAME ALGO, ANDA!"
++THIS HERE'S A GOOD VALUE AND WORTH BUYING.,LOD_THIS_HERE_S_A_GOOD_VALUE_AND_WORTH_BUYING,,,ESTO ES UNA GANGA. MERECE LA PENA.
++RIP AND TEAR UNTIL IT IS DONE,LOD_RIP_AND_TEAR_UNTIL_IT_IS_DONE,,,DESGARRA Y DESTROZA HASTA QUE TERMINE.
++WISDOM LIES UNDER A FAIRYLESS POND.,LOD_WISDOM_LIES_UNDER_A_FAIRYLESS_POND,,,LA SABIDURÍA YACE BAJO UN ESTANQUE SIN HADAS.
++THERE'S A SECRET IN THE TIP OF THE NOSE.,LOD_THERE_S_A_SECRET_IN_THE_TIP_OF_THE_NOSE,,,HAY UN SECRETO EN LA PUNTA DE LA NARIZ.
++SPECTACLE ROCK IS A GATEWAY TO DEATH.,LOD_SPECTACLE_ROCK_IS_A_GATEWAY_TO_DEATH,,,LA ROCA DE LAS GAFAS ES UNA PUERTA A LA MUERTE.
++10TH ENEMY HAS THE BOMB.,LOD_10TH_ENEMY_HAS_THE_BOMB,,,EL DÉCIMO ENEMIGO TIENE LA BOMBA.
++GO TO THE NEXT ROOM.,LOD_GO_TO_THE_NEXT_ROOM,,,VE A LA SIGUIENTE SALA.
++EYES OF SKULL HAS A SECRET.,LOD_EYES_OF_SKULL_HAS_A_SECRET,,,LOS OJOS DE LA CALAVERA OCULTAN UN SECRETO.
++PATRA HAS THE MAP,LOD_PATRA_HAS_THE_MAP,,,PATRA TIENE EL MAPA.
++ONES WHO DOES NOT HAVE TRIFORCE CAN'T GO IN.,LOD_ONES_WHO_DOES_NOT_HAVE_TRIFORCE_CAN_T_GO_IN,,,QUIEN NO TENGA LA TRIFUERZA NO PUEDE ENTRAR.
++"MEET THE OLD MAN AT THE GRAVEYARD, DEARIE.",LOD_MEET_THE_OLD_MAN_AT_THE_GRAVEYARD_DEARIE,,,"VE A VER AL ANCIANO DEL CEMENTERIO, CIELO."
++"GO NORTH, WEST, SOUTH, AND WEST IN THE LOST WOODS.",LOD_GO_NORTH_WEST_SOUTH_AND_WEST_IN_THE_LOST_WOODS,,,"EN EL BOSQUE PERDIDO: NORTE, OESTE, SUR Y OESTE."
++"BUY MEDICINE AND BE ON YOUR WAY, DEARIE.",LOD_BUY_MEDICINE_AND_BE_ON_YOUR_WAY_DEARIE,,,"COMPRA MEDICINA Y SIGUE TU CAMINO, CIELO."
++WISDOM LIES BENEATH A TREE AT A DEAD END.,LOD_WISDOM_LIES_BENEATH_A_TREE_AT_A_DEAD_END,,,LA SABIDURÍA YACE BAJO UN ÁRBOL EN UN CALLEJÓN SIN SALIDA.
++You got the wand!,LOD_YOU_GOT_THE_WAND,,,¡HAS CONSEGUIDO LA VARITA!
++Picked up a spell book!,LOD_PICKED_UP_A_SPELL_BOOK,,,¡HAS COGIDO UN LIBRO DE CONJUROS!
++You got the wooden sword!,LOD_YOU_GOT_THE_WOODEN_SWORD,,,¡HAS CONSEGUIDO LA ESPADA DE MADERA!
++You got the silver sword!,LOD_YOU_GOT_THE_SILVER_SWORD,,,¡HAS CONSEGUIDO LA ESPADA DE PLATA!
++You got the master sword!,LOD_YOU_GOT_THE_MASTER_SWORD,,,¡HAS CONSEGUIDO LA ESPADA MAESTRA!
++You picked up meat!,LOD_YOU_PICKED_UP_MEAT,,,¡HAS COGIDO CARNE!
++You got the silver arrows!,LOD_YOU_GOT_THE_SILVER_ARROWS,,,¡HAS CONSEGUIDO LAS FLECHAS DE PLATA!
++%o was killed by a Zol,LOD_O_WAS_KILLED_BY_A_ZOL,,,UN ZOL MATÓ A %o.
++%o was nipped by a Tektite,LOD_O_WAS_NIPPED_BY_A_TEKTITE,,,UN TEKTITE PICÓ A %o.
++%o was killed by Stalfos,LOD_O_WAS_KILLED_BY_STALFOS,,,UN STALFOS MATÓ A %o.
++%o tasted the venom of Rope,LOD_O_TASTED_THE_VENOM_OF_ROPE,,,%o PROBÓ EL VENENO DE UN ROPE.
++%o was killed by Peahat,LOD_O_WAS_KILLED_BY_PEAHAT,,,UN PEAHAT MATÓ A %o.
++%o underestimated a Baby Patra.,LOD_O_UNDERESTIMATED_A_BABY_PATRA,,,%o SUBESTIMÓ A UNA CRÍA DE PATRA.
++%o was nibbled to death by a Baby Patra.,LOD_O_WAS_NIBBLED_TO_DEATH_BY_A_BABY_PATRA,,,UNA CRÍA DE PATRA MORDISQUEÓ A %o HASTA MATARLO.
++%o was killed by an octorock,LOD_O_WAS_KILLED_BY_AN_OCTOROCK,,,UN OCTOROK MATÓ A %o.
++%o was killed by a moblin,LOD_O_WAS_KILLED_BY_A_MOBLIN,,,UN MOBLIN MATÓ A %o.
++%o was killed by Lynel,LOD_O_WAS_KILLED_BY_LYNEL,,,UN LYNEL MATÓ A %o.
++%o was killed by a leever,LOD_O_WAS_KILLED_BY_A_LEEVER,,,UN LEEVER MATÓ A %o.
++%o was blasted by a goriya.,LOD_O_WAS_BLASTED_BY_A_GORIYA,,,UN GORIYA REVENTÓ A %o.
++%o was vaporized by Gohma,LOD_O_WAS_VAPORIZED_BY_GOHMA,,,GOHMA VAPORIZÓ A %o.
++%o was killed by Gleeok,LOD_O_WAS_KILLED_BY_GLEEOK,,,GLEEOK MATÓ A %o.
++%o was killed by Gibdo,LOD_O_WAS_KILLED_BY_GIBDO,,,UN GIBDO MATÓ A %o.
++%o was killed by a Gel,LOD_O_WAS_KILLED_BY_A_GEL,,,UN GEL MATÓ A %o.
++%o was killed by Dodongo,LOD_O_WAS_KILLED_BY_DODONGO,,,DODONGO MATÓ A %o.
++%o was killed by Digdogger,LOD_O_WAS_KILLED_BY_DIGDOGGER,,,DIGDOGGER MATÓ A %o.
++%o was pierced by the darknut's sword.,LOD_O_WAS_PIERCED_BY_THE_DARKNUT_S_SWORD,,,LA ESPADA DE UN DARKNUT ATRAVESÓ A %o.
++%o was fried by armos.,LOD_O_WAS_FRIED_BY_ARMOS,,,UN ARMOS FRIÓ A %o.
++%o was killed by Aquamentus,LOD_O_WAS_KILLED_BY_AQUAMENTUS,,,AQUAMENTUS MATÓ A %o.
++Picked up a Triforce of Wisdom piece!,LOD_PICKED_UP_A_TRIFORCE_OF_WISDOM_PIECE,,,¡HAS COGIDO UN FRAGMENTO DE LA TRIFUERZA DE LA SABIDURÍA!
++Picked up a the Triforce of Power!,LOD_PICKED_UP_A_THE_TRIFORCE_OF_POWER,,,¡HAS COGIDO LA TRIFUERZA DEL PODER!
++Picked up a raft!,LOD_PICKED_UP_A_RAFT,,,¡HAS COGIDO UNA BALSA!
++Picked up the Power Bracelet!,LOD_PICKED_UP_THE_POWER_BRACELET,,,¡HAS COGIDO EL BRAZALETE DE FUERZA!
++Picked up a map!,LOD_PICKED_UP_A_MAP,,,¡HAS COGIDO UN MAPA!
++Picked up a letter!,LOD_PICKED_UP_A_LETTER,,,¡HAS COGIDO UNA CARTA!
++Picked up a ladder!,LOD_PICKED_UP_A_LADDER,,,¡HAS COGIDO UNA ESCALERA!
++You picked up a fairy!,LOD_YOU_PICKED_UP_A_FAIRY,,,¡HAS COGIDO UN HADA!
++Hyrule,LOD_HYRULE,,,HYRULE
++Eagle,LOD_EAGLE,,,ÁGUILA
++Moon,LOD_MOON,,,LUNA
++Manji,LOD_MANJI,,,MANJI
++Snake,LOD_SNAKE,,,SERPIENTE
++Lizard,LOD_LIZARD,,,LAGARTO
++Dragon,LOD_DRAGON,,,DRAGÓN
++Demon,LOD_DEMON,,,DEMONIO
++Lion,LOD_LION,,,LEÓN
++Death Mountain,LOD_DEATH_MOUNTAIN,,,MONTAÑA DE LA MUERTE
+diff --git a/actors/items/Fairy.zs b/actors/items/Fairy.zs
+index 1cced56..1fbbfdb 100644
+--- a/actors/items/Fairy.zs
++++ b/actors/items/Fairy.zs
+@@ -2,7 +2,7 @@ class ZeldaFairyDrop : ZeldaSmallHeart
+ {
+ 	Default
+ 	{
+-		Inventory.PickupMessage "You picked up a fairy!";
++		Inventory.PickupMessage "$LOD_YOU_PICKED_UP_A_FAIRY";
+ 		Inventory.PickupSound "zelda/fairy";
+ 		Inventory.Amount 24;
+         Monster;
+diff --git a/actors/items/Ladder.zs b/actors/items/Ladder.zs
+index 0944f11..2b95a58 100644
+--- a/actors/items/Ladder.zs
++++ b/actors/items/Ladder.zs
+@@ -3,7 +3,7 @@ class ZeldaLadder : UniqueItem
+     Default
+ 	{
+         //$Title Ladder
+-		Inventory.PickupMessage "Picked up a ladder!";
++		Inventory.PickupMessage "$LOD_PICKED_UP_A_LADDER";
+ 		Inventory.PickupSound "zelda/fanfare";
+ 		Scale 0.5;
+     }
+diff --git a/actors/items/Letter.zs b/actors/items/Letter.zs
+index b7f9b0c..ece286d 100644
+--- a/actors/items/Letter.zs
++++ b/actors/items/Letter.zs
+@@ -3,7 +3,7 @@ class ZeldaLetter : UniqueItem
+     Default
+ 	{
+         //$Title Letter
+-		Inventory.PickupMessage "Picked up a letter!";
++		Inventory.PickupMessage "$LOD_PICKED_UP_A_LETTER";
+ 		Inventory.PickupSound "zelda/fanfare";
+         Scale 0.5;
+     }
+diff --git a/actors/items/Map.zs b/actors/items/Map.zs
+index af50683..f6d9bd9 100644
+--- a/actors/items/Map.zs
++++ b/actors/items/Map.zs
+@@ -3,7 +3,7 @@ class ZeldaMap : UniqueItem
+     Default
+ 	{
+         //$Title Map
+-		Inventory.PickupMessage "Picked up a map!";
++		Inventory.PickupMessage "$LOD_PICKED_UP_A_MAP";
+ 		Inventory.PickupSound "zelda/fanfare";
+ 		Inventory.MaxAmount 0;
+         Scale 0.5;
+@@ -34,7 +34,7 @@ class ZeldaMapInvisible : UniqueItem
+     Default
+ 	{
+         //$Title Map
+-		Inventory.PickupMessage "Picked up a map!";
++		Inventory.PickupMessage "$LOD_PICKED_UP_A_MAP";
+ 		Inventory.PickupSound "zelda/fanfare";
+ 		Inventory.MaxAmount 0;
+         Scale 0.5;
+diff --git a/actors/items/PowerBracelet.zs b/actors/items/PowerBracelet.zs
+index f782a89..f021c28 100644
+--- a/actors/items/PowerBracelet.zs
++++ b/actors/items/PowerBracelet.zs
+@@ -3,7 +3,7 @@ class ZeldaPowerBracelet : UniqueItem
+     Default
+ 	{
+         //$Title Power Bracelet
+-		Inventory.PickupMessage "Picked up the Power Bracelet!";
++		Inventory.PickupMessage "$LOD_PICKED_UP_THE_POWER_BRACELET";
+ 		Inventory.PickupSound "zelda/fanfare";
+ 		Scale 0.5;
+     }
+diff --git a/actors/items/Raft.zs b/actors/items/Raft.zs
+index 2f62521..60f3fe2 100644
+--- a/actors/items/Raft.zs
++++ b/actors/items/Raft.zs
+@@ -3,7 +3,7 @@ class ZeldaRaft : UniqueItem
+     Default
+ 	{
+         //$Title Raft
+-		Inventory.PickupMessage "Picked up a raft!";
++		Inventory.PickupMessage "$LOD_PICKED_UP_A_RAFT";
+ 		Inventory.PickupSound "zelda/fanfare";
+ 		Scale 0.5;
+     }
+diff --git a/actors/items/Triforce.zs b/actors/items/Triforce.zs
+index 2b86f76..cde4b14 100644
+--- a/actors/items/Triforce.zs
++++ b/actors/items/Triforce.zs
+@@ -7,7 +7,7 @@ class ZeldaTriforce : UniqueItem
+     Default
+ 	{
+         //$Title Triforce piece
+-		Inventory.PickupMessage "Picked up a Triforce of Wisdom piece!";
++		Inventory.PickupMessage "$LOD_PICKED_UP_A_TRIFORCE_OF_WISDOM_PIECE";
+ 		Inventory.PickupSound "zelda/tforce";
+         Scale 0.5;
+         Inventory.MaxAmount 8;
+@@ -36,7 +36,7 @@ class ZeldaTriforcePower : Inventory
+         Scale 2;
+         Inventory.MaxAmount 1;
+ 		Inventory.PickupSound "zelda/fanfare";
+-		Inventory.PickupMessage "Picked up a the Triforce of Power!";
++		Inventory.PickupMessage "$LOD_PICKED_UP_A_THE_TRIFORCE_OF_POWER";
+     }
+ 
+     States
+diff --git a/actors/monsters/Aquamentus.zs b/actors/monsters/Aquamentus.zs
+index 1fa5d94..91dc33d 100644
+--- a/actors/monsters/Aquamentus.zs
++++ b/actors/monsters/Aquamentus.zs
+@@ -8,7 +8,7 @@ class Aquamentus : ZeldaMonster
+ 		SeeSound "zelda/boss1";
+ 		ActiveSound "zelda/boss1";
+ 		DeathSound "zelda/boss2";
+-		HitObituary "%o was killed by Aquamentus";
++		HitObituary "$LOD_O_WAS_KILLED_BY_AQUAMENTUS";
+         ZeldaMonster.DropGroup "D";
+         +MISSILEEVENMORE
+ 	}
+diff --git a/actors/monsters/Armos.zs b/actors/monsters/Armos.zs
+index 21f9b90..dabe555 100644
+--- a/actors/monsters/Armos.zs
++++ b/actors/monsters/Armos.zs
+@@ -5,7 +5,7 @@ class Armos : ZeldaMonster
+         Health 3;
+ 		DamageFunction(8);
+         ZeldaMonster.DropGroup "X";
+-        Obituary "%o was fried by armos.";
++        Obituary "$LOD_O_WAS_FRIED_BY_ARMOS";
+         Scale 3;
+         Speed 8;
+     }
+diff --git a/actors/monsters/Darknut.zs b/actors/monsters/Darknut.zs
+index 8c5ef7e..a6dd01c 100644
+--- a/actors/monsters/Darknut.zs
++++ b/actors/monsters/Darknut.zs
+@@ -8,7 +8,7 @@ class Darknut : ZeldaMonster
+         Health 4;
+         DamageFunction(8);
+         ZeldaMonster.DropGroup "B";
+-        Obituary "%o was pierced by the darknut's sword.";
++        Obituary "$LOD_O_WAS_PIERCED_BY_THE_DARKNUT_S_SWORD";
+         Darknut.SwordType "SwordProjectile";
+         Scale 3.5;
+         ReactionTime 8;
+diff --git a/actors/monsters/Digdogger.zs b/actors/monsters/Digdogger.zs
+index ba3341f..81ce21e 100644
+--- a/actors/monsters/Digdogger.zs
++++ b/actors/monsters/Digdogger.zs
+@@ -10,7 +10,7 @@ class Digdogger : ZeldaMonster
+ 		SeeSound "zelda/boss1";
+ 		ActiveSound "zelda/boss1";
+ 		DeathSound "zelda/boss2";
+-		HitObituary "%o was killed by Digdogger";
++		HitObituary "$LOD_O_WAS_KILLED_BY_DIGDOGGER";
+         ZeldaMonster.DropGroup "X";
+         +FLOAT
+         +NOGRAVITY
+@@ -64,7 +64,7 @@ class DigdoggerSmall : ZeldaMonster
+ 		SeeSound "zelda/boss1";
+ 		ActiveSound "zelda/boss1";
+ 		DeathSound "zelda/boss2";
+-		HitObituary "%o was killed by Digdogger";
++		HitObituary "$LOD_O_WAS_KILLED_BY_DIGDOGGER";
+         +FLOAT
+         +NOGRAVITY
+     }
+diff --git a/actors/monsters/Dodongo.zs b/actors/monsters/Dodongo.zs
+index cfa3c65..77cd221 100644
+--- a/actors/monsters/Dodongo.zs
++++ b/actors/monsters/Dodongo.zs
+@@ -5,7 +5,7 @@ class Dodongo : ZeldaMonster
+ 		Health 8;
+         DamageFunction(8);
+         ZeldaMonster.DropGroup "D";
+-		Obituary "%o was killed by Dodongo";
++		Obituary "$LOD_O_WAS_KILLED_BY_DODONGO";
+         Scale 3;
+ 		Speed 8;
+         SeeSound "zelda/boss1";
+diff --git a/actors/monsters/Gel.zs b/actors/monsters/Gel.zs
+index 38071c4..8742933 100644
+--- a/actors/monsters/Gel.zs
++++ b/actors/monsters/Gel.zs
+@@ -6,7 +6,7 @@ class Gel : ZeldaMonster
+         DamageFunction(4);
+         ZeldaMonster.DropGroup "X";
+         PainThreshold 1;
+-        Obituary "%o was killed by a Gel";
++        Obituary "$LOD_O_WAS_KILLED_BY_A_GEL";
+         Radius 16;
+         Speed 5;
+         Scale 2;
+diff --git a/actors/monsters/Gibdo.zs b/actors/monsters/Gibdo.zs
+index 08f0952..2aed841 100644
+--- a/actors/monsters/Gibdo.zs
++++ b/actors/monsters/Gibdo.zs
+@@ -5,7 +5,7 @@ class Gibdo : ZeldaMonster
+         Health 8;
+         DamageFunction(16);
+         ZeldaMonster.DropGroup "B";
+-        HitObituary "%o was killed by Gibdo";
++        HitObituary "$LOD_O_WAS_KILLED_BY_GIBDO";
+         Scale 3.5;
+         Speed 5;
+     }
+diff --git a/actors/monsters/Gleeok.zs b/actors/monsters/Gleeok.zs
+index ee535e6..c0889c0 100644
+--- a/actors/monsters/Gleeok.zs
++++ b/actors/monsters/Gleeok.zs
+@@ -9,7 +9,7 @@ class Gleeok : ZeldaMonster
+ 		SeeSound "zelda/boss1";
+ 		ActiveSound "zelda/boss1";
+ 		DeathSound "zelda/boss2";
+-		HitObituary "%o was killed by Gleeok";
++		HitObituary "$LOD_O_WAS_KILLED_BY_GLEEOK";
+         +MISSILEEVENMORE
+ 	}
+ 
+diff --git a/actors/monsters/Gohma.zs b/actors/monsters/Gohma.zs
+index f4ab7c8..a83d963 100644
+--- a/actors/monsters/Gohma.zs
++++ b/actors/monsters/Gohma.zs
+@@ -14,7 +14,7 @@ class Gohma : ZeldaMonster
+     {
+         Health 2;
+         ZeldaMonster.DropGroup "D";
+-        Obituary "%o was vaporized by Gohma";
++        Obituary "$LOD_O_WAS_VAPORIZED_BY_GOHMA";
+         Scale 3;
+         Speed 6;
+         SeeSound "zelda/boss2";
+diff --git a/actors/monsters/Goriya.zs b/actors/monsters/Goriya.zs
+index 0b96eb2..6d46734 100644
+--- a/actors/monsters/Goriya.zs
++++ b/actors/monsters/Goriya.zs
+@@ -18,7 +18,7 @@ class Goriya : ZeldaMonster
+         Health 3;
+         DamageFunction(8);
+         ZeldaMonster.DropGroup "B";
+-        Obituary "%o was blasted by a goriya.";
++        Obituary "$LOD_O_WAS_BLASTED_BY_A_GORIYA";
+         Scale 4;
+         Speed 10;
+         +MISSILEMORE
+diff --git a/actors/monsters/Leever.zs b/actors/monsters/Leever.zs
+index 64d694c..f830749 100644
+--- a/actors/monsters/Leever.zs
++++ b/actors/monsters/Leever.zs
+@@ -16,7 +16,7 @@ class Leever : ZeldaMonster
+ 		Health 2;
+ 		DamageFunction(4);
+         ZeldaMonster.DropGroup "C";
+-		Obituary "%o was killed by a leever";
++		Obituary "$LOD_O_WAS_KILLED_BY_A_LEEVER";
+ 		Speed 8;
+ 		Scale 3;
+     }
+diff --git a/actors/monsters/Lynel.zs b/actors/monsters/Lynel.zs
+index c22b582..61b19ef 100644
+--- a/actors/monsters/Lynel.zs
++++ b/actors/monsters/Lynel.zs
+@@ -15,7 +15,7 @@ class Lynel : ZeldaMonster
+ 		Health 4;
+         DamageFunction(16);
+         ZeldaMonster.DropGroup "D";
+-        Obituary "%o was killed by Lynel";
++        Obituary "$LOD_O_WAS_KILLED_BY_LYNEL";
+         Scale 3.5;
+ 		Speed 8;
+         +MISSILEMORE
+diff --git a/actors/monsters/Moblin.zs b/actors/monsters/Moblin.zs
+index c58963d..52abdaf 100644
+--- a/actors/monsters/Moblin.zs
++++ b/actors/monsters/Moblin.zs
+@@ -34,7 +34,7 @@ class Moblin : ZeldaMonster
+         ZeldaMonster.DropGroup "A";
+ 		Speed 8;
+ 		Scale 3.5;
+-		Obituary "%o was killed by a moblin";
++		Obituary "$LOD_O_WAS_KILLED_BY_A_MOBLIN";
+ 	}
+ 
+ 	States
+diff --git a/actors/monsters/Octorock.zs b/actors/monsters/Octorock.zs
+index b062ebb..81c8fae 100644
+--- a/actors/monsters/Octorock.zs
++++ b/actors/monsters/Octorock.zs
+@@ -17,7 +17,7 @@ class Octorock : ZeldaMonster
+         ZeldaMonster.DropGroup "A";
+ 		Speed 10;
+ 		Scale 3.5;
+-		Obituary "%o was killed by an octorock";
++		Obituary "$LOD_O_WAS_KILLED_BY_AN_OCTOROCK";
+ 	}
+ 	States
+ 	{
+diff --git a/actors/monsters/Patra.zs b/actors/monsters/Patra.zs
+index 454065f..193618e 100644
+--- a/actors/monsters/Patra.zs
++++ b/actors/monsters/Patra.zs
+@@ -63,8 +63,8 @@ class BabyCaco : Actor
+ 		ActiveSound "";
+ 		PainSound "zelda/e_hit";
+ 		DeathSound "zelda/e_die";
+-        Obituary "%o underestimated a Baby Patra.";
+-        HitObituary "%o was nibbled to death by a Baby Patra.";
++        Obituary "$LOD_O_UNDERESTIMATED_A_BABY_PATRA";
++        HitObituary "$LOD_O_WAS_NIBBLED_TO_DEATH_BY_A_BABY_PATRA";
+         Monster;
+         +NOGRAVITY
+         +FLOAT
+diff --git a/actors/monsters/Peahat.zs b/actors/monsters/Peahat.zs
+index a34e793..0b0bd5c 100644
+--- a/actors/monsters/Peahat.zs
++++ b/actors/monsters/Peahat.zs
+@@ -7,7 +7,7 @@ class Peahat : ZeldaMonster
+         ZeldaMonster.DropGroup "D";
+         Scale 3;
+         Speed 8;
+-        Obituary "%o was killed by Peahat";
++        Obituary "$LOD_O_WAS_KILLED_BY_PEAHAT";
+     }
+ 
+ 	States
+diff --git a/actors/monsters/Rope.zs b/actors/monsters/Rope.zs
+index 24b8d49..be748d9 100644
+--- a/actors/monsters/Rope.zs
++++ b/actors/monsters/Rope.zs
+@@ -7,7 +7,7 @@ class Rope : ZeldaMonster
+         ZeldaMonster.DropGroup "C";
+         Scale 2.5;
+         Speed 12;
+-        Obituary "%o tasted the venom of Rope";
++        Obituary "$LOD_O_TASTED_THE_VENOM_OF_ROPE";
+         +QuickToRetaliate
+         +RETARGETAFTERSLAM
+         +MISSILEMORE
+diff --git a/actors/monsters/Stalfos.zs b/actors/monsters/Stalfos.zs
+index b7b0032..d29e365 100644
+--- a/actors/monsters/Stalfos.zs
++++ b/actors/monsters/Stalfos.zs
+@@ -6,7 +6,7 @@ class Stalfos : ZeldaMonster
+ 		DamageFunction(4);
+         ZeldaMonster.DropGroup "C";
+         Scale 4;
+-		Obituary "%o was killed by Stalfos";
++		Obituary "$LOD_O_WAS_KILLED_BY_STALFOS";
+ 		Speed 10;
+ 		+MISSILEMORE
+ 	}
+diff --git a/actors/monsters/Tektite.zs b/actors/monsters/Tektite.zs
+index 4bb7da2..a1b7d91 100644
+--- a/actors/monsters/Tektite.zs
++++ b/actors/monsters/Tektite.zs
+@@ -15,7 +15,7 @@ class Tektite : ZeldaMonster
+         Health 1;
+         DamageFunction(4);
+         ZeldaMonster.DropGroup "A";
+-        HitObituary "%o was nipped by a Tektite";
++        HitObituary "$LOD_O_WAS_NIPPED_BY_A_TEKTITE";
+         Radius 20;
+         Height 25;
+         Speed 6;
+diff --git a/actors/monsters/Zol.zs b/actors/monsters/Zol.zs
+index 0a00e3f..47d95c6 100644
+--- a/actors/monsters/Zol.zs
++++ b/actors/monsters/Zol.zs
+@@ -5,7 +5,7 @@ class Zol : ZeldaMonster
+         Health 2;
+         DamageFunction(8);
+         ZeldaMonster.DropGroup "C";
+-        Obituary "%o was killed by a Zol";
++        Obituary "$LOD_O_WAS_KILLED_BY_A_ZOL";
+         Scale 4;
+         Radius 34;
+         Height 76;

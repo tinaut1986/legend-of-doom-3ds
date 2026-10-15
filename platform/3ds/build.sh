@@ -470,6 +470,7 @@ cmake -E copy "${ROOT}/platform/3ds/assets/menu-top.png" \
   "${MOD_PACKAGE_SOURCE}/graphics/TITLEPIC.png"
 cmake -E copy "${ROOT}/platform/3ds/assets/menu-story.png" \
   "${MOD_PACKAGE_SOURCE}/graphics/ZSTORY.png"
+python3 "${ROOT}/platform/3ds/tools/spanish-game.py" "${MOD_PACKAGE_SOURCE}"
 "${HOST_GZDOOM_BUILD}/tools/zipdir/zipdir" -df "${MOD_PK3}" "${MOD_PACKAGE_SOURCE}"
 if [[ -n "${LOD3DS_SCRIPT_VALIDATOR:-}" ]]; then
   python3 "${ROOT}/platform/3ds/tools/validate-game-scripts.py" \
