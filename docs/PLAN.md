@@ -28,7 +28,11 @@ boxes below. History: `git log` and the decisions log.
 Published: **`v0.2.3`** beta (2026-10-15), **`v0.2.2`** beta, **`v0.2.1`** stable (2026-10-15),
 **`v0.2.0`** stable (2026-10-14, the first), `v0.1.0` beta. `main` holds the last stable merge.
 
-**Branches:** none open: every topic branch is merged and deleted.
+**Branches:**
+
+| Branch | What | State |
+|---|---|---|
+| `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
 - The v0.2.3 beta: that the console's updater (Beta channel) offers it from the v0.2.2 beta and
