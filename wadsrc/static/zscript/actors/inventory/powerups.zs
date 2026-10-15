@@ -1507,8 +1507,9 @@ class PowerTimeFreezer : Powerup
 		if (Owner == null || Owner.player == null)
 			return;
 
-		// When this powerup is in effect, pause the music.
-		S_PauseSound(false, false);
+		// When this powerup is in effect, pause the music only: the player
+		// keeps hearing the effects (the sword, the pickups) while time is frozen.
+		S_PauseSound(false, true);
 
 		// Give the player and his teammates the power to move when time is frozen.
 		freezemask = 1 << Owner.PlayerNumber();
@@ -1603,8 +1604,8 @@ class PowerTimeFreezer : Powerup
 		// No, so allow other actors to move about freely once again.
 		Level.SetFrozen(false);
 
-		// Also, turn the music back on.
-		S_ResumeSound(false);
+		// Also, turn the music back on (the effects were never paused).
+		S_ResumeSound(true);
 	}
 }
 
