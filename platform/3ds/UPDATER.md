@@ -12,7 +12,7 @@ actions are centered between the fixed Update heading and Back button.
 
 Opening Update checks GitHub. The selected stable/beta channel persists
 under `sdmc:/3ds/Legend of Doom 3DS/update/channel.txt`. A selects, B returns or
-cancels a transfer, and the bottom screen supports touch. L/R pages through the changelog without leaving the update controls. Installation requires an explicit Yes; No is selected
+cancels a transfer, and the bottom screen supports touch. L/R pages through the changelog without leaving the update controls. **CHANGELOG** (the row above Back) picks what the top screen lists: NEW, what was published between the installed version and the newest one the channel sees (see "Release compatibility"), or ALL, every version the channel sees, newest first, each under its tag (`Update_ReleaseHistory`, from the same GitHub response). The start-up offer always shows NEW. Installation requires an explicit Yes; No is selected
 by default. Installation restarts the game into the new version (unsaved progress is lost).
 
 **AUTO UPDATE** (first row of the Update menu, `lod3ds_auto_update`, on by default): a few
@@ -38,16 +38,17 @@ would leave its external engine/game data stale.
 
 The source is `tinaut1986/legend-of-doom-3ds` (`UPDATE_REPOSITORY`), via GitHub's
 public releases API; this fork never reads EstebanPdN's releases. Drafts are
-ignored. Stable is GitHub's normal releases, Beta its pre-releases (tags on a
-`release/*` branch not yet merged into `main`; see `CLAUDE.md`, "Releases"). The
-highest version in the selected channel is validated; an invalid newest asset is an
-error, not a fallback to an older build.
+ignored. Stable sees GitHub's normal releases only; Beta sees them and the
+pre-releases (tags on a `release/*` branch not yet merged into `main`; see
+`CLAUDE.md`, "Releases"), so a stable release newer than the last beta is offered on
+Beta too. The highest version the selected channel sees is validated; an invalid
+newest asset is an error, not a fallback to an older build.
 
 Versions are this fork's `X.Y.Z` (tags `vX.Y.Z`). The installed build may also be
 `X.Y.Z-dev.N[.M]+hash` (a build off a release branch) or a beta (the channel is
-baked in, `LOD3DS_PORT_IS_BETA`); both sort below the plain `X.Y.Z`. A beta-channel
-tag is compared as `X.Y.Z-beta`, so a beta never offers its own page while the
-stable release of its number is newer. Upstream's `vX.Y` and `vX.Y-En` forms still
+baked in, `LOD3DS_PORT_IS_BETA`); both sort below the plain `X.Y.Z`. A pre-release's
+tag is compared as `X.Y.Z-beta`, so a beta never offers its own page, and the stable
+release of its number is newer than it. Upstream's `vX.Y` and `vX.Y-En` forms still
 parse. Equal or older versions cannot be installed. Betas and dev builds start on
 the Beta channel; stable builds on Stable.
 
@@ -57,7 +58,11 @@ download URL must belong to that exact repository, tag and asset; the CIA's titl
 ID must be this fork's `0x0004000005A2D100` (`LOD3DS_TITLE_ID`), never upstream's.
 The handheld changelog shows the release body's `<!-- lod-notes -->` block (from
 `docs/release-notes/<tag>.md`), or the `## Changelog` commit list when it is
-missing. The updater reads up to 100 releases, limits metadata to 2 MiB and CIA
+missing. When more than one release the channel sees lies between the installed
+version and the offered one, it shows each one's block under its tag (`vX.Y.Z`, or
+`vX.Y.Z BETA`), newest first: every stable release, and the betas no stable release in
+that range already covers (a stable release's notes list everything since the previous
+stable one, betas included). The updater reads up to 100 releases, limits metadata to 2 MiB and CIA
 files to 128 MiB.
 
 ## Local verification

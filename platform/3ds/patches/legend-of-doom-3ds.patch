@@ -226,7 +226,7 @@ index 029f40d..4dbcc20 100644
          let isReady =
              players[consoleplayer].AttackDown == false ||
 diff --git a/MENUDEF b/MENUDEF
-index c7c6d33..a281e48 100644
+index c7c6d33..aad1419 100644
 --- a/MENUDEF
 +++ b/MENUDEF
 @@ -1,50 +1,126 @@
@@ -385,7 +385,7 @@ index c7c6d33..a281e48 100644
  }
  
  // //-------------------------------------------------------------------------------------------
-@@ -57,3 +133,14 @@ ListMenu "EpisodeMenu"
+@@ -57,3 +133,15 @@ ListMenu "EpisodeMenu"
  // {
  // 	Option "High Resolution Voxel Graphics",		"r_drawvoxels", "OnOff"
  // }
@@ -398,6 +398,7 @@ index c7c6d33..a281e48 100644
 +    Command "CHANNEL", ""
 +    Command "CHECK FOR UPDATES", ""
 +    Command "INSTALL UPDATE", ""
++    Command "CHANGELOG", ""
 +    Command "BACK", ""
 +}
 diff --git a/ZMAPINFO b/ZMAPINFO
@@ -590,10 +591,10 @@ index ed22291..fef1c23 100644
  #include "actors/Decorations.zs"
 diff --git a/actors/LegendPauseMenu.zs b/actors/LegendPauseMenu.zs
 new file mode 100644
-index 0000000..8eb2a99
+index 0000000..5b11284
 --- /dev/null
 +++ b/actors/LegendPauseMenu.zs
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,201 @@
 +class ListMenuItemResume : ListMenuItemTextItem
 +{
 +    override bool Activate()
@@ -719,6 +720,7 @@ index 0000000..8eb2a99
 +    int NativeUpdateChoice;
 +    int NativeUpdatePage;
 +    int NativeUpdatePages;
++    int NativeUpdateAll; // CHANGELOG: 0 NEW (since the installed version), 1 ALL versions
 +
 +    override void Init(Menu parent, OptionMenuDescriptor desc)
 +    {
@@ -774,9 +776,10 @@ index 0000000..8eb2a99
 +            return true;
 +        }
 +        if (mkey == MKEY_Back) { Close(); return true; }
-+        if (mkey == MKEY_Up) mDesc.mSelectedItem = (mDesc.mSelectedItem + 4) % 5;
-+        if (mkey == MKEY_Down) mDesc.mSelectedItem = (mDesc.mSelectedItem + 1) % 5;
-+        if (mkey == MKEY_Enter || ((mkey == MKEY_Left || mkey == MKEY_Right) && mDesc.mSelectedItem <= 1))
++        if (mkey == MKEY_Up) mDesc.mSelectedItem = (mDesc.mSelectedItem + 5) % 6;
++        if (mkey == MKEY_Down) mDesc.mSelectedItem = (mDesc.mSelectedItem + 1) % 6;
++        if (mkey == MKEY_Enter || ((mkey == MKEY_Left || mkey == MKEY_Right) &&
++            (mDesc.mSelectedItem <= 1 || mDesc.mSelectedItem == 4)))
 +        {
 +            switch (mDesc.mSelectedItem)
 +            {
@@ -786,7 +789,8 @@ index 0000000..8eb2a99
 +            case 3:
 +                if (state == 3) { NativeUpdateConfirm = 1; NativeUpdateChoice = 1; }
 +                break;
-+            case 4: Close(); break;
++            case 4: NativeUpdateAll = 1 - NativeUpdateAll; NativeUpdatePage = 0; break;
++            case 5: Close(); break;
 +            }
 +        }
 +        return true;
@@ -832,10 +836,10 @@ index f718b23..154c58f 100644
  
 diff --git a/language.csv b/language.csv
 new file mode 100644
-index 0000000..f20c4af
+index 0000000..8405abc
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,245 @@
+@@ -0,0 +1,248 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -848,6 +852,7 @@ index 0000000..f20c4af
 +ALL,LOD_ALL,,,TODO
 +ALL DUMPS CLEANED,LOD_ALL_DUMPS_CLEANED,,,CAPTURAS BORRADAS
 +ALL ITEMS GIVEN,LOD_ALL_ITEMS_GIVEN,,,TODOS LOS OBJETOS
++ALL VERSIONS,LOD_ALL_VERSIONS,,,TODAS LAS VERSIONES
 +ALT ATTACK,LOD_ALT_ATTACK,,,ATAQUE SECUNDARIO
 +ATTACK,LOD_ATTACK,,,ATACAR
 +AUDIO READY,LOD_AUDIO_READY,,,AUDIO LISTO
@@ -870,6 +875,8 @@ index 0000000..f20c4af
 +CHANGE ITEM,LOD_CHANGE_ITEM,,,CAMBIAR OBJETO
 +CHANGE WEAPON,LOD_CHANGE_WEAPON,,,CAMBIAR ARMA
 +CHANGELOG,LOD_CHANGELOG,,,NOVEDADES
++CHANGELOG: ALL,LOD_CHANGELOG_ALL,,,NOVEDADES: TODAS
++CHANGELOG: NEW,LOD_CHANGELOG_NEW,,,NOVEDADES: NUEVAS
 +CHANNEL,LOD_CHANNEL,,,CANAL
 +CHANNEL: BETA,LOD_CHANNEL_BETA,,,CANAL: BETA
 +CHANNEL: STABLE,LOD_CHANNEL_STABLE,,,CANAL: ESTABLE

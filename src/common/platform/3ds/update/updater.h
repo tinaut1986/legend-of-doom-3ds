@@ -27,6 +27,8 @@ bool Updater_ShouldClose(void);
 void Updater_Shutdown(void);
 
 unsigned Updater_GetNotes(char *out, unsigned capacity);
+// Every release the channel sees, newest first (empty until a check got the list).
+unsigned Updater_GetHistory(char *out, unsigned capacity);
 
 #ifdef __cplusplus
 }

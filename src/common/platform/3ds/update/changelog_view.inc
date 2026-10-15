@@ -25,7 +25,7 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
     LoadNesFont();
     if (!NesFont.Valid) return false;
     const size_t columns = static_cast<size_t>(std::min(42, (width - 32) / 8));
-    static char bundled[12289] = {}, cached[12289] = {}, lines[768][43];
+    static char bundled[12289] = {}, cached[UPDATE_HISTORY_MAX] = {}, lines[2048][43];
     static bool loaded = false;
     static unsigned count = 0;
     static int cachedWidth = 0;
@@ -38,18 +38,24 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
             std::fclose(file);
         }
     }
-    char notes[12289] = {};
-    Updater_GetNotes(notes, sizeof(notes));
+    // CHANGELOG: ALL (NativeUpdateAll) shows every version; the start-up offer always shows
+    // what is new since the installed one.
+    const bool all = CurrentMenu->IntVar(FName("NativeUpdateAll")) != 0 &&
+        CurrentMenu->IntVar(FName("NativeUpdateConfirm")) != 2;
+    static char notes[UPDATE_HISTORY_MAX];
+    notes[0] = 0;
+    if (all) Updater_GetHistory(notes, sizeof(notes));
+    else Updater_GetNotes(notes, sizeof(notes));
     const bool onlineNotes = notes[0] != 0;
     const char *body = onlineNotes ? notes : bundled;
     if (!count || std::strcmp(body, cached) || cachedWidth != width)
     {
         std::snprintf(cached, sizeof(cached), "%s", body);
         cachedWidth = width;
-        static char formatted[384][43];
-        const unsigned formattedCount = Update_FormatNotes(cached, formatted, 384);
+        static char formatted[1024][43];
+        const unsigned formattedCount = Update_FormatNotes(cached, formatted, 1024);
         count = 0;
-        for (unsigned row = 0; row < formattedCount && count < 768; ++row)
+        for (unsigned row = 0; row < formattedCount && count < 2048; ++row)
         {
             const char *remaining = formatted[row];
             do
@@ -69,7 +75,7 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
                 lines[count++][take] = 0;
                 remaining += take;
                 while (*remaining == ' ') ++remaining;
-            } while (*remaining && count < 768);
+            } while (*remaining && count < 2048);
         }
         CurrentMenu->IntVar(FName("NativeUpdatePage")) = 0;
     }
@@ -90,7 +96,8 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
     centered(10, Tr("CHANGELOG"), NesRed);
     UpdateStatus status;
     Updater_GetStatus(&status);
-    const char *version = onlineNotes && status.version[0] ? status.version : LOD3DS_PORT_VERSION_LABEL;
+    const char *version = all && onlineNotes ? Tr("ALL VERSIONS")
+        : onlineNotes && status.version[0] ? status.version : LOD3DS_PORT_VERSION_LABEL;
     centered(29, version, OverlayIvory);
     for (unsigned i = first + page*rows; i < count && i < first+(page+1)*rows; ++i)
         NesTopText(pixels, pitch, width, height, 16,
