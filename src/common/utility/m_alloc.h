@@ -85,6 +85,14 @@ inline void* M_Calloc(size_t v1, size_t v2)
 void M_Free (void *memblock);
 
 #ifdef __3DS__
+// Like M_Realloc, for arrays that grow to megabytes (TArray): served from a pool set aside at start
+// while the heap is whole, so a fragmented heap cannot fail them (m_alloc.cpp).
+void *M_ReallocBig (void *memblock, size_t size);
+#else
+inline void *M_ReallocBig (void *memblock, size_t size) { return M_Realloc(memblock, size); }
+#endif
+
+#ifdef __3DS__
 void M_3DSLogHeap(const char *stage);
 #endif
 

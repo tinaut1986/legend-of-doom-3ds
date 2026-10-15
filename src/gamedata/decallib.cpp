@@ -531,6 +531,9 @@ void FDecalLib::ParseGenerator (FScanner &sc)
 	sc.MustGetString ();
 	optional = sc.Compare("optional");
 	if (optional) sc.MustGetString();
+#ifdef __3DS__
+	optional = true;	// generators of the actors that are not compiled here (zscript.txt)
+#endif
 
 	type = PClass::FindActor (sc.String);
 	if (type == NULL)

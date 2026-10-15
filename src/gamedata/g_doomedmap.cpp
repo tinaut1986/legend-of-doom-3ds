@@ -274,6 +274,10 @@ void InitActorNumsFromMapinfo()
 			cls = PClass::FindActor(pair->Value.classname);
 			if (cls == NULL)
 			{
+#ifdef __3DS__
+				// Heretic, Hexen, Strife and Chex classes are not compiled here (zscript.txt).
+				continue;
+#endif
 				Printf(TEXTCOLOR_RED "Script error, \"%s\" line %d:\nUnknown actor class %s\n",
 					pair->Value.filename.GetChars(), pair->Value.linenum, pair->Value.classname.GetChars());
 				error++;
@@ -443,6 +447,10 @@ void InitClassMap(FClassMap &themap, SpawnMap &thedata)
 			cls = PClass::FindActor(pair->Value.classname);
 			if (cls == NULL)
 			{
+#ifdef __3DS__
+				// Heretic, Hexen, Strife and Chex classes are not compiled here (zscript.txt).
+				continue;
+#endif
 				Printf(TEXTCOLOR_RED "Script error, \"%s\" line %d:\nUnknown actor class %s\n",
 					pair->Value.filename.GetChars(), pair->Value.linenum, pair->Value.classname.GetChars());
 				error++;

@@ -1360,6 +1360,8 @@ FScriptPosition &FScriptPosition::operator=(FScanner &sc)
 //
 //==========================================================================
 
+FString ScriptErrorSummary;
+
 void FScriptPosition::Message (int severity, const char *message, ...) const
 {
 	FString composed;
@@ -1405,6 +1407,9 @@ void FScriptPosition::Message (int severity, const char *message, ...) const
 
 	case MSG_ERROR:
 		ErrorCounter++;
+		// Kept so a fatal "N errors while compiling" can carry the first ones: the 3DS has no console log.
+		if (ScriptErrorSummary.Len() < 3000)
+			ScriptErrorSummary.AppendFormat("\n%s:%d: %s", FileName.GetChars(), ScriptLine, composed.GetChars());
 		type = "error";
 		color = TEXTCOLOR_RED;
 		break;

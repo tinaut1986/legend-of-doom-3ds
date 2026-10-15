@@ -57,6 +57,8 @@
 #include "zcc_compile_doom.h"
 #include "m_alloc.h"
 
+extern FString ScriptErrorSummary;
+
 // EXTERNAL FUNCTION PROTOTYPES --------------------------------------------
 void InitThingdef();
 
@@ -428,7 +430,7 @@ void ParseScripts()
 		if (FScriptPosition::ErrorCounter > 0)
 		{
 			// Abort if the compiler produced any errors. Also do not compile further lumps, because they very likely miss some stuff.
-			I_Error("%d errors, %d warnings while compiling %s", FScriptPosition::ErrorCounter, FScriptPosition::WarnCounter, fileSystem.GetFileFullPath(lump).GetChars());
+			I_Error("%d errors, %d warnings while compiling %s%s", FScriptPosition::ErrorCounter, FScriptPosition::WarnCounter, fileSystem.GetFileFullPath(lump).GetChars(), ScriptErrorSummary.GetChars());
 		}
 		else if (FScriptPosition::WarnCounter > 0)
 		{
@@ -471,7 +473,7 @@ void LoadActors()
 
 	if (FScriptPosition::ErrorCounter > 0)
 	{
-		I_Error("%d errors while parsing DECORATE scripts", FScriptPosition::ErrorCounter);
+		I_Error("%d errors while parsing DECORATE scripts%s", FScriptPosition::ErrorCounter, ScriptErrorSummary.GetChars());
 	}
 	FScriptPosition::ResetErrorCounter();
 	// AllActorClasses hasn'T been set up yet.

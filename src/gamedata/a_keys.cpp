@@ -183,6 +183,11 @@ static void AddOneKey(Keygroup *keygroup, PClassActor *mi, FScanner &sc, bool ig
 	}
 	else
 	{
+#ifdef __3DS__
+		// The Heretic, Hexen and Strife classes are not compiled on the 3DS (zscript.txt): a key
+		// group naming them is just left without them.
+		return;
+#endif
 		sc.ScriptError("Unknown item '%s'", sc.String);
 	}
 }
