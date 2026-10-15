@@ -154,6 +154,12 @@ uint32_t SuppressedComboMask;
 constexpr unsigned BottomScreenWidth = 320;
 constexpr unsigned BottomScreenHeight = 240;
 constexpr uint64_t OverlayRefreshMilliseconds = 125;
+// The developer overlay's figures change once a second at most (the FPS box shows the last whole
+// second), and a redraw is ~9 ms of CPU drawing in the game's own frame: 8 of them a second
+// pulled a 110 fps game down to 66 with spikes of 25 ms (2026-10-15).
+constexpr uint64_t DeveloperOverlayRefreshMilliseconds = 1000;
+// mallinfo() walks the whole heap: ~15 ms on a 55-96 MB heap in pieces. Read it rarely.
+constexpr uint64_t HeapInfoRefreshMilliseconds = 4000;
 constexpr uint64_t OverlayNotificationMilliseconds = 4000;
 uint64_t OverlayLastDrawMilliseconds;
 uint64_t OverlayNotificationUntilMilliseconds;
@@ -2365,7 +2371,15 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 	OverlayText(framebuffer, 126, 44, "MEMORY", 1, OverlayIvory);
 	bool isNew3DS = false;
 	APT_CheckNew3DS(&isNew3DS);
-	const struct mallinfo heap = mallinfo();
+	static struct mallinfo cachedHeap;
+	static uint64_t cachedHeapAt = 0;
+	const uint64_t nowMs = osGetTime();
+	if (cachedHeapAt == 0 || nowMs - cachedHeapAt >= HeapInfoRefreshMilliseconds)
+	{
+		cachedHeap = mallinfo();
+		cachedHeapAt = nowMs;
+	}
+	const struct mallinfo &heap = cachedHeap;
 	char heapText[24] = {};
 	char linearText[24] = {};
 	std::snprintf(heapText, sizeof(heapText), "HEAP FREE %luKB",
@@ -3533,7 +3547,8 @@ void DrawBottomOverlay(bool force)
 		drawnSignature = signature;
 	}
 	else if (!force && BottomPresentation == desired &&
-		now - OverlayLastDrawMilliseconds < OverlayRefreshMilliseconds)
+		now - OverlayLastDrawMilliseconds < (desired == EBottomPresentation::DeveloperOverlay ?
+			DeveloperOverlayRefreshMilliseconds : OverlayRefreshMilliseconds))
 	{
 		return;
 	}
