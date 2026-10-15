@@ -32,7 +32,6 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
 
 | Branch | What | State |
 |---|---|---|
-| `perf/gpu-world-16bit-textures` | the world's textures in 565 / 5551 (#12) | On the console (debug build), measured: stereo 48 -> 61 fps at `test2`; **waiting for the owner's eye on the colours**, not merged |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
@@ -43,7 +42,7 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
 - `gpu-light-sky` is checked (owner, 2026-10-15): the hit flash, Ghini and a Wizzrobe translucent,
   Ganon invisible, the sky, the fog, a dark cave. What is left of it is #14, low priority.
 
-**Priority** (2026-10-15, owner): the 2DS (P4.1), then #12 (stereo at 48-50 fps), then #5, #7 and #14 last. P2.3's parity is closed bar the owner's check
+**Priority** (2026-10-15, owner): the 2DS (P4.1), then #5, #7 and #14 last. P2.3's parity is closed bar the owner's check
 (see the decisions log, 2026-10-15).
 
 **Start here:**
@@ -54,7 +53,7 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
    of room, the 10 MB pool is full at MAP01 (`pool full` x10) and the 5 MB map-load reserve is on
    top of it. Next steps: size the pool to its real use, drop or merge the reserve, then what
    MAP01's 21.6 MB of engine objects (`gc`) hold. The decisions log of 2026-10-15 has the rest.
-1. **#12** with a debug build and the owner's `test2` save: `lod-link.py perf` in mono and stereo.
+1. **#12** is done (16-bit textures, merged); no further work planned.
 2. **P2.3 parity:** nothing left that this game uses; the owner checks 3D floors (`feat/gpu-3d-floors`)
    on the console, then it merges.
 3. Nothing is half done or uncommitted.
