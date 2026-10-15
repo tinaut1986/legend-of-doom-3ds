@@ -4,6 +4,7 @@
 #include "app_paths_3ds.h"
 #include "cia_install_3ds.h"
 #include "ftp_server_3ds.h"
+#include "gpu_world_3ds.h"
 #include "gpu_3ds.h"
 #include "lod3ds_version.h"
 
@@ -5115,9 +5116,19 @@ bool I_3DSNativeMenuOwnsFrame()
 	return NativeMenuSupported();
 }
 
+// A native menu over a level whose world the GPU draws keeps drawing that world behind it, dimmed
+// by a GPU quad: the canvas the old route froze does not have the world in it (the GPU draws it
+// at the present), so the top screen came out black. The menus that put their own picture on
+// the top canvas (the save and load menus) keep the frozen route.
+bool NativeMenuKeepsWorld()
+{
+	return NativeMenuSupported() && gamestate == GS_LEVEL && I_3DSGpuWorldActive() &&
+		!NativeSaveLoadMenuVisible();
+}
+
 bool I_3DSNativeMenuFrozen()
 {
-	if (!NativeMenuSupported())
+	if (!NativeMenuSupported() || NativeMenuKeepsWorld())
 	{
 		if (!NativeMenuFrozenTop.empty()) ReleaseNativeMenuFreeze();
 		return false;
@@ -5130,7 +5141,14 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 {
 	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0) return;
 	const size_t bytes = static_cast<size_t>(pitchBytes) * static_cast<size_t>(height);
-	if (!NativeMenuFrozenTop.empty() && NativeMenuFrozenWidth == width &&
+	const bool keepsWorld = gpuOverlays && NativeMenuKeepsWorld();
+	if (keepsWorld)
+	{
+		const unsigned brightness = NativeMenuCurrentBrightness();
+		if (brightness != 255u)
+			I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 255u - brightness);	// 0xRRGGBBAA: black
+	}
+	else if (!NativeMenuFrozenTop.empty() && NativeMenuFrozenWidth == width &&
 		NativeMenuFrozenHeight == height && NativeMenuFrozenPitch == pitchBytes)
 	{
 		std::memcpy(pixels, NativeMenuFrozenTop.data(), bytes);

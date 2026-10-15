@@ -9,6 +9,9 @@ class FGameTexture;
 // frame's world (always, unless lod3ds_gpu_world is turned off in a debug build), so that the
 // walk can hand it the sprites.
 void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *thread);
+// While suspended the GPU world is off and the swrenderer draws the whole picture itself: for a
+// picture rendered into a canvas (the save game's), which nothing presents through the GPU.
+void I_3DSGpuWorldSuspend(bool suspend);
 // A sprite the walk projected (RenderSprite::Project): its billboard from (ax, ay) to (bx, by)
 // in map units, bottom to top, the image mirrored or not, its sector's light level.
 void I_3DSGpuWorldAddSprite(FGameTexture *texture, double ax, double ay, double bx, double by,
