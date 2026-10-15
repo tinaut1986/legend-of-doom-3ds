@@ -170,6 +170,8 @@ char OverlayNotification[48];
 uint32_t OverlayNotificationSerial;
 // A bar under the toast's text, in thousandths (an FTP install's progress), or -1 for none.
 int OverlayNotificationProgress = -1;
+// Whether the bar's percentage is written beside it (a transfer) or not (a countdown).
+bool OverlayNotificationPercent = false;
 bool DiagnosticProgressActive;
 EDiagnosticDumpMode DiagnosticProgressMode = EDiagnosticDumpMode::None;
 uint64_t DiagnosticProgressValue;
@@ -2326,10 +2328,23 @@ void DrawBottomToast(unsigned char *framebuffer)
 	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
 	if (bar)
 	{
-		const int barWidth = width - 24;
+		// The percentage sits beside the bar, not in the text above it: the text, in Spanish
+		// especially, has the whole width of the toast.
+		char percent[8] = {};
+		int percentWidth = 0;
+		if (OverlayNotificationPercent)
+		{
+			std::snprintf(percent, sizeof(percent), "%d%%",
+				std::min(OverlayNotificationProgress, 1000) / 10);
+			percentWidth = NesTextWidth("100%", 1) + 6;
+		}
+		const int barWidth = width - 24 - percentWidth;
 		OverlayRect(framebuffer, x + 12, y + 20, barWidth, 6, FOverlayColor{ 60, 60, 60 });
 		OverlayRect(framebuffer, x + 12, y + 20,
 			barWidth * std::min(OverlayNotificationProgress, 1000) / 1000, 6, OverlayRed);
+		if (percentWidth > 0)
+			NesText(framebuffer, x + width - 12 - NesTextWidth(percent, 1), y + 19, percent, 1,
+				OverlayIvory);
 	}
 }
 
@@ -6125,6 +6140,7 @@ void I_3DSServiceConsoleLink()
 	// happens without a warning.
 	char text[sizeof(OverlayNotification)] = {};
 	int progress = -1;
+	bool percentShown = false;
 	if (relaunchAt != 0)
 	{
 		const u64 now = std::min<u64>(osGetTime(), relaunchAt);
@@ -6139,9 +6155,9 @@ void I_3DSServiceConsoleLink()
 		if (total > 0)
 		{
 			progress = static_cast<int>(std::min<unsigned long long>(done * 1000u / total, 1000u));
-			std::snprintf(text, sizeof(text), "%s %d%%", Tr(notice), progress / 10);
+			percentShown = true;
 		}
-		else std::snprintf(text, sizeof(text), "%s", Tr(notice));
+		std::snprintf(text, sizeof(text), "%s", Tr(notice));
 	}
 	static char shownText[sizeof(OverlayNotification)] = {};
 	static int shownProgress = -1;
@@ -6151,6 +6167,7 @@ void I_3DSServiceConsoleLink()
 		if (text[0] != '\0') SetOverlayNotification(text, 10u * 60u * 1000u);
 		else if (shownText[0] != '\0') SetOverlayNotification(nullptr, 0);
 		OverlayNotificationProgress = progress;
+		OverlayNotificationPercent = percentShown;
 		std::snprintf(shownText, sizeof(shownText), "%s", text);
 		shownProgress = progress;
 	}
