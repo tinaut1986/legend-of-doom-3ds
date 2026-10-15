@@ -28,11 +28,7 @@ boxes below. History: `git log` and the decisions log.
 Published: **`v0.2.3`** beta (2026-10-15), **`v0.2.2`** beta, **`v0.2.1`** stable (2026-10-15),
 **`v0.2.0`** stable (2026-10-14, the first), `v0.1.0` beta. `main` holds the last stable merge.
 
-**Branches:** every topic branch up to v0.2.3 is merged and deleted.
-
-| Branch | What | State |
-|---|---|---|
-| `feat/old3ds-allow-file` | a debug build skips the Old 3DS "not supported yet" screen when `allow-old3ds.txt` is in the data folder (without it the 2DS cannot be tried at all now) | Pushed, **not merged**: tests pass; the owner to confirm |
+**Branches:** none open: every topic branch is merged and deleted.
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
 - The v0.2.3 beta: that the console's updater (Beta channel) offers it from the v0.2.2 beta and
@@ -46,8 +42,8 @@ GPU world's parity (P2.3: 3D floors, portals, translucent walls, decals, animate
 palette flashes), #5 and #7 last.
 
 **Start here:**
-1. **The 2DS (P4.1).** Merge `feat/old3ds-allow-file` (or the 2DS shows only the message), create
-   `allow-old3ds.txt` in `sdmc:/3ds/Legend of Doom 3DS/` on it, install a debug build over
+1. **The 2DS (P4.1).** Create `allow-old3ds.txt` (merged 2026-10-15, debug builds only; without it
+   the 2DS shows only the "not supported yet" message) in `sdmc:/3ds/Legend of Doom 3DS/` on it, install a debug build over
    `release/v0.2.4` and read `fatal.log` and the `pool=` figures in `startup.log`. What is known: on
    the New 3DS MAP01 loads with the heap at 53 MB of 94; the 2DS heap is ~56 MB, so there is ~3 MB
    of room, the 10 MB pool is full at MAP01 (`pool full` x10) and the 5 MB map-load reserve is on
