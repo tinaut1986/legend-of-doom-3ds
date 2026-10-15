@@ -105,6 +105,9 @@ uint32_t StatDraws;
 uint64_t StatLastPublish;
 // Set by the capture for the frame being rendered.
 bool Active;
+// A picture drawn into a canvas (the save game's) is rendered by the CPU alone.
+bool Suspended;
+bool ActiveBeforeSuspend;
 
 // The frame's light (VertexColor): the swrenderer's own visibility, the eye, the view's depth
 // axis (as the projection's), and whether MAP01's distance fog is on.
@@ -506,8 +509,24 @@ void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *thread)
 {
 	if (thread == nullptr || !thread->MainThread) return;
 	// Stable builds cannot turn it off; debug builds can, for comparisons.
-	Active = (lod3ds_gpu_world || !LOD3DS_DEBUG_TOOLS) && I_3DSGpuReady();
+	Active = (lod3ds_gpu_world || !LOD3DS_DEBUG_TOOLS) && I_3DSGpuReady() && !Suspended;
 	Sprites.clear();
+}
+
+void I_3DSGpuWorldSuspend(bool suspend)
+{
+	if (suspend == Suspended) return;
+	if (suspend)
+	{
+		ActiveBeforeSuspend = Active;
+		Suspended = true;
+		Active = false;
+	}
+	else
+	{
+		Suspended = false;
+		Active = ActiveBeforeSuspend;
+	}
 }
 
 void I_3DSGpuWorldAddSprite(FGameTexture *texture, double ax, double ay, double bx, double by,
@@ -653,6 +672,7 @@ bool I_3DSGpuWorldActive()
 #else
 
 void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *) {}
+void I_3DSGpuWorldSuspend(bool) {}
 void I_3DSGpuWorldAddSprite(FGameTexture *, double, double, double, double, double, double, bool,
 	int, bool, const sector_t *, int, double, uint32_t) {}
 void I_3DSGpuWorldCapture(swrenderer::RenderThread *) {}

@@ -4,6 +4,7 @@
 #include "app_paths_3ds.h"
 #include "cia_install_3ds.h"
 #include "ftp_server_3ds.h"
+#include "gpu_world_3ds.h"
 #include "gpu_3ds.h"
 #include "lod3ds_version.h"
 
@@ -154,6 +155,12 @@ uint32_t SuppressedComboMask;
 constexpr unsigned BottomScreenWidth = 320;
 constexpr unsigned BottomScreenHeight = 240;
 constexpr uint64_t OverlayRefreshMilliseconds = 125;
+// The developer overlay's figures change once a second at most (the FPS box shows the last whole
+// second), and a redraw is ~9 ms of CPU drawing in the game's own frame: 8 of them a second
+// pulled a 110 fps game down to 66 with spikes of 25 ms (2026-10-15).
+constexpr uint64_t DeveloperOverlayRefreshMilliseconds = 1000;
+// mallinfo() walks the whole heap: ~15 ms on a 55-96 MB heap in pieces. Read it rarely.
+constexpr uint64_t HeapInfoRefreshMilliseconds = 4000;
 constexpr uint64_t OverlayNotificationMilliseconds = 4000;
 uint64_t OverlayLastDrawMilliseconds;
 uint64_t OverlayNotificationUntilMilliseconds;
@@ -2349,11 +2356,13 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 	OverlayText(framebuffer, 312 - LoadingTextWidth(upstream, 1), 17, upstream, 1, OverlayIvory);
 	OverlayRect(framebuffer, 0, 29, BottomScreenWidth, 2, OverlayBlue);
 
-	const double frameMilliseconds = std::clamp(LastFrameMilliseconds, 0.0, 999.9);
-	const double fps = frameMilliseconds > 0.0 ? 1000.0 / frameMilliseconds : LastCount;
+	// The same figure as the counter on the top screen: the frames of the last whole second (and
+	// their mean time), not the smoothed time of the last frame, which swings with every spike.
+	const double fps = static_cast<double>(std::min<uint64_t>(LastCount, 999u));
+	const double frameMilliseconds = fps > 0.0 ? 1000.0 / fps : 0.0;
 	char fpsText[16] = {};
 	char frameText[24] = {};
-	std::snprintf(fpsText, sizeof(fpsText), "%.1f", std::clamp(fps, 0.0, 999.9));
+	std::snprintf(fpsText, sizeof(fpsText), "%.0f", fps);
 	std::snprintf(frameText, sizeof(frameText), "FRAME %.1fMS", frameMilliseconds);
 	OverlayFrame(framebuffer, 8, 38, 104, 89, 2, OverlayBlue);
 	OverlayText(framebuffer, 15, 44, "PERFORMANCE", 1, OverlayIvory);
@@ -2365,7 +2374,15 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 	OverlayText(framebuffer, 126, 44, "MEMORY", 1, OverlayIvory);
 	bool isNew3DS = false;
 	APT_CheckNew3DS(&isNew3DS);
-	const struct mallinfo heap = mallinfo();
+	static struct mallinfo cachedHeap;
+	static uint64_t cachedHeapAt = 0;
+	const uint64_t nowMs = osGetTime();
+	if (cachedHeapAt == 0 || nowMs - cachedHeapAt >= HeapInfoRefreshMilliseconds)
+	{
+		cachedHeap = mallinfo();
+		cachedHeapAt = nowMs;
+	}
+	const struct mallinfo &heap = cachedHeap;
 	char heapText[24] = {};
 	char linearText[24] = {};
 	std::snprintf(heapText, sizeof(heapText), "HEAP FREE %luKB",
@@ -3266,9 +3283,9 @@ void ComposeNativeSaveLoadTop(unsigned char *pixels, const unsigned char *menuSo
 
 void FormatFpsLabel(char *label, size_t size)
 {
-	std::snprintf(label, size, "FPS %llu  %.1fMS",
-		static_cast<unsigned long long>(std::min<uint64_t>(LastCount, 999u)),
-		std::clamp(LastFrameMilliseconds, 0.0, 999.9));
+	const uint64_t fps = std::min<uint64_t>(LastCount, 999u);
+	std::snprintf(label, size, "FPS %llu  %.1fMS", static_cast<unsigned long long>(fps),
+		fps > 0u ? 1000.0 / static_cast<double>(fps) : 0.0);
 }
 
 // The FPS counter and the crosshair as GPU overlays (gpu_3ds.h): drawn once into small images
@@ -3533,7 +3550,8 @@ void DrawBottomOverlay(bool force)
 		drawnSignature = signature;
 	}
 	else if (!force && BottomPresentation == desired &&
-		now - OverlayLastDrawMilliseconds < OverlayRefreshMilliseconds)
+		now - OverlayLastDrawMilliseconds < (desired == EBottomPresentation::DeveloperOverlay ?
+			DeveloperOverlayRefreshMilliseconds : OverlayRefreshMilliseconds))
 	{
 		return;
 	}
@@ -5115,9 +5133,19 @@ bool I_3DSNativeMenuOwnsFrame()
 	return NativeMenuSupported();
 }
 
+// A native menu over a level whose world the GPU draws keeps drawing that world behind it, dimmed
+// by a GPU quad: the canvas the old route froze does not have the world in it (the GPU draws it
+// at the present), so the top screen came out black. The menus that put their own picture on
+// the top canvas (the save and load menus) keep the frozen route.
+bool NativeMenuKeepsWorld()
+{
+	return NativeMenuSupported() && gamestate == GS_LEVEL && I_3DSGpuWorldActive() &&
+		!NativeSaveLoadMenuVisible();
+}
+
 bool I_3DSNativeMenuFrozen()
 {
-	if (!NativeMenuSupported())
+	if (!NativeMenuSupported() || NativeMenuKeepsWorld())
 	{
 		if (!NativeMenuFrozenTop.empty()) ReleaseNativeMenuFreeze();
 		return false;
@@ -5130,7 +5158,14 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 {
 	if (pixels == nullptr || pitchBytes < width * 4 || width <= 0 || height <= 0) return;
 	const size_t bytes = static_cast<size_t>(pitchBytes) * static_cast<size_t>(height);
-	if (!NativeMenuFrozenTop.empty() && NativeMenuFrozenWidth == width &&
+	const bool keepsWorld = gpuOverlays && NativeMenuKeepsWorld();
+	if (keepsWorld)
+	{
+		const unsigned brightness = NativeMenuCurrentBrightness();
+		if (brightness != 255u)
+			I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 255u - brightness);	// 0xRRGGBBAA: black
+	}
+	else if (!NativeMenuFrozenTop.empty() && NativeMenuFrozenWidth == width &&
 		NativeMenuFrozenHeight == height && NativeMenuFrozenPitch == pitchBytes)
 	{
 		std::memcpy(pixels, NativeMenuFrozenTop.data(), bytes);

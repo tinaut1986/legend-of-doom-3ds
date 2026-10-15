@@ -256,15 +256,33 @@ void DFrameBuffer::ScaleCoordsFromWindow(int16_t &x, int16_t &y)
 	y = int16_t((y - letterboxY) * Height / letterboxHeight);
 }
 
+#ifdef __3DS__
+// OPTIONS -> VIDEO -> FRAMES, as in the other ports. The game logic always runs at 35 Hz and
+// catches up by running several tics before a frame, so a slow frame is never "skipped": it is
+// just drawn late. What the choice sets is the most frames drawn a second.
+//   0 AUTO    60: the LCD's rate; frames above it are never seen (heat, battery, the 3D slider)
+//   1 LOCK 30 30: half the LCD's rate, for a model that cannot hold 60
+//   2 NO SKIP uncapped, as it was
+CUSTOM_CVAR(Int, lod3ds_frames, 0, CVAR_ARCHIVE | CVAR_GLOBALCONFIG | CVAR_NOINITCALL)
+{
+	if (self < 0 || self > 2) self = 0;
+}
+#endif
+
 void DFrameBuffer::FPSLimit()
 {
 	using namespace std::chrono;
 	using namespace std::this_thread;
 
-	if (vid_maxfps <= 0 || cl_capfps)
+#ifdef __3DS__
+	const int maxfps = lod3ds_frames == 1 ? 30 : lod3ds_frames == 0 ? 60 : 0;
+#else
+	const int maxfps = vid_maxfps;
+#endif
+	if (maxfps <= 0 || cl_capfps)
 		return;
 
-	uint64_t targetWakeTime = fpsLimitTime + 1'000'000 / vid_maxfps;
+	uint64_t targetWakeTime = fpsLimitTime + 1'000'000 / maxfps;
 
 	while (true)
 	{

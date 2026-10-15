@@ -229,7 +229,7 @@ diff --git a/MENUDEF b/MENUDEF
 index c7c6d33..dffcba4 100644
 --- a/MENUDEF
 +++ b/MENUDEF
-@@ -1,50 +1,125 @@
+@@ -1,50 +1,133 @@
  DEFAULTLISTMENU
  {
  	// Font "ZeldFNT", "Untranslated"
@@ -316,6 +316,13 @@ index c7c6d33..dffcba4 100644
 +    Slider "SOUND EFFECTS", "snd_sfxvolume", 0, 1, 0.05, -1
 +}
 +
++OPTIONVALUE "LegendFrames"
++{
++    0, "AUTO"
++    1, "LOCK 30"
++    2, "NO SKIP"
++}
++
 +OPTIONSTRING "LegendLanguage"
 +{
 +    "auto", "SYSTEM"
@@ -333,6 +340,7 @@ index c7c6d33..dffcba4 100644
 +    Option "AIM CROSS", "crosshairon", "OnOff"
 +    Option "MAP COLLISIONS", "lod3ds_map_collisions", "OnOff"
 +    Option "SHOW FPS", "vid_fps", "OnOff"
++    Option "FRAMES", "lod3ds_frames", "LegendFrames"
 +}
 +
 +OPTIONMENU "LegendControllerOptions"
@@ -384,7 +392,7 @@ index c7c6d33..dffcba4 100644
  }
  
  // //-------------------------------------------------------------------------------------------
-@@ -57,3 +132,15 @@ ListMenu "EpisodeMenu"
+@@ -57,3 +140,15 @@ ListMenu "EpisodeMenu"
  // {
  // 	Option "High Resolution Voxel Graphics",		"r_drawvoxels", "OnOff"
  // }
@@ -838,7 +846,7 @@ new file mode 100644
 index 0000000..cadb9e7
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,257 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -856,6 +864,7 @@ index 0000000..cadb9e7
 +ATTACK,LOD_ATTACK,,,ATACAR
 +AUDIO READY,LOD_AUDIO_READY,,,AUDIO LISTO
 +AUDIO UNAVAILABLE,LOD_AUDIO_UNAVAILABLE,,,AUDIO NO DISPONIBLE
++AUTO,LOD_AUTO,,,AUTO
 +AUTO UPDATE: OFF,LOD_AUTO_UPDATE_OFF,,,AUTOACTUALIZAR: NO
 +AUTO UPDATE: ON,LOD_AUTO_UPDATE_ON,,,AUTOACTUALIZAR: SÍ
 +B BACK,LOD_B_BACK,,,B VOLVER
@@ -914,6 +923,7 @@ index 0000000..cadb9e7
 +EASY,LOD_EASY,,,FÁCIL
 +FTP INSTALL ONLY,LOD_FTP_INSTALL_ONLY,,,FTP SOLO INSTALAR
 +FTP SERVER,LOD_FTP_SERVER,,,SERVIDOR FTP
++FRAMES,LOD_FRAMES,,,FOTOGRAMAS
 +FULL DUMP,LOD_FULL_DUMP,,,CAPTURA COMPLETA
 +FULL DUMP COMPLETE,LOD_FULL_DUMP_COMPLETE,,,CAPTURA COMPLETA HECHA
 +GITHUB LIMIT - TRY LATER,LOD_GITHUB_LIMIT_TRY_LATER,,,LÍMITE DE GITHUB - PRUEBA LUEGO
@@ -943,6 +953,7 @@ index 0000000..cadb9e7
 +"Let Ganon's rule unfold?",LOD_LET_GANON_S_RULE_UNFOLD,,,¿DEJAR QUE GANON GOBIERNE?
 +LOAD,LOD_LOAD,,,CARGAR
 +LOAD GAME,LOD_LOAD_GAME,,,CARGAR PARTIDA
++LOCK 30,LOD_LOCK_30,,,FIJAR 30
 +LOOK,LOD_LOOK,,,MIRAR
 +LOW,LOD_LOW,,,BAJA
 +MAP,LOD_MAP,,,MAPA
@@ -959,6 +970,7 @@ index 0000000..cadb9e7
 +NO DUMPS TO CLEAN,LOD_NO_DUMPS_TO_CLEAN,,,NO HAY CAPTURAS
 +NO SAVE GAMES,LOD_NO_SAVE_GAMES,,,NO HAY PARTIDAS
 +NO SAVED GAMES,LOD_NO_SAVED_GAMES,,,NO HAY PARTIDAS GUARDADAS
++NO SKIP,LOD_NO_SKIP,,,SIN SALTO
 +NO STABLE RELEASE YET,LOD_NO_STABLE_RELEASE_YET,,,AÚN NO HAY VERSIÓN ESTABLE
 +NO WI-FI CONNECTION,LOD_NO_WI_FI_CONNECTION,,,SIN CONEXIÓN WI-FI
 +NORMAL,LOD_NORMAL,,,NORMAL
