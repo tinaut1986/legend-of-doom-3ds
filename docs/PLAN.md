@@ -32,6 +32,7 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
 
 | Branch | What | State |
 |---|---|---|
+| `fix/clock-keeps-sfx` | the clock pauses only the music, effects keep playing (#15) | Checked by the owner on the New 3DS (2026-10-15); **not merged yet** |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
@@ -42,28 +43,22 @@ Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`*
 - `gpu-light-sky` is checked (owner, 2026-10-15): the hit flash, Ghini and a Wizzrobe translucent,
   Ganon invisible, the sky, the fog, a dark cave. What is left of it is #14, low priority.
 
-**Priority** (2026-10-15, owner): #15 (the clock silences sounds) is the next one, in a new
-session; then the 2DS (P4.1), then #12 (stereo at 48-50 fps), then the GPU world's parity (P2.3:
+**Priority** (2026-10-15, owner): the 2DS (P4.1), then #12 (stereo at 48-50 fps), then the GPU world's parity (P2.3:
 3D floors, portals, translucent walls, decals, animated textures, palette flashes); #5, #7 and #14
 last.
 
 **Start here:**
-0. **#15, the clock.** `ZeldaClock` gives the engine's `PowerTimeFreezer`, whose `InitEffect` calls
-   `S_PauseSound(false, false)` (`wadsrc/static/zscript/actors/inventory/powerups.zs`, ~line 1511):
-   music **and** effects pause, so the sword is mute while it lasts. The fix proposed is
-   `S_PauseSound(false, true)` (music only), as a `fix/` branch cut from the release; the owner has
-   not said yes to the exact change yet, so confirm, then check it on the console with a clock.
-1. **The 2DS (P4.1).** Create `allow-old3ds.txt` (merged 2026-10-15, debug builds only; without it
+0. **The 2DS (P4.1).** Create `allow-old3ds.txt` (merged 2026-10-15, debug builds only; without it
    the 2DS shows only the "not supported yet" message) in `sdmc:/3ds/Legend of Doom 3DS/` on it, install a debug build over
    `release/v0.2.4` and read `fatal.log` and the `pool=` figures in `startup.log`. What is known: on
    the New 3DS MAP01 loads with the heap at 53 MB of 94; the 2DS heap is ~56 MB, so there is ~3 MB
    of room, the 10 MB pool is full at MAP01 (`pool full` x10) and the 5 MB map-load reserve is on
    top of it. Next steps: size the pool to its real use, drop or merge the reserve, then what
    MAP01's 21.6 MB of engine objects (`gc`) hold. The decisions log of 2026-10-15 has the rest.
-2. **#12** with a debug build and the owner's `test2` save: `lod-link.py perf` in mono and stereo.
-3. **P2.3 parity:** the list in `docs/gpu-renderer-design.md` ("Missing before parity"); look at
+1. **#12** with a debug build and the owner's `test2` save: `lod-link.py perf` in mono and stereo.
+2. **P2.3 parity:** the list in `docs/gpu-renderer-design.md` ("Missing before parity"); look at
    which ones show in play before doing them all.
-4. Nothing is half done or uncommitted.
+3. Nothing is half done or uncommitted.
 
 **On the owner's consoles now (2026-10-15):**
 - **New 3DS**, `192.168.1.141` (the 2DS has used the same address; `.3ds_ftp_ip` holds it): a
@@ -528,3 +523,6 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   runs, no DEBUG tab or overlay, FRAMES works, the messages and the progress bar are right. A
   production build's FTP is install-only: the saves and logs cannot be read until a debug build
   is installed again (`--install` works over it).
+- **2026-10-15** #15 fixed in `fix/clock-keeps-sfx`: `PowerTimeFreezer` pauses the music only
+  (`S_PauseSound(false, true)`) and resumes it with `S_ResumeSound(true)` when the effect ends; the
+  effects were paused with it, so the sword was mute. Checked by the owner on the New 3DS.
