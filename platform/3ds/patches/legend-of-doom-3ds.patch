@@ -226,10 +226,10 @@ index 029f40d..4dbcc20 100644
          let isReady =
              players[consoleplayer].AttackDown == false ||
 diff --git a/MENUDEF b/MENUDEF
-index c7c6d33..aad1419 100644
+index c7c6d33..dffcba4 100644
 --- a/MENUDEF
 +++ b/MENUDEF
-@@ -1,50 +1,126 @@
+@@ -1,50 +1,125 @@
  DEFAULTLISTMENU
  {
  	// Font "ZeldFNT", "Untranslated"
@@ -328,7 +328,6 @@ index c7c6d33..aad1419 100644
 +    Class "LegendSplitOptionMenu"
 +    Title "DISPLAY"
 +    Option "LANGUAGE", "language", "LegendLanguage"
-+    RenderScaleSlider "RENDER", "lod3ds_render_scale", 5, 10, 0.5, -1
 +    RenderDistanceSlider "DISTANCE", "lod3ds_render_distance", 0, 2, 1, -1
 +    Option "TOP HUD", "lod3ds_top_hud", "OnOff"
 +    Option "AIM CROSS", "crosshairon", "OnOff"
@@ -385,7 +384,7 @@ index c7c6d33..aad1419 100644
  }
  
  // //-------------------------------------------------------------------------------------------
-@@ -57,3 +133,15 @@ ListMenu "EpisodeMenu"
+@@ -57,3 +132,15 @@ ListMenu "EpisodeMenu"
  // {
  // 	Option "High Resolution Voxel Graphics",		"r_drawvoxels", "OnOff"
  // }
