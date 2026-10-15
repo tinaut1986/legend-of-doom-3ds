@@ -82,6 +82,7 @@ CVAR(Bool, lod3ds_map_collisions, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 // (ftp_server_3ds.h, debug_link_3ds.h). Archived, so it comes back after a relaunch.
 CVAR(Bool, lod3ds_ftp_server, false, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 extern uint64_t LastCount;
+const char *I_3DSSystemLanguage();
 extern double LastFrameMilliseconds;
 
 #ifndef LOD3DS_BUILD_PROFILE_NAME
@@ -516,8 +517,6 @@ bool DrawTriforceAnimationFrame(unsigned frame)
 // no New 3DS-only flag), so the check is at run time. Returns true when the screen was shown
 // and the game should exit. Debug builds can show it on a New 3DS: a force-old3ds.txt in the
 // data folder.
-const char *I_3DSSystemLanguage();
-
 bool UnsupportedConsoleScreen()
 {
 	bool isNew3DS = true;
