@@ -251,7 +251,8 @@ void P_NoiseAlert (AActor *emitter, AActor *target, bool splash, double maxdist)
 #ifdef __3DS__
 	// Holding fire alerts every tic (PlayerPawn.FireWeapon), and the flood through MAP01's
 	// thousands of open sectors took ~18 ms a tic on the 2DS: 6 fps with R held (2026-10-18).
-	// The same alert from the same sector within 8 tics marks nothing new.
+	// The same alert from the same sector within a second (35 tics) marks nothing new; moving
+	// to another sector alerts at once.
 	{
 		static AActor *lastEmitter, *lastTarget;
 		static sector_t *lastSector;
@@ -260,7 +261,7 @@ void P_NoiseAlert (AActor *emitter, AActor *target, bool splash, double maxdist)
 		static double lastMaxDist;
 		const int now = emitter->Level->maptime;
 		if (emitter == lastEmitter && target == lastTarget && emitter->Sector == lastSector &&
-			splash == lastSplash && maxdist == lastMaxDist && now >= lastTime && now - lastTime < 8)
+			splash == lastSplash && maxdist == lastMaxDist && now >= lastTime && now - lastTime < 35)
 		{
 			return;
 		}
