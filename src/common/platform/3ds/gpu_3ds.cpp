@@ -1253,6 +1253,8 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 	const size_t bottomDraws = bottom ? BottomShown.size() : 0;
 	if (bottom) DrawBottom();
 
+	if (world) ++Stats.WorldFrames;
+	else ++Stats.CanvasFrames;
 	Stats.LastDraws = static_cast<uint32_t>(Draws.size() + OverlayDraws.size() + bottomDraws +
 		(world ? WorldDraws.size() : 1));
 	Stats.LastVertices = static_cast<uint32_t>(arena.Used + (world ? WorldUsed : 0));

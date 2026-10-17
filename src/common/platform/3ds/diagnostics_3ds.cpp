@@ -2629,9 +2629,32 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 	std::snprintf(frameText, sizeof(frameText), "FRAME %.1fMS", frameMilliseconds);
 	OverlayFrame(framebuffer, 8, 38, 104, 89, 2, OverlayBlue);
 	OverlayText(framebuffer, 15, 44, "PERFORMANCE", 1, OverlayIvory);
-	OverlayCenteredText(framebuffer, 8, 104, 62, fpsText, 3, OverlayIvory);
-	OverlayCenteredText(framebuffer, 8, 104, 88, "FPS", 1, OverlayIvory);
-	OverlayCenteredText(framebuffer, 8, 104, 105, frameText, 1, OverlayIvory);
+	OverlayCenteredText(framebuffer, 8, 104, 58, fpsText, 3, OverlayIvory);
+	OverlayCenteredText(framebuffer, 8, 104, 84, "FPS", 1, OverlayIvory);
+	OverlayCenteredText(framebuffer, 8, 104, 96, frameText, 1, OverlayIvory);
+	// Frames of the last whole second by who drew them: the world (GPU world or the CPU's canvas)
+	// and the 2D (recorded for the GPU or rasterised by SoftPoly).
+	static F3DSGpuStats previousGpu{}, shownGpu{};
+	static uint64_t gpuSampledAt = 0;
+	const uint64_t gpuNow = osGetTime();
+	if (gpuNow - gpuSampledAt >= 1000)
+	{
+		const F3DSGpuStats gpu = I_3DSGpuGetStats();
+		shownGpu.WorldFrames = gpu.WorldFrames - previousGpu.WorldFrames;
+		shownGpu.CanvasFrames = gpu.CanvasFrames - previousGpu.CanvasFrames;
+		shownGpu.Recorded2D = gpu.Recorded2D - previousGpu.Recorded2D;
+		shownGpu.Software2D = gpu.Software2D - previousGpu.Software2D;
+		previousGpu = gpu;
+		gpuSampledAt = gpuNow;
+	}
+	char worldText[24] = {};
+	char twodText[24] = {};
+	std::snprintf(worldText, sizeof(worldText), "3D GPU %u CPU %u",
+		static_cast<unsigned>(shownGpu.WorldFrames), static_cast<unsigned>(shownGpu.CanvasFrames));
+	std::snprintf(twodText, sizeof(twodText), "2D GPU %u CPU %u",
+		static_cast<unsigned>(shownGpu.Recorded2D), static_cast<unsigned>(shownGpu.Software2D));
+	OverlayCenteredText(framebuffer, 8, 104, 107, worldText, 1, OverlayIvory);
+	OverlayCenteredText(framebuffer, 8, 104, 117, twodText, 1, OverlayIvory);
 
 	OverlayFrame(framebuffer, 119, 38, 193, 89, 2, OverlayBlue);
 	OverlayText(framebuffer, 126, 44, "MEMORY", 1, OverlayIvory);
