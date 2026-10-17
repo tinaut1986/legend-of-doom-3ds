@@ -51,3 +51,37 @@ They were taken with `lod3ds_memcensus` / `census-on-load.txt` (`perf/memory-cen
   added between `after filesystem init` and `cpu-detection-enter`, the cached music lump.
 - **P4.8:** the level's arrays in the pool (9.5 MB for MAP01): line, side and sector structures,
   and what else the pool holds. Not the actors.
+
+## With the large-block arena (P4.6, `perf/large-block-arena`)
+
+Build `9514e8e43726`, same 2DS, `no-audio.txt`. A new game now reaches MAP01 and plays at about
+33 fps (developer overlay on). The reports are `arena-title.txt` and `arena-MAP01-walked.txt`
+(after a short walk). The owner's own play the same evening ended at a 240 KB PNG decode, with
+2.6 MB free and 1.2 MB of linear memory left. That is real exhaustion now, not fragmentation.
+
+| MAP01 after a short walk | |
+|---|---:|
+| Small heap in use / free | 17.9 / 4.8 MB |
+| Large arena in use / free inside (largest) | 26.7 / 1.7 MB (0.27 MB) |
+| Gap between the heap's break and the arena | 1.3 MB |
+| Linear free | 3.5 MB |
+
+What the arena holds (live blocks by caller, the larger ones):
+
+| Bytes | Blocks | What | Candidate cut |
+|---:|---:|---|---|
+| 2.75 MB | 24 | `FSoftwareTexture::CreatePixelsBgraWithMipmaps`: software textures in true colour | 8-bit, or no mipmap chain |
+| 2.55 MB | 1 | MAP01's sides (`side_t`) | smaller structure (P4.8) |
+| 2.15 MB | 17 | `TMap<FName, TableElement>`: the string table, every language | keep the current language and English only |
+| 2.08 MB | 52 | `FMemArena` blocks (class data, images, ...) | to split by arena |
+| 2.02 MB | 1 | `HexDataSource::ParseDefinition`: the Unicode hex font | load lazily or only the ranges used |
+| 1.83 MB | 9 | `DCanvas::Resize`: 400x240x4 canvases | fewer canvases |
+| 1.71 MB | 3 | vectors of 32-bit words (SoftPoly buffers?) | to identify |
+| 1.06 MB | 1 | `Net3DS_Acquire`: the network buffer (debug FTP, updater) | only while needed |
+| 0.89 MB | 2 | `PolyTriangleThreadData`: SoftPoly per-thread data | one thread on the Old 3DS |
+| 0.78 + 0.76 + 0.54 MB | | segs, lines, sectors | P4.8 |
+| 0.70 MB | 1 | `FZipLump::FillCache`: a lump kept cached | to identify |
+
+Small allocations since boot (counted, not live) are dominated by transient work: zlib inflate
+(17.8 MB in 2,500 calls), file reads, FString formatting. The live ones are the compiled ZScript
+and the strings. The census cannot tell live small blocks by caller yet.
