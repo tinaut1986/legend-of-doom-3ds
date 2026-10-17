@@ -307,6 +307,45 @@ constexpr size_t LoadingAnimationStackBytes = 24 * 1024;
 std::atomic<bool> LoadingAnimationStop{false};
 Thread LoadingAnimationThread;
 
+// What the loading screen shows under the triforce: the phase the startup is in (a message and
+// a bar) and the whole load (a second bar). A phase begins at the startup-log stage named in
+// the table and lasts until the next phase's stage; `Seconds` is what it took on the owner's 2DS
+// (2026-10-17, the slowest console), so the total is a weighted estimate, not a measure. Inside a
+// phase the bar creeps by time, scaled by how fast the finished phases ran against these numbers
+// (a New 3DS fills them quicker), and waits at 98% until the next stage arrives.
+struct FLoadingPhase
+{
+	const char *Stage;
+	const char *Message;
+	float Seconds;
+};
+
+constexpr FLoadingPhase LoadingPhases[] = {
+	{ "loading-animation-ready", "Starting up", 0.2f },
+	{ "game-main-enter", "Looking for game files", 1.7f },
+	{ "after filesystem init", "Checking game files", 5.8f },
+	{ "palette-enter", "Building the color palette", 9.2f },
+	{ "palette-ready", "Starting video and sound", 0.8f },
+	{ "after map definitions", "Loading textures", 31.9f },
+	{ "after console background", "Loading fonts", 4.3f },
+	{ "after Doom fonts", "Preparing translations", 3.9f },
+	{ "after translate definitions", "Compiling game scripts", 6.0f },
+	{ "actors: DECORATE parsed", "Building game objects", 2.0f },
+	{ "actors: functions built", "Starting the renderer", 2.8f },
+};
+constexpr int LoadingPhaseCount = sizeof(LoadingPhases) / sizeof(LoadingPhases[0]);
+
+// Written by the thread that logs the stages, read by the animation thread.
+std::atomic<int> LoadingPhaseIndex{0};
+std::atomic<uint32_t> LoadingPhaseStartMs{0};
+std::atomic<uint32_t> LoadingFinishedActualMs{0};
+std::atomic<uint32_t> LoadingFinishedExpectedMs{0};
+std::atomic<int> LoadingMessageSlot{0};
+char LoadingMessages[2][64];
+float LoadingInitialSpeed = 1.0f;
+
+void DrawLoadingProgressOverlay(unsigned char *framebuffer);
+
 bool EnsureDirectory(const char *path);
 
 #if defined(LOD3DS_HARDWARE_DIAGNOSTIC) && LOD3DS_HARDWARE_DIAGNOSTIC
@@ -477,6 +516,23 @@ void TriforcePutPixel(unsigned char *framebuffer, int x, int y, uint16_t color)
 	framebuffer[offset + 3] = static_cast<unsigned char>(red5 * 255u / 31u);
 }
 
+void LoadingTopRect(unsigned char *framebuffer, int x, int y, int width, int height,
+	unsigned char red, unsigned char green, unsigned char blue)
+{
+	for (int px = std::max(0, x); px < std::min(400, x + width); ++px)
+	{
+		for (int py = std::max(0, y); py < std::min(240, y + height); ++py)
+		{
+			const size_t offset = 4u * (static_cast<size_t>(px) * 240u +
+				(239u - static_cast<unsigned>(py)));
+			framebuffer[offset + 0] = 255;
+			framebuffer[offset + 1] = blue;
+			framebuffer[offset + 2] = green;
+			framebuffer[offset + 3] = red;
+		}
+	}
+}
+
 bool DrawTriforceAnimationFrame(unsigned frame)
 {
 	u16 physicalWidth = 0;
@@ -507,6 +563,7 @@ bool DrawTriforceAnimationFrame(unsigned frame)
 				originY + static_cast<int>(y), color);
 		}
 	}
+	DrawLoadingProgressOverlay(framebuffer);
 	I_3DSCleanDataCache(framebuffer, 400u * 240u * 4u);
 	gfxScreenSwapBuffers(GFX_TOP, false);
 	return true;
@@ -2905,6 +2962,58 @@ bool DrawNativeSaveLoadBottomFrame(unsigned char *framebuffer,
 
 #include "update/menu_view.inc"
 #include "native_menu_3ds.inc"
+
+void DrawLoadingProgressOverlay(unsigned char *framebuffer)
+{
+	int phase = LoadingPhaseIndex.load(std::memory_order_acquire);
+	phase = std::clamp(phase, 0, LoadingPhaseCount - 1);
+	const double elapsed = static_cast<double>(static_cast<uint32_t>(osGetTime()) -
+		LoadingPhaseStartMs.load(std::memory_order_acquire)) / 1000.0;
+	const double finishedExpected = LoadingFinishedExpectedMs.load(std::memory_order_acquire);
+	const double speed = finishedExpected >= 1500.0 ? std::clamp(
+		LoadingFinishedActualMs.load(std::memory_order_acquire) / finishedExpected, 0.15, 4.0) :
+		static_cast<double>(LoadingInitialSpeed);
+	const double phaseSeconds = static_cast<double>(LoadingPhases[phase].Seconds);
+	const double phaseFraction = std::clamp(elapsed / std::max(phaseSeconds * speed, 0.1),
+		0.0, 0.98);
+
+	double before = 0.0, total = 0.0;
+	for (int i = 0; i < LoadingPhaseCount; ++i)
+	{
+		if (i < phase) before += static_cast<double>(LoadingPhases[i].Seconds);
+		total += static_cast<double>(LoadingPhases[i].Seconds);
+	}
+	const double overall = std::clamp((before + phaseFraction * phaseSeconds) / total, 0.0, 1.0);
+
+	constexpr int BarX = 80, BarWidth = 240;
+	auto paint = [&](int x, int y, int size, unsigned char red, unsigned char green,
+		unsigned char blue)
+	{
+		LoadingTopRect(framebuffer, x, y, size, size, red, green, blue);
+	};
+	auto text = [&](int x, int y, const char *line, unsigned char red, unsigned char green,
+		unsigned char blue)
+	{
+		NesDraw(x, y, line, 1, [&](int px, int py, int size) { paint(px, py, size, red, green, blue); });
+	};
+	auto bar = [&](int y, int height, double fraction, unsigned char red, unsigned char green,
+		unsigned char blue)
+	{
+		LoadingTopRect(framebuffer, BarX - 2, y - 2, BarWidth + 4, height + 4, 225, 230, 235);
+		LoadingTopRect(framebuffer, BarX, y, BarWidth, height, 13, 22, 39);
+		LoadingTopRect(framebuffer, BarX, y, static_cast<int>(BarWidth * fraction), height,
+			red, green, blue);
+	};
+
+	const char *message = LoadingMessages[LoadingMessageSlot.load(std::memory_order_acquire)];
+	if (message[0] == '\0') message = LoadingPhases[phase].Message;
+	text((400 - NesTextWidth(message, 1)) / 2, 172, message, 242, 236, 213);
+	bar(192, 10, overall, 217, 74, 25);
+	bar(210, 6, phaseFraction, 46, 119, 201);
+	char percent[8];
+	std::snprintf(percent, sizeof(percent), "%d%%", static_cast<int>(overall * 100.0));
+	text(BarX + BarWidth + 10, 193, percent, 245, 151, 49);
+}
 
 void DrawNativeMenuBottomFrame(unsigned char *framebuffer,
 	const unsigned char *menuPixels, const unsigned char *basePixels,
@@ -5696,11 +5805,40 @@ void I_3DSRecordDrawDistanceFog(unsigned int filledPixels)
 	DrawDistanceFogPixels.fetch_add(filledPixels, std::memory_order_relaxed);
 }
 
+// Moves the loading screen to the phase that starts at this log stage, if there is one.
+void LoadingProgressStage(const char *stage)
+{
+	if (!LoadingScreenActive || LoadingScreenFinished) return;
+	const int current = LoadingPhaseIndex.load(std::memory_order_acquire);
+	for (int i = current + 1; i < LoadingPhaseCount; ++i)
+	{
+		const size_t length = std::strlen(LoadingPhases[i].Stage);
+		if (std::strncmp(stage, LoadingPhases[i].Stage, length) != 0 ||
+			(stage[length] != '\0' && stage[length] != ' ')) continue;
+
+		const uint32_t now = static_cast<uint32_t>(osGetTime());
+		uint32_t expectedMs = 0;
+		for (int done = current; done < i; ++done)
+			expectedMs += static_cast<uint32_t>(LoadingPhases[done].Seconds * 1000.0f);
+		LoadingFinishedActualMs.fetch_add(now - LoadingPhaseStartMs.load(), std::memory_order_acq_rel);
+		LoadingFinishedExpectedMs.fetch_add(expectedMs, std::memory_order_acq_rel);
+
+		const int slot = 1 - LoadingMessageSlot.load(std::memory_order_acquire);
+		std::snprintf(LoadingMessages[slot], sizeof(LoadingMessages[slot]), "%s",
+			Tr(LoadingPhases[i].Message));
+		LoadingMessageSlot.store(slot, std::memory_order_release);
+		LoadingPhaseStartMs.store(now, std::memory_order_release);
+		LoadingPhaseIndex.store(i, std::memory_order_release);
+		return;
+	}
+}
+
 void I_3DSStartupLog(const char *stage)
 {
 	static bool firstCheckpoint = true;
 	static bool linearPoolInitialized = false;
 	if (stage == nullptr) stage = "(null)";
+	LoadingProgressStage(stage);
 
 	// libctru initializes the linear allocator lazily. Until its first
 	// allocation linearSpaceFree() reports zero even when the reserved arena is
@@ -5756,6 +5894,15 @@ void I_3DSLoadingScreenStart()
 	if (LoadingAnimationThread != nullptr) return;
 	LoadingScreenActive = true;
 	LoadingScreenFinished = false;
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+	LoadingInitialSpeed = isNew3DS ? 0.4f : 1.0f;
+	LoadingPhaseIndex.store(0, std::memory_order_release);
+	LoadingPhaseStartMs.store(static_cast<uint32_t>(osGetTime()), std::memory_order_release);
+	LoadingFinishedActualMs.store(0, std::memory_order_release);
+	LoadingFinishedExpectedMs.store(0, std::memory_order_release);
+	std::snprintf(LoadingMessages[0], sizeof(LoadingMessages[0]), "%s", Tr(LoadingPhases[0].Message));
+	LoadingMessageSlot.store(0, std::memory_order_release);
 	LoadingAnimationStop.store(false, std::memory_order_release);
 	// Put the first frame on the LCD synchronously so opening the title never
 	// resembles a dead black screen while the worker is being scheduled.
