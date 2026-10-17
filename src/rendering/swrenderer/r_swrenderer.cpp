@@ -97,6 +97,14 @@ void FSoftwareRenderer::PreparePrecache(FGameTexture *ttex, int cache)
 	{
 		FSoftwareTexture *tex = GetSoftwareTexture(ttex);
 
+#ifdef __3DS__
+		// The GPU copies (PolyHardwareTexture) of what the new level does not use: nothing else
+		// frees them, and after a few maps the 2DS's linear memory was down to 140 KB, so new
+		// sprites (the drawn bow, the arrow) found no room and frames fell back to the CPU
+		// (2026-10-18). What is drawn again (the 2D, the HUD) is rebuilt on first use.
+		if (cache == 0) ttex->CleanHardwareData();
+#endif
+
 		if (tex->CheckPixels())
 		{
 			if (cache == 0) tex->Unload();
