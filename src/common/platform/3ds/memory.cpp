@@ -84,6 +84,11 @@ bool I_3DSReserveMapLoadMemory()
 	return MapLoadReserve != nullptr;
 }
 
+bool I_3DSMapLoadReserveHeld()
+{
+	return MapLoadReserve != nullptr;
+}
+
 void I_3DSReleaseMapLoadMemory()
 {
 	std::free(MapLoadReserve);

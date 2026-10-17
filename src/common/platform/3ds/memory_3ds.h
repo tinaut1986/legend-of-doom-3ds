@@ -17,6 +17,14 @@ void I_3DSReleaseRendererMemory();
 bool I_3DSReserveMapLoadMemory();
 void I_3DSReleaseMapLoadMemory();
 
+bool I_3DSMapLoadReserveHeld();
+
+// PLAN P4.5: writes memory-census-<label>.txt (heap chunks, GC objects by class, cached lumps,
+// pool and reserves) to the data folder. The second one only when census-on-load.txt is there
+// (debug builds); the console command lod3ds_memcensus [label] runs the first.
+void I_3DSMemoryCensus(const char *label);
+void I_3DSMemoryCensusIfRequested(const char *label);
+
 // True on an Old 3DS / 2DS.
 bool I_3DSIsOld3DS();
 
