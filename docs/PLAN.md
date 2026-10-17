@@ -19,7 +19,7 @@ change (what goes where: the table in `CLAUDE.md`).
   (2026-10-12): almost everything runs on the CPU, it is not known to reach 60 fps
   even on the New 3DS, there is no stereo 3D, and the Old 3DS does not run it.
 
-## Status (2026-10-15)
+## Status (2026-10-17)
 
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
@@ -27,48 +27,44 @@ boxes below. History: `git log` and the decisions log.
 **Release line:** `release/v0.2.5` (renamed from `release/v0.2.4` right after its tag).
 Published: **`v0.2.4`** stable (2026-10-15, built by the tag workflow), `v0.2.3` and `v0.2.2` betas,
 **`v0.2.1`** stable, **`v0.2.0`** stable (the first), `v0.1.0` beta. `main` holds `v0.2.4`.
+Merged into the line since v0.2.4: the clock / Wi-Fi / battery in the bottom title row, and the
+loading screen's two progress bars and message (owner saw them on the 2DS, 2026-10-17).
 
 **Branches:**
 
 | Branch | What | State |
 |---|---|---|
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
+| `fix/2ds-memory` | P4.1 bring-up: `no-audio.txt` (#16), honest allocation-failure diagnostics, and the map-load memory fixes that get MAP01 loaded on the 2DS (decisions log, 2026-10-17) | Pushed, **not merged**: works on the 2DS up to the first frame; changes the Old 3DS save format (full sides/lines/sectors); unchecked on the New 3DS. The base for P4.5-P4.8 |
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
 - The v0.2.4 stable: that the console's updater (Release channel) offers it from v0.2.1 and shows its
   6 notes (the production build itself was checked by the owner on the New 3DS).
-- The Old 3DS screen can only be seen on an Old 3DS / 2DS.
-- `gpu-light-sky` is checked (owner, 2026-10-15): the hit flash, Ghini and a Wizzrobe translucent,
-  Ganon invisible, the sky, the fog, a dark cave. What is left of it is #14, low priority.
+- `fix/2ds-memory` on the New 3DS: that nothing regressed (MAP01, a save and its load).
 
-**Priority** (2026-10-15, owner): the 2DS (P4.1), then #5, #7 and #14 last. P2.3's parity is closed bar the owner's check
-(see the decisions log, 2026-10-15).
+**Priority** (2026-10-17, owner): the 2DS's memory, planned as P4.5-P4.8, "plan it well and then
+start"; then #16 (audio on the Old 3DS); #7 and #14 last. The owner asked again whether the engine
+can be restructured to need less RAM: yes, that is P4.7 / P4.8.
 
 **Start here:**
-0. **The 2DS (P4.1).** Create `allow-old3ds.txt` (merged 2026-10-15, debug builds only; without it
-   the 2DS shows only the "not supported yet" message) in `sdmc:/3ds/Legend of Doom 3DS/` on it, install a debug build over
-   `release/v0.2.4` and read `fatal.log` and the `pool=` figures in `startup.log`. What is known: on
-   the New 3DS MAP01 loads with the heap at 53 MB of 94; the 2DS heap is ~56 MB, so there is ~3 MB
-   of room, the 10 MB pool is full at MAP01 (`pool full` x10) and the 5 MB map-load reserve is on
-   top of it. Next steps: size the pool to its real use, drop or merge the reserve, then what
-   MAP01's 21.6 MB of engine objects (`gc`) hold. The decisions log of 2026-10-15 has the rest.
-1. **#12** is done (16-bit textures, merged); no further work planned.
-2. **P2.3 parity:** nothing left that this game uses; the owner checks 3D floors (`feat/gpu-3d-floors`)
-   on the console, then it merges.
-3. Nothing is half done or uncommitted.
+0. **P4.5** (memory census) on the 2DS, from `fix/2ds-memory` (cut the P4.5 branch from it, or
+   merge it into the line first if the owner confirms the New 3DS check). The 2DS needs
+   `allow-old3ds.txt` and `no-audio.txt` in its data folder (both there now). Then P4.6, which
+   is what gets a new game past its first frame; P4.7 and P4.8 make the room last.
+1. **#16** after P4.6, so the audio can be tested in a level.
+2. Nothing is half done or uncommitted.
 
-**On the owner's consoles now (2026-10-15):**
-- **New 3DS**, `192.168.1.141` (the 2DS has used the same address; `.3ds_ftp_ip` holds it): a
-  debug build `0.2.4-dev.56.1+b4d6b62`: this line plus the parked `fix/horizon-fog-fade` (the sky
-  fade, the only difference from the release), FTP server on, the install-only marker
-  `dev-ftp.txt`, saves `save0` ("test", MAP01, the spot Claude loads), `test2` (the 48-50 fps spot
-  of #12) and three autosaves. DISTANCE is HIGH (the owner's setting); FRAMES was last left at
-  NO SKIP by Claude; `sv_cheats` is 0 again (Claude set it to warp). The player stands near
-  MAP01 (8030, -92) after Claude's warps.
-- **2DS**: the last build tried is a debug build of `0.0.0-dev+52193bd` plus the memory work
-  (2026-10-15, early morning): it stopped at the title with `operator new failure`. Nothing
-  newer has been installed there; it will show the "not supported yet" message until
-  `allow-old3ds.txt` exists.
+**On the owner's consoles now (2026-10-17):**
+- **New 3DS**, `192.168.1.141` (the 2DS has used the same address): a debug build
+  `0.2.4-dev.56.1+b4d6b62`: the v0.2.4 line plus the parked `fix/horizon-fog-fade`, FTP server on,
+  the install-only marker `dev-ftp.txt`, saves `save0` ("test", MAP01, the spot Claude loads),
+  `test2` (the 48-50 fps spot of #12) and three autosaves. DISTANCE is HIGH (the owner's setting);
+  FRAMES was last left at NO SKIP by Claude.
+- **2DS**, `192.168.1.139` (`.3ds_ftp_ip` still says `.141`): a debug build of `fix/2ds-memory`,
+  `0.2.5-dev.6.1+8cfe9c7`, build `0c014f7125dc` (the content of `ce01184`), FTP server on. The data
+  folder has `allow-old3ds.txt` and `no-audio.txt`, no saves. A new game closes to HOME at MAP01's
+  first frame. `/cias/` holds the CIAs uploaded over ftpd during the session. Luma's
+  `crash_dump_00000000` and `00000019` are from the Minish Cap port and were left.
 
 Tasks ticked [x] have been checked on the console by the owner; do not re-propose them.
 
@@ -316,6 +312,37 @@ third of the CPU, so neither is reachable with SoftPoly on the CPU.
   made conditional; one CIA for both models.
   *Done when:* it boots to the title and plays the first screens on the owner's 2DS,
   memory headroom recorded.
+  *Progress (2026-10-17):* boots to the title and loads MAP01 on the 2DS (`fix/2ds-memory`, with
+  `no-audio.txt`, #16); a new game then fails at the first frame on a fragmented heap. P4.5-P4.8
+  are the way on.
+- [ ] **P4.5** Memory census on the 2DS.
+  *Spec:* a debug report (a `lod-link.py` command and a `startup.log` line) of what holds the heap at
+  the title and after MAP01: engine objects by class (count, bytes), the compiled ZScript (classes,
+  functions, strings, VM code), textures (software and GPU), cached lumps, sound and music, the
+  TArray pool and the reserves; and the free list's shape (largest blocks, free chunks by size).
+  *Done when:* a table in `docs/measurements/` for both points on the 2DS, and P4.6-P4.8's targets
+  picked from it.
+- [ ] **P4.6** Keep small allocations away from the big blocks.
+  *Spec:* after MAP01 loads, 8.3 MB is free on the 2DS but no block is larger than 255 KB: every
+  multi-hundred-KB request (a PNG decode, renderer memory, a lump) fails. Either a size-class
+  allocator for small requests (the bulk of the engine objects and the compiler's nodes), or one
+  arena for large transient blocks with first-fit and coalescing (`m_alloc.cpp`'s TArray pool,
+  generalised); P4.5's free-list shape decides. It should replace the 5 MB map-load reserve, the
+  2 MB renderer reserve and perhaps the 10 MB pool.
+  *Done when:* after MAP01 loads on the 2DS the largest free block is 2 MB or more, and a new game
+  plays the first screens.
+- [ ] **P4.7** Lower the startup peak.
+  *Spec:* on the 2DS (2026-10-17) the ZScript compile adds 11.6 MB at its peak and gives back 4 MB;
+  `after filesystem init` -> `cpu-detection-enter` adds 7.5 MB (not identified yet); the reserves
+  take 7 MB at boot. Free the compiler's trees and tables once the code is built, find and cut the
+  7.5 MB, and drop the reserves P4.6 makes unnecessary.
+  *Done when:* the heap in use at the title on the 2DS is 5 MB or more below 37.9 MB
+  (`softpoly-canvas-ready`, 2026-10-17).
+- [ ] **P4.8** Lower MAP01's resident memory.
+  *Spec:* after MAP01 loads the engine holds 17.2 MB of objects (`gc=`; ~490 bushes and other
+  decorations that never think are full actors) and the pool 9.8 MB of big arrays. Candidates:
+  lighter objects for static decorations, shared or 8-bit textures, smaller line / side structures.
+  *Done when:* MAP01 loaded on the 2DS leaves 15 MB or more of free heap (8.9 MB on 2026-10-17).
 - [ ] **P4.2** 30 fps minimum on the Old 3DS.
   *Done when:* the P0.3 spots never drop under 30 fps (1% low) on the 2DS, steady pacing.
 - [ ] **P4.3** 60 fps on the Old 3DS (aim).
@@ -541,3 +568,28 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   binary, 8888 otherwise (`BuildTexture`, cvar `lod3ds_gpu_texture16`, debug builds): stereo
   48.2 -> 61.4 fps, mono 76.7 -> 86.0, and half the memory of those textures (good for P4). Textures are
   kept across map loads, so the cvar only shows on a fresh boot. Sprites and 2D stay 8888.
+- **2026-10-17** P4.1 on the 2DS (owner at the console, Claude reading logs over FTP and, at the
+  end, installing with `--install` and starting the new game itself with `lod-link.py`). Found, in
+  order:
+  - The audio mixer thread crashes at startup (#16). `no-audio.txt` (debug builds) skips the audio
+    init.
+  - Then a new game failed on a 2 MB request. The "largest free block" probe and an in-handler
+    retry said there was room. **Both were wrong**: GCC drops a `malloc` immediately followed by
+    `free` and folds the test to "succeeded". Honest figures need a compiler barrier on the
+    pointer (`memory.cpp`, `d_main.cpp`).
+  - With the barrier the picture is fragmentation: 10.5 MB free, the largest block 1.7 MB. Four
+    fixes, in `fix/2ds-memory`, each moved the failure one step further:
+    - `operator new` hands back the 5 MB map-load reserve when a block finds no room.
+    - MAP01's TEXTMAP is read from the map WAD instead of cached whole (a `FResourceLump` reader
+      locks the whole lump).
+    - The Old 3DS skips the map backup copies (`loadsides` / `loadlines` / `loadsectors`). Its
+      saves store those fields whole, so **a save written on the New 3DS will not load correctly
+      on the 2DS** with this.
+    - `RenderMemory` blocks are 256 KB on the 3DS instead of 1 MB.
+  - MAP01 now loads (8.9 MB free). The first frame fails on a 512 KB PNG decode with the largest
+    free block at 255 KB.
+  - Each further one-off fix would only meet the next large request. The owner chose to plan the
+    memory work properly (P4.5-P4.8) before going on.
+  - A `std::bad_alloc` that bypasses the new handler (`FStringData::Alloc`,
+    `RenderMemory::MemoryBlock` throw it directly) is located by the `__cxa_throw` wrap, which logs
+    the code addresses on the stack.
