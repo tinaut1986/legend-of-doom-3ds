@@ -119,6 +119,11 @@ namespace
 {
 bool Ready;
 bool C3DReady;
+// The screen wipe (#18): the last image before a map change, faded out over the new frames.
+C3D_Tex WipeTexture;
+bool WipeActive;
+uint64_t WipeStartMilliseconds;
+uint32_t WipeDurationMilliseconds;
 DVLB_s *ShaderBinary;
 shaderProgram_s Program;
 int ProjectionLocation = -1;
@@ -1206,6 +1211,29 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 		0.0f, 1.0f, static_cast<float>(width) / CanvasTextureWidth,
 		1.0f - static_cast<float>(height) / CanvasTextureHeight, 0xffffffffu);
 
+	FVertex *wipeQuad = nullptr;
+	uint32_t wipeFirst = 0;
+	if (WipeActive)
+	{
+		const uint64_t elapsed = osGetTime() - WipeStartMilliseconds;
+		if (elapsed >= WipeDurationMilliseconds)
+		{
+			WipeActive = false;
+			ReleaseTexture(WipeTexture);
+			WipeTexture = C3D_Tex{};
+		}
+		else if (ArenaReserve(6, wipeQuad, wipeFirst))
+		{
+			const uint8_t alpha = static_cast<uint8_t>(255u -
+				static_cast<uint32_t>(elapsed * 255u / WipeDurationMilliseconds));
+			WriteQuad(wipeQuad, 0.0f, 0.0f, TopWidth, TopHeight, 0.0f, 1.0f,
+				static_cast<float>(TopWidth) / WipeTexture.width,
+				1.0f - static_cast<float>(TopHeight) / WipeTexture.height,
+				PackColor(255, 255, 255, alpha));
+		}
+		else wipeQuad = nullptr;
+	}
+
 	const bool bottom = PrepareBottom();
 	if (!C3D_FrameBegin(0)) return false;
 	CollectReleases();
@@ -1236,6 +1264,7 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 	// SoftPoly's 2D alpha test discards fully transparent fragments.
 	C3D_AlphaTest(true, GPU_GREATER, 0);
 	for (const FDraw &draw : Draws) ApplyDraw(draw);
+	if (wipeQuad != nullptr) ApplyDraw(MakeScreenDraw(EMode::Image, &WipeTexture, wipeFirst, 6));
 	for (const FDraw &draw : OverlayDraws) ApplyDraw(draw);
 	C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
 	if (stereo)
@@ -1247,6 +1276,7 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 		BeginPass();
 		C3D_AlphaTest(true, GPU_GREATER, 0);
 		for (const FDraw &draw : Draws) ApplyDraw(draw);
+		if (wipeQuad != nullptr) ApplyDraw(MakeScreenDraw(EMode::Image, &WipeTexture, wipeFirst, 6));
 		for (const FDraw &draw : OverlayDraws) ApplyDraw(draw);
 		C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
 	}
@@ -1487,6 +1517,49 @@ bool I_3DSGpuReadTop(uint8_t *pixels, int pitchPixels, int width, int height, bo
 	return true;
 }
 
+bool I_3DSGpuWipeBegin(uint32_t durationMilliseconds)
+{
+	if (!Ready || !TopPresented || durationMilliseconds == 0) return false;
+	const size_t bytes = static_cast<size_t>(TopWidth) * TopHeight * 4u;
+	uint8_t *linear = static_cast<uint8_t *>(linearMemAlign(bytes, 0x80));
+	if (linear == nullptr) return false;
+	if (WipeTexture.data == nullptr && !C3D_TexInit(&WipeTexture,
+		static_cast<u16>(NextPowerOfTwo(TopWidth)), static_cast<u16>(NextPowerOfTwo(TopHeight)),
+		GPU_RGB565))
+	{
+		WipeTexture = C3D_Tex{};
+		linearFree(linear);
+		return false;
+	}
+	C3D_TexSetFilter(&WipeTexture, GPU_NEAREST, GPU_NEAREST);
+	C3D_TexSetWrap(&WipeTexture, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
+	// The image the LCD shows, as I_3DSGpuReadTop takes it (outside a frame, alone in the queue).
+	GSPGPU_FlushDataCache(linear, bytes);
+	C3D_SyncDisplayTransfer(static_cast<u32 *>(TopTarget->frameBuf.colorBuf),
+		GX_BUFFER_DIM(TopHeight, TopWidth), reinterpret_cast<u32 *>(linear),
+		GX_BUFFER_DIM(TopHeight, TopWidth), OutputTransferFlags());
+	C3Di_RenderQueueWaitDone();
+	GSPGPU_InvalidateDataCache(linear, bytes);
+	uint16_t *texels = static_cast<uint16_t *>(WipeTexture.data);
+	for (int y = 0; y < static_cast<int>(TopHeight); ++y)
+	{
+		for (int x = 0; x < static_cast<int>(TopWidth); ++x)
+		{
+			// One 240-pixel column per screen x, bottom first, bytes A, B, G, R.
+			const uint8_t *source = linear +
+				(static_cast<size_t>(x) * TopHeight + (TopHeight - 1 - y)) * 4u;
+			texels[TiledOffset(x, y, WipeTexture.width)] = static_cast<uint16_t>(
+				((source[3] >> 3) << 11) | ((source[2] >> 2) << 5) | (source[1] >> 3));
+		}
+	}
+	linearFree(linear);
+	C3D_TexFlush(&WipeTexture);
+	WipeActive = true;
+	WipeStartMilliseconds = osGetTime();
+	WipeDurationMilliseconds = durationMilliseconds;
+	return true;
+}
+
 F3DSGpuTexture *I_3DSGpuTextureUpdate(F3DSGpuTexture *texture, DCanvas *image, bool wrap)
 {
 	if (!Ready || image == nullptr) return nullptr;
@@ -1602,6 +1675,7 @@ F3DSGpuStats I_3DSGpuGetStats() { return {}; }
 void I_3DSGpuCountSoftware2D() {}
 bool I_3DSGpuPresentTop(const uint8_t *, int, int, int) { return false; }
 bool I_3DSGpuReadTop(uint8_t *, int, int, int, bool) { return false; }
+bool I_3DSGpuWipeBegin(uint32_t) { return false; }
 unsigned char *I_3DSGpuBottomBuffer() { return nullptr; }
 void I_3DSGpuBottomChanged() {}
 F3DSGpuVertex *I_3DSGpuQueueTriangles(E3DSGpuScreen, F3DSGpuTexture *, int, const int *)

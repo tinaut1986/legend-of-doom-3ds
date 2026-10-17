@@ -54,6 +54,11 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 // wipes. flipRows stores the image bottom-up, as PolyHardwareTexture's wipe textures are.
 bool I_3DSGpuReadTop(uint8_t *pixels, int pitchPixels, int width, int height, bool flipRows);
 
+// The screen wipe on the GPU (#18): keeps the image the LCD shows now and fades it out over the
+// frames presented in the next durationMilliseconds, the game running underneath. False when
+// it cannot (no GPU frame yet, no linear memory): the engine's own wipe then runs.
+bool I_3DSGpuWipeBegin(uint32_t durationMilliseconds);
+
 // GPU copies of engine textures, owned by PolyHardwareTexture (one per wrap mode).
 struct F3DSGpuTexture;
 // Builds or refreshes the copy of image; nullptr if the image cannot be a PICA texture.
