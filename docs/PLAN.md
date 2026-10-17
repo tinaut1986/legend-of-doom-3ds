@@ -35,6 +35,8 @@ loading screen's two progress bars and message (owner saw them on the 2DS, 2026-
 | Branch | What | State |
 |---|---|---|
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
+| `fix/inventory-hidden-select` | #17: an empty item cell equipped the potion | Pushed, **not merged**; waiting for the owner's check |
+| `test/2ds-play` | what the 2DS runs: `perf/memory-cuts` + `fix/inventory-hidden-select` | Test branch, pushed; never merged itself |
 | `perf/memory-cuts` | P4.7 / P4.8 first cuts: languages, hex font, software precache, socket buffer, one raster worker (-12.7 MB in MAP01) | Pushed, **not merged**; on top of `perf/large-block-arena`; waiting for the owner's longer play on the 2DS; unchecked on the New 3DS |
 | `perf/large-block-arena` | P4.6: the large-block arena; the census by caller | Pushed, **not merged**; on top of `perf/memory-census` (needs it); unchecked on the New 3DS |
 | `perf/memory-census` | P4.5: the memory census (`lod3ds_memcensus`, `census-on-load.txt`) | Pushed, **not merged**; cut from `fix/2ds-memory` (needs it) with `release/v0.2.5` merged in for the version |
@@ -66,8 +68,8 @@ can be restructured to need less RAM: yes, that is P4.7 / P4.8.
   `test2` (the 48-50 fps spot of #12) and three autosaves. DISTANCE is HIGH (the owner's setting);
   FRAMES was last left at NO SKIP by Claude.
 - **2DS**, `192.168.1.139` (`.3ds_ftp_ip` still says `.141`): a debug build of `perf/memory-census`,
-  `perf/large-block-arena`, `0.2.5-dev.10.8+c74ffc4`, build `9514e8e43726`, FTP server on; a new game
-  plays MAP01 (no audio) until memory runs out. The data folder has `allow-old3ds.txt`, `no-audio.txt`, `census-on-load.txt` and the
+  `test/2ds-play`, `0.2.5-dev.14.14+4e85e79`, build `a7fc545857a4`, FTP server on; a new game
+  plays MAP01 (no audio), 20 MB free after the first cuts. The data folder has `allow-old3ds.txt`, `no-audio.txt`, `census-on-load.txt` and the
   two census reports, no saves. A new game closes to HOME at MAP01's
   first frame. `/cias/` holds the CIAs uploaded over ftpd during the session. Luma's
   `crash_dump_00000000` and `00000019` are from the Minish Cap port and were left.
