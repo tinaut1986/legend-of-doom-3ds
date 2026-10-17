@@ -1,6 +1,7 @@
 #include <3ds.h>
 #include <cstdlib>
 #include <cstdint>
+#include <malloc.h>
 #include <new>
 
 #include "memory_3ds.h"
@@ -107,6 +108,22 @@ void *operator new(size_t size)
 void *operator new[](size_t size)
 {
 	return AllocateWithNewHandler(size, (uintptr_t)__builtin_return_address(0));
+}
+
+size_t I_3DSLargestFreeBlock()
+{
+	size_t low = 0, high = (size_t)mallinfo().fordblks;
+	while (high - low > 4096)
+	{
+		const size_t mid = low + (high - low) / 2;
+		if (void *block = std::malloc(mid))
+		{
+			std::free(block);
+			low = mid;
+		}
+		else high = mid;
+	}
+	return low;
 }
 
 size_t I_3DSLastFailedNewRequest()

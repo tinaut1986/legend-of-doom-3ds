@@ -6628,6 +6628,18 @@ void I_3DSToast(const char *english)
 	SetOverlayNotification(english);
 }
 
+bool I_3DSNoAudioRequested()
+{
+#if LOD3DS_DEBUG_TOOLS
+	if (FILE *flag = std::fopen(LOD3DS_APP_DIR "/no-audio.txt", "rb"))
+	{
+		std::fclose(flag);
+		return true;
+	}
+#endif
+	return false;
+}
+
 bool I_3DSUnsupportedConsoleScreen()
 {
 	return UnsupportedConsoleScreen();

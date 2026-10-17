@@ -19,3 +19,7 @@ void I_3DSReleaseMapLoadMemory();
 
 size_t I_3DSLastFailedNewRequest();
 uintptr_t I_3DSLastFailedNewCaller();
+
+// Largest block malloc can hand out right now (probed by binary search up to the free total), to
+// tell fragmentation from a heap that is simply full.
+size_t I_3DSLargestFreeBlock();

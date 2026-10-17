@@ -23,6 +23,8 @@ void I_3DSWriteFatalLog(const char *message);
 // LCD until the first real GPU frame replaces it.
 // True when this is an Old 3DS / 2DS: a message was shown and the game must exit (main).
 bool I_3DSUnsupportedConsoleScreen();
+// Debug builds: a no-audio.txt in the data folder starts the game without audio (Old 3DS bring-up).
+bool I_3DSNoAudioRequested();
 void I_3DSLoadingScreenStart();
 void I_3DSLoadingScreenFinish();
 
