@@ -85,3 +85,24 @@ What the arena holds (live blocks by caller, the larger ones):
 Small allocations since boot (counted, not live) are dominated by transient work: zlib inflate
 (17.8 MB in 2,500 calls), file reads, FString formatting. The live ones are the compiled ZScript
 and the strings. The census cannot tell live small blocks by caller yet.
+
+## First cuts (P4.7 / P4.8, `perf/memory-cuts`)
+
+The five cheapest cuts from the table above, build `60f0c829b6c3`. Reports: `cuts-title.txt` and
+`cuts-MAP01-walked.txt`.
+
+| | Title before / after | MAP01 (short walk) before / after |
+|---|---:|---:|
+| Small heap in use | 13.8 / 9.9 MB | 17.9 / 12.3 MB |
+| Large arena in use | 15.9 / 11.5 MB | 26.7 / 19.6 MB |
+| Free (small heap + arena + gap) | | 7.9 / 20.6 MB |
+
+- String table: English, Spanish and the default tables only.
+- Hex font: Latin and punctuation only. Together with the string table this is most of the
+  small-heap saving: 5,000 fewer glyph textures and their names.
+- No software precache of the level's textures while the GPU draws the world (-2.75 MB).
+- Socket buffer 256 KB on the Old 3DS (-0.75 MB).
+- One raster worker on the Old 3DS (-0.45 MB).
+
+What is left in the arena: MAP01's sides 2.5 MB, `FMemArena` blocks 2.1 MB, canvases 1.8 MB,
+32-bit vectors 1.7 MB, segs, lines, a cached zip lump 0.7 MB.

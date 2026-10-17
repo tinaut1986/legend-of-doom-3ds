@@ -1,0 +1,144 @@
+Memory census 'MAP01-walked', build 60f0c829b6c3 (0.0.0-dev+ed21671)
+
+heap arena                     19132416  (18.25 MB)
+heap in use                    12890976  (12.29 MB)
+heap free                       6241440  (5.95 MB)
+gc objects (AllocBytes)        20516156  (19.57 MB)
+gc objects (class sizes)         843627  (0.80 MB)
+cached lumps                     699619  (0.67 MB)
+TArray pool in use                    0  (0.00 MB)
+TArray pool high                      0  (0.00 MB)
+map-load reserve                   free
+large arena in use             20581328  (19.63 MB)
+large arena peak               21524192  (20.53 MB)
+large arena free inside         3848336  (3.67 MB)
+large arena largest free         532480  (0.51 MB)
+gap heap break..arena          11488160  (10.96 MB)
+large arena blocks                  122 used, 27 free, 0 failed, 0x09db3ba0-0x0b500000
+linear free                     3161856  (3.02 MB)
+vram free                       4154368  (3.96 MB)
+app region free                       0  (0.00 MB)
+
+Heap chunks
+base 0x08080000 top 0x092bc5a0 top chunk 10848
+up to        free n   free bytes   used n   used bytes
+256           30050      1596568    92805      6609864
+1K                7         5200     4130      2641840
+4K               17        46248     1466      1832088
+16K             364      3707296      113       705008
+64K              43       879352       45      1098104
+256K              0            0        0            0
+1M                0            0        0            0
+4M                0            0        0            0
+more              0            0        0            0
+largest free (not counting the top chunk): 20568@+6067K 20544@+8489K 20520@+5716K 20520@+5746K 20520@+5853K 20520@+6022K 20520@+6122K 20520@+6341K
+map, 291 KB a cell, '#' full ... ' ' free:
+[+++++++++++++++####... ......  ...+++-  .++++##+++++++++++++++++]
+
+GC objects: 1807, by class (bytes from the class size, top 30):
+ZeldaBushGreen                       144     168192
+ZeldaSpawner                         119     147560
+TeleportDest2                         88     102784
+PointLight                            66      78672
+ZeldaFire                             44      51392
+SecretRevealer                        22      26136
+ZeldaBushBrown                        22      25696
+OptionMenuItemOption                 354      25488
+ZeldaTree                             18      21024
+ZeldaOldMan                           15      17520
+ZeldaManualSpawner                    12      14880
+TornadoSpot                            9      10548
+SecretBush                             8       9504
+OptionMenuItemStaticText             153       9180
+OptionMenuItemSlider                  79       8216
+ZeldaGhostSpawner                      6       7464
+OptionMenuDescriptor                  87       7308
+SecretBushInvisible                    6       7128
+ZeldaHeartContainerPickup              5       6120
+ZeldaTree2                             5       5840
+ZeldaUniquePotion                      4       4896
+OptionMenuItemControl                 75       4875
+OptionMenuItemSubmenu                 80       4800
+ZeldaMerchant                          4       4672
+MoneySpot                              3       3504
+OptionMenuItemSliderReverbEditOption      28       3136
+OptionMenuItemColorPicker             48       2880
+HexenArmor                             2       2592
+BasicArmor                             2       2504
+ZeldaMeat100                           2       2464
+
+Cached lumps: 1
+
+Large arena, live blocks by caller (addr2line on the ELF):
+0x003b1d34      1    2551808
+0x004c6888     52    2090336
+0x00510964      9    1817856
+0x00123828      3    1712512
+0x003a25c0      1     782096
+0x003b1d7c      1     761856
+0x004d6570      1     700416
+0x00115788      2     692240
+0x00395294      1     587728
+0x003734b4      1     577536
+0x003b1e00      1     540672
+0x004ce038      2     536608
+0x004cf760      1     499712
+0x00185c60      1     445984
+0x00156094      1     445968
+0x00395388      1     391824
+0x0033790c      2     379488
+0x003a214c      1     308320
+0x007064a0      3     270688
+0x004d05ec      1     249200
+0x003a2520      1     244304
+0x003a2570      1     229104
+0x004cda38      1     220720
+0x003a4e34      1     220416
+0x003fb518      1     208896
+0x00217398      1     195840
+0x0048a330      1     167936
+0x00155c00      1     144976
+0x004d5258      1     144416
+0x003a5a58      1     143664
+
+Small allocations since boot by caller (not live; top 40 by bytes):
+0x0010e1b4    84098   26897192
+0x005ac450     3096   18134368
+0x0071791c     2230   15877600
+0x005ab024   510046   14590128
+0x004965f0     2653   12883718
+0x004d6570     1611    8421843
+0x004c6888      738    7557120
+0x004c640c     1657    6939516
+0x001339bc     1436    6612492
+0x00498018      563    6207840
+0x005ad4d4    40075    5770800
+0x005ab600   170794    4798336
+0x00172ec4   189456    3788720
+0x00488dd8      839    3726628
+0x0052c394     3536    2715648
+0x0033790c      287    1281280
+0x005ab6d0     6170     888480
+0x00340778      709     848074
+0x005ab09c    17685     835208
+0x0050079c     1651     832171
+0x004258e8     6437     720944
+0x0048a9bc     3409     709072
+0x004863ac       43     682256
+0x00510964       43     671776
+0x00577588    15103     671424
+0x0056213c     2417     618752
+0x003915e0       33     540672
+0x0052d1d4     2299     471384
+0x0039557c     2283     456576
+0x00560424     6679     427456
+0x00138c98     9798     383440
+0x0070f790    31761     381132
+0x0059933c     2957     378496
+0x0048eca8      963     374904
+0x0048ec70      963     374904
+0x003a5320     5528     353792
+0x002f5a64      825     316800
+0x0048a9a0     3409     313628
+0x005ab3c4     5067     312432
+0x005ac4d4     7719     301264
