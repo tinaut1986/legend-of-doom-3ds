@@ -102,7 +102,10 @@ static void *AllocateWithNewHandler(size_t size, uintptr_t caller)
 	if (size == 0) size = 1;
 	for (;;)
 	{
-		if (void *block = std::malloc(size)) return block;
+		I_3DSAllocCaller = caller;
+		void *fresh = std::malloc(size);
+		I_3DSAllocCaller = 0;
+		if (fresh != nullptr) return fresh;
 		// The map-load reserve is there to be handed back when a large block finds no room; on the
 		// 2DS a new game read a 2 MB lump before P_SetupLevel releases it (largest free block
 		// 1.7 MB of 10.5 MB free, 2026-10-17).

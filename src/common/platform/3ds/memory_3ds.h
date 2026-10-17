@@ -21,8 +21,22 @@ bool I_3DSMapLoadReserveHeld();
 
 // PLAN P4.6: blocks of 32 KB or more come from an arena carved down from the top of the heap
 // region (large_arena_3ds.cpp, linked through -Wl,--wrap=malloc and friends).
+struct FAllocCaller
+{
+	uint32_t Caller, Count, Bytes;
+};
+// The caller to record for the next allocation, set by operator new and M_Malloc / M_Realloc so
+// the census names the code that asked rather than the wrapper. Volatile: GCC assumes malloc
+// reads no program memory and would drop the store before the call.
+extern "C" volatile uintptr_t I_3DSAllocCaller;
+// Small allocations (under 32 KB) counted by caller since boot: the `max` largest by bytes.
+unsigned I_3DSSmallAllocCallers(FAllocCaller *out, unsigned max);
+
 struct FLargeArenaStats
 {
+	static constexpr unsigned MaxCallers = 48;
+	FAllocCaller Callers[MaxCallers];
+	unsigned CallerCount = 0;
 	uintptr_t Low = 0, High = 0;
 	size_t Used = 0, Peak = 0, Free = 0, LargestFree = 0, Gap = 0, Failed = 0;
 	unsigned UsedBlocks = 0, FreeBlocks = 0;

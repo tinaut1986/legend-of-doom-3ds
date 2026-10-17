@@ -45,7 +45,7 @@ struct FArenaBlock
 	size_t Size;		// whole block, header included, a multiple of Granule
 	uint32_t Magic;
 	uint32_t Used;
-	uint32_t Pad;
+	uint32_t Caller;	// who asked, for the census
 };
 static_assert(sizeof(FArenaBlock) == Granule, "arena header must keep 16-byte alignment");
 
@@ -120,7 +120,7 @@ void ShrinkUp()
 	fake_heap_end = Low;
 }
 
-void *Carve(size_t size, size_t alignment)
+void *Carve(size_t size, size_t alignment, uintptr_t caller)
 {
 	if (alignment < Granule) alignment = Granule;
 	const size_t padding = alignment > Granule ? alignment : 0;
@@ -156,6 +156,7 @@ void *Carve(size_t size, size_t alignment)
 		found->Magic = BlockMagic;
 	}
 	found->Used = 1;
+	found->Caller = static_cast<uint32_t>(caller);
 	UsedBytes += found->Size;
 	if (UsedBytes > PeakUsedBytes) PeakUsedBytes = UsedBytes;
 
@@ -200,10 +201,37 @@ size_t Capacity(void *pointer)
 	return block->Size - static_cast<size_t>(static_cast<char *>(pointer) - reinterpret_cast<char *>(block));
 }
 
-void *AllocateLarge(size_t size, size_t alignment)
+// Small allocations counted by caller since boot (not live: frees are not tracked), for the
+// census. Approximate when threads race; diagnostics only.
+constexpr unsigned SmallCallerSlots = 4096;
+struct FCallerCount { uintptr_t Caller; uint32_t Count; uint32_t Bytes; };
+FCallerCount SmallCallers[SmallCallerSlots];
+
+void CountSmall(uintptr_t caller, size_t size)
+{
+	unsigned slot = static_cast<unsigned>((caller >> 2) * 2654435761u) % SmallCallerSlots;
+	for (unsigned probe = 0; probe < 64; ++probe, slot = (slot + 1) % SmallCallerSlots)
+	{
+		FCallerCount &entry = SmallCallers[slot];
+		if (entry.Caller == caller || entry.Caller == 0)
+		{
+			entry.Caller = caller;
+			++entry.Count;
+			entry.Bytes += static_cast<uint32_t>(size);
+			return;
+		}
+	}
+}
+
+uintptr_t CallerOr(uintptr_t fallback)
+{
+	return I_3DSAllocCaller != 0 ? I_3DSAllocCaller : fallback;
+}
+
+void *AllocateLarge(size_t size, size_t alignment, uintptr_t caller)
 {
 	Lock();
-	void *pointer = Carve(size, alignment);
+	void *pointer = Carve(size, alignment, caller);
 	Unlock();
 	return pointer;
 }
@@ -211,12 +239,16 @@ void *AllocateLarge(size_t size, size_t alignment)
 
 extern "C"
 {
+volatile uintptr_t I_3DSAllocCaller;
+
 void *__wrap_malloc(size_t size)
 {
+	const uintptr_t caller = CallerOr(reinterpret_cast<uintptr_t>(__builtin_return_address(0)));
 	if (size >= LargeBlockMin)
 	{
-		if (void *pointer = AllocateLarge(size, Granule)) return pointer;
+		if (void *pointer = AllocateLarge(size, Granule, caller)) return pointer;
 	}
+	CountSmall(caller, size);
 	return __real_malloc(size);
 }
 
@@ -239,7 +271,8 @@ void *__wrap_calloc(size_t count, size_t size)
 	if (size != 0 && total / size != count) return nullptr;
 	if (total >= LargeBlockMin)
 	{
-		if (void *pointer = AllocateLarge(total, Granule))
+		if (void *pointer = AllocateLarge(total, Granule,
+			CallerOr(reinterpret_cast<uintptr_t>(__builtin_return_address(0)))))
 		{
 			std::memset(pointer, 0, total);
 			return pointer;
@@ -273,6 +306,7 @@ void *__wrap_realloc(void *block, size_t size)
 
 	const size_t have = inArena ? __wrap_malloc_usable_size(block) : __real_malloc_usable_size(block);
 	if (inArena && size <= have) return block;
+	if (I_3DSAllocCaller == 0) I_3DSAllocCaller = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
 	void *moved = __wrap_malloc(size);
 	if (moved == nullptr) return nullptr;
 	std::memcpy(moved, block, have < size ? have : size);
@@ -284,7 +318,8 @@ void *__wrap_memalign(size_t alignment, size_t size)
 {
 	if (size >= LargeBlockMin && alignment <= 4096)
 	{
-		if (void *pointer = AllocateLarge(size, alignment)) return pointer;
+		if (void *pointer = AllocateLarge(size, alignment,
+			CallerOr(reinterpret_cast<uintptr_t>(__builtin_return_address(0))))) return pointer;
 	}
 	return __real_memalign(alignment, size);
 }
@@ -324,7 +359,38 @@ void I_3DSLargeArenaStats(FLargeArenaStats &stats)
 			if (block->Size > stats.LargestFree) stats.LargestFree = block->Size;
 		}
 	}
+	for (FArenaBlock *block = reinterpret_cast<FArenaBlock *>(Low);
+		reinterpret_cast<char *>(block) < High; block = Next(block))
+	{
+		if (!block->Used) continue;
+		unsigned i = 0;
+		while (i < stats.CallerCount && stats.Callers[i].Caller != block->Caller) ++i;
+		if (i == stats.CallerCount)
+		{
+			if (stats.CallerCount == FLargeArenaStats::MaxCallers) continue;
+			stats.Callers[stats.CallerCount++] = { block->Caller, 0, 0 };
+		}
+		++stats.Callers[i].Count;
+		stats.Callers[i].Bytes += block->Size;
+	}
 	char *brk = static_cast<char *>(_sbrk_r(_REENT, 0));
 	stats.Gap = brk != reinterpret_cast<char *>(-1) && Low > brk ? static_cast<size_t>(Low - brk) : 0;
 	Unlock();
+}
+
+unsigned I_3DSSmallAllocCallers(FAllocCaller *out, unsigned max)
+{
+	unsigned count = 0;
+	for (const FCallerCount &entry : SmallCallers)
+	{
+		if (entry.Caller == 0) continue;
+		if (count < max) out[count++] = { static_cast<uint32_t>(entry.Caller), entry.Count, entry.Bytes };
+		else
+		{
+			unsigned smallest = 0;
+			for (unsigned i = 1; i < max; ++i) if (out[i].Bytes < out[smallest].Bytes) smallest = i;
+			if (entry.Bytes > out[smallest].Bytes) out[smallest] = { static_cast<uint32_t>(entry.Caller), entry.Count, entry.Bytes };
+		}
+	}
+	return count;
 }
