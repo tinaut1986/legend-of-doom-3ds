@@ -80,8 +80,10 @@ void *MapLoadReserve;
 
 bool I_3DSReserveMapLoadMemory()
 {
-	if (MapLoadReserve == nullptr) MapLoadReserve = std::malloc(MapLoadReserveBytes);
-	return MapLoadReserve != nullptr;
+	// The large-block arena (P4.6) keeps map loading's big blocks apart from the small ones;
+	// a held 5 MB block would only sit in it.
+	(void)MapLoadReserveBytes;
+	return true;
 }
 
 bool I_3DSMapLoadReserveHeld()

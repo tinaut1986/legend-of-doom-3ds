@@ -19,6 +19,16 @@ void I_3DSReleaseMapLoadMemory();
 
 bool I_3DSMapLoadReserveHeld();
 
+// PLAN P4.6: blocks of 32 KB or more come from an arena carved down from the top of the heap
+// region (large_arena_3ds.cpp, linked through -Wl,--wrap=malloc and friends).
+struct FLargeArenaStats
+{
+	uintptr_t Low = 0, High = 0;
+	size_t Used = 0, Peak = 0, Free = 0, LargestFree = 0, Gap = 0, Failed = 0;
+	unsigned UsedBlocks = 0, FreeBlocks = 0;
+};
+void I_3DSLargeArenaStats(FLargeArenaStats &stats);
+
 // PLAN P4.5: writes memory-census-<label>.txt (heap chunks, GC objects by class, cached lumps,
 // pool and reserves) to the data folder. The second one only when census-on-load.txt is there
 // (debug builds); the console command lod3ds_memcensus [label] runs the first.

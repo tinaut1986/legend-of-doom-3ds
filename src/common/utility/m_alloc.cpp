@@ -295,6 +295,10 @@ namespace
 	{
 		if (PoolTried) return;
 		PoolTried = true;
+		// No pool: the large-block arena (P4.6, large_arena_3ds.cpp) keeps every block of 32 KB or
+		// more apart from the small ones, which is what the pool did for TArray's big blocks.
+		constexpr bool UsePool = false;
+		if (!UsePool) return;
 		Pool = (char *)malloc(PoolBytes);
 		if (Pool != nullptr)
 		{

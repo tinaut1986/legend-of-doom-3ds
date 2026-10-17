@@ -38,6 +38,9 @@
 **
 */
 
+#ifdef __3DS__
+#include "common/platform/3ds/memory_3ds.h"
+#endif
 #include "gi.h"
 #include "actor.h"
 #include "r_defs.h"
@@ -457,6 +460,7 @@ void LoadActors()
 	ParseScripts();
 #ifdef __3DS__
 	M_3DSLogHeap("actors: ZScript parsed");
+	I_3DSMemoryCensusIfRequested("zscript-parsed");
 #endif
 
 	FScriptPosition::StrictErrors = strictdecorate;
@@ -469,6 +473,7 @@ void LoadActors()
 	FunctionBuildList.Build();
 #ifdef __3DS__
 	M_3DSLogHeap("actors: functions built");
+	I_3DSMemoryCensusIfRequested("functions-built");
 #endif
 
 	if (FScriptPosition::ErrorCounter > 0)
