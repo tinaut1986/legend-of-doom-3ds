@@ -35,6 +35,7 @@ loading screen's two progress bars and message (owner saw them on the 2DS, 2026-
 | Branch | What | State |
 |---|---|---|
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
+| `perf/memory-census` | P4.5: the memory census (`lod3ds_memcensus`, `census-on-load.txt`) | Pushed, **not merged**; cut from `fix/2ds-memory` (needs it) with `release/v0.2.5` merged in for the version |
 | `fix/2ds-memory` | P4.1 bring-up: `no-audio.txt` (#16), honest allocation-failure diagnostics, and the map-load memory fixes that get MAP01 loaded on the 2DS (decisions log, 2026-10-17) | Pushed, **not merged**: works on the 2DS up to the first frame; changes the Old 3DS save format (full sides/lines/sectors); unchecked on the New 3DS. The base for P4.5-P4.8 |
 
 **Waiting for the owner's check** (done by Claude only, or not seen yet):
@@ -47,10 +48,10 @@ start"; then #16 (audio on the Old 3DS); #7 and #14 last. The owner asked again 
 can be restructured to need less RAM: yes, that is P4.7 / P4.8.
 
 **Start here:**
-0. **P4.5** (memory census) on the 2DS, from `fix/2ds-memory` (cut the P4.5 branch from it, or
-   merge it into the line first if the owner confirms the New 3DS check). The 2DS needs
-   `allow-old3ds.txt` and `no-audio.txt` in its data folder (both there now). Then P4.6, which
-   is what gets a new game past its first frame; P4.7 and P4.8 make the room last.
+0. **P4.6** (an arena for large transient blocks), from `perf/memory-census`, measured with the
+   census before and after. P4.5's findings are in `docs/measurements/memory-census-2026-10-17.md`.
+   The 2DS needs `allow-old3ds.txt` and `no-audio.txt` in its data folder (both there now,
+   with `census-on-load.txt`). P4.7 and P4.8 make the room last.
 1. **#16** after P4.6, so the audio can be tested in a level.
 2. Nothing is half done or uncommitted.
 
@@ -60,9 +61,10 @@ can be restructured to need less RAM: yes, that is P4.7 / P4.8.
   the install-only marker `dev-ftp.txt`, saves `save0` ("test", MAP01, the spot Claude loads),
   `test2` (the 48-50 fps spot of #12) and three autosaves. DISTANCE is HIGH (the owner's setting);
   FRAMES was last left at NO SKIP by Claude.
-- **2DS**, `192.168.1.139` (`.3ds_ftp_ip` still says `.141`): a debug build of `fix/2ds-memory`,
-  `0.2.5-dev.6.1+8cfe9c7`, build `0c014f7125dc` (the content of `ce01184`), FTP server on. The data
-  folder has `allow-old3ds.txt` and `no-audio.txt`, no saves. A new game closes to HOME at MAP01's
+- **2DS**, `192.168.1.139` (`.3ds_ftp_ip` still says `.141`): a debug build of `perf/memory-census`,
+  build `3faa2353b0c0` (it says `0.0.0-dev+291d5ea`, so the updater offers v0.2.4; dismiss it), FTP
+  server on. The data folder has `allow-old3ds.txt`, `no-audio.txt`, `census-on-load.txt` and the
+  two census reports, no saves. A new game closes to HOME at MAP01's
   first frame. `/cias/` holds the CIAs uploaded over ftpd during the session. Luma's
   `crash_dump_00000000` and `00000019` are from the Minish Cap port and were left.
 
@@ -322,26 +324,33 @@ third of the CPU, so neither is reachable with SoftPoly on the CPU.
   TArray pool and the reserves; and the free list's shape (largest blocks, free chunks by size).
   *Done when:* a table in `docs/measurements/` for both points on the 2DS, and P4.6-P4.8's targets
   picked from it.
+  *Result (2026-10-17, Claude):* `docs/measurements/memory-census-2026-10-17.md`; the tool is in
+  `perf/memory-census` (`lod3ds_memcensus`, `census-on-load.txt`). Not checked by the owner yet.
 - [ ] **P4.6** Keep small allocations away from the big blocks.
   *Spec:* after MAP01 loads, 8.3 MB is free on the 2DS but no block is larger than 255 KB: every
   multi-hundred-KB request (a PNG decode, renderer memory, a lump) fails. Either a size-class
   allocator for small requests (the bulk of the engine objects and the compiler's nodes), or one
   arena for large transient blocks with first-fit and coalescing (`m_alloc.cpp`'s TArray pool,
   generalised); P4.5's free-list shape decides. It should replace the 5 MB map-load reserve, the
-  2 MB renderer reserve and perhaps the 10 MB pool.
+  2 MB renderer reserve and perhaps the 10 MB pool. The census (P4.5) points to the arena for
+  large transient blocks first: the free memory sits in 160-200 holes of 16 KB-1 MB that such
+  blocks leave between long-lived ones; the small-block arena second (1.2 MB of chunk overhead,
+  2 MB of unusable crumbs).
   *Done when:* after MAP01 loads on the 2DS the largest free block is 2 MB or more, and a new game
   plays the first screens.
 - [ ] **P4.7** Lower the startup peak.
-  *Spec:* on the 2DS (2026-10-17) the ZScript compile adds 11.6 MB at its peak and gives back 4 MB;
+  *Spec:* about 131,000 blocks of 256 B or less (8.9 MB) are live at the title, from startup:
+  find them by allocation site and cut them (census, P4.5). The ZScript compile adds 11.6 MB at its peak and gives back 4 MB;
   `after filesystem init` -> `cpu-detection-enter` adds 7.5 MB (not identified yet); the reserves
   take 7 MB at boot. Free the compiler's trees and tables once the code is built, find and cut the
   7.5 MB, and drop the reserves P4.6 makes unnecessary.
   *Done when:* the heap in use at the title on the 2DS is 5 MB or more below 37.9 MB
   (`softpoly-canvas-ready`, 2026-10-17).
 - [ ] **P4.8** Lower MAP01's resident memory.
-  *Spec:* after MAP01 loads the engine holds 17.2 MB of objects (`gc=`; ~490 bushes and other
-  decorations that never think are full actors) and the pool 9.8 MB of big arrays. Candidates:
-  lighter objects for static decorations, shared or 8-bit textures, smaller line / side structures.
+  *Spec:* `gc=` (17 MB after MAP01) is everything allocated through `M_Malloc`, not the actors:
+  all engine objects together are 0.8 MB (census, P4.5). The level's arrays fill the 10 MB TArray
+  pool (9.5 MB in MAP01). Candidates: smaller line / side / sector structures (fields this game
+  never uses), what else lands in the pool, shared or 8-bit textures.
   *Done when:* MAP01 loaded on the 2DS leaves 15 MB or more of free heap (8.9 MB on 2026-10-17).
 - [ ] **P4.2** 30 fps minimum on the Old 3DS.
   *Done when:* the P0.3 spots never drop under 30 fps (1% low) on the 2DS, steady pacing.
@@ -593,3 +602,13 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   - A `std::bad_alloc` that bypasses the new handler (`FStringData::Alloc`,
     `RenderMemory::MemoryBlock` throw it directly) is located by the `__cxa_throw` wrap, which logs
     the code addresses on the stack.
+- **2026-10-17** P4.5's census on the 2DS (`docs/measurements/memory-census-2026-10-17.md`).
+  Findings:
+  - `gc=` counts everything allocated through `M_Malloc`, not the actors: the engine objects are
+    0.8 MB in MAP01. Light decorations would save little.
+  - About 150,000 small blocks are live, most of them from startup.
+  - The 8.7 MB free in MAP01 lies in holes of 16 KB-1 MB plus 2 MB of crumbs.
+  - So P4.6 starts with an arena for large transient blocks. P4.8 turns to the level's arrays
+    (the 10 MB pool) instead of the actors.
+  - Side finding: `version.sh` gives `0.0.0-dev` on a topic branch once its release branch has
+    moved on, and the console's updater then offers the published release.

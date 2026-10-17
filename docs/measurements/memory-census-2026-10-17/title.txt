@@ -1,0 +1,64 @@
+Memory census 'title', build 3faa2353b0c0 (0.0.0-dev+291d5ea)
+
+heap arena                     53907456  (51.41 MB)
+heap in use                    42863312  (40.88 MB)
+heap free                      11044144  (10.53 MB)
+gc objects (AllocBytes)        10317276  (9.84 MB)
+gc objects (class sizes)          79040  (0.08 MB)
+cached lumps                    1345832  (1.28 MB)
+TArray pool in use              3537968  (3.37 MB)
+TArray pool high                4117936  (3.93 MB)
+map-load reserve                   held
+linear free                     4210688  (4.02 MB)
+vram free                       4154368  (3.96 MB)
+app region free                       0  (0.00 MB)
+
+Heap chunks
+base 0x08080000 top 0x0b3e8c00 top chunk 1024
+up to        free n   free bytes   used n   used bytes
+256           51460      1884320   131549      8947792
+1K             1235       665184     5368      3157656
+4K              327       575280      783       997232
+16K              77       631840       91       494256
+64K              36       933600       90      2846128
+256K             84      5970824       37      4371160
+1M                1       384056        7      2613296
+4M                0            0        3      3705152
+more              0            0        2     15728656
+largest free (not counting the top chunk): 384056@+51892K 214552@+34273K 168600@+38152K 140024@+34713K 81128@+34486K 80856@+32221K 80840@+41285K 77696@+41374K
+map, 822 KB a cell, '#' full ... ' ' free:
+[#####################++++++##++####+++......---++--...-..+#####-]
+
+GC objects: 1075, by class (bytes from the class size, top 30):
+OptionMenuItemOption                 354      25488
+OptionMenuItemStaticText             153       9180
+OptionMenuItemSlider                  79       8216
+OptionMenuDescriptor                  87       7308
+OptionMenuItemControl                 75       4875
+OptionMenuItemSubmenu                 80       4800
+OptionMenuItemSliderReverbEditOption      28       3136
+OptionMenuItemColorPicker             48       2880
+OptionMenuItemCommand                 34       2244
+ListMenuItemTextItem                  20       1520
+ListMenuDescriptor                    10       1440
+OptionMenuItemMapControl              13        845
+OptionMenuItemStaticTextSwitchable      12        816
+OptionMenuItemScaleSlider              7        812
+OptionMenuItemSafeCommand             10        720
+ListMenuItemValueText                  7        644
+OptionMenuItemReverbOption             8        576
+OptionMenuItemLabeledSubmenu           7        448
+ListMenuItemSlider                     4        368
+OptionMenuItemTextField                5        340
+OptionMenuItemPlayerColorSlider        3        312
+ListMenuItemPlayerDisplay              2        192
+OptionMenuItemNumberField              2        152
+ListMenuItemStaticText                 2        122
+ListMenuItemStaticTextCentered         2        122
+ListMenuItemCaptionItem                2        112
+OptionMenuItemRenderDistanceSlider       1        104
+OptionMenuItemAutoaimSlider            1        100
+ListMenuItemPlayerNameBox              1         84
+SpawnController                        1         76
+
+Cached lumps: 1
