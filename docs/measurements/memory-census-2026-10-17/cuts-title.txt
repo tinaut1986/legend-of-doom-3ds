@@ -1,0 +1,144 @@
+Memory census 'title', build 60f0c829b6c3 (0.0.0-dev+ed21671)
+
+heap arena                     19103744  (18.22 MB)
+heap in use                    10419296  (9.94 MB)
+heap free                       8684448  (8.28 MB)
+gc objects (AllocBytes)        10391084  (9.91 MB)
+gc objects (class sizes)          79040  (0.08 MB)
+cached lumps                    1345832  (1.28 MB)
+TArray pool in use                    0  (0.00 MB)
+TArray pool high                      0  (0.00 MB)
+map-load reserve                   free
+large arena in use             12002944  (11.45 MB)
+large arena peak               13366368  (12.75 MB)
+large arena free inside         4251104  (4.05 MB)
+large arena largest free         385024  (0.37 MB)
+gap heap break..arena          19692448  (18.78 MB)
+large arena blocks                   92 used, 26 free, 0 failed, 0x0a57fba0-0x0b500000
+linear free                     4210688  (4.02 MB)
+vram free                       4154368  (3.96 MB)
+app region free                       0  (0.00 MB)
+
+Heap chunks
+base 0x08080000 top 0x092af348 top chunk 36024
+up to        free n   free bytes   used n   used bytes
+256           28623      1483248    76081      5506952
+1K             1328       736400     4041      2595904
+4K              517       976024      770       982680
+16K             440      4257320       91       495504
+64K              56      1197408       32       836280
+256K              0            0        0            0
+1M                0            0        0            0
+4M                0            0        0            0
+more              0            0        0            0
+largest free (not counting the top chunk): 46432@+12449K 37440@+12571K 34856@+5255K 20568@+6067K 20544@+8489K 20520@+5716K 20520@+5746K 20520@+5853K
+map, 291 KB a cell, '#' full ... ' ' free:
+[#++++++++++++++###+... .   .       .--  .---+##+++-+-+--------..]
+
+GC objects: 1075, by class (bytes from the class size, top 30):
+OptionMenuItemOption                 354      25488
+OptionMenuItemStaticText             153       9180
+OptionMenuItemSlider                  79       8216
+OptionMenuDescriptor                  87       7308
+OptionMenuItemControl                 75       4875
+OptionMenuItemSubmenu                 80       4800
+OptionMenuItemSliderReverbEditOption      28       3136
+OptionMenuItemColorPicker             48       2880
+OptionMenuItemCommand                 34       2244
+ListMenuItemTextItem                  20       1520
+ListMenuDescriptor                    10       1440
+OptionMenuItemMapControl              13        845
+OptionMenuItemStaticTextSwitchable      12        816
+OptionMenuItemScaleSlider              7        812
+OptionMenuItemSafeCommand             10        720
+ListMenuItemValueText                  7        644
+OptionMenuItemReverbOption             8        576
+OptionMenuItemLabeledSubmenu           7        448
+ListMenuItemSlider                     4        368
+OptionMenuItemTextField                5        340
+OptionMenuItemPlayerColorSlider        3        312
+ListMenuItemPlayerDisplay              2        192
+OptionMenuItemNumberField              2        152
+ListMenuItemStaticText                 2        122
+ListMenuItemStaticTextCentered         2        122
+ListMenuItemCaptionItem                2        112
+OptionMenuItemRenderDistanceSlider       1        104
+OptionMenuItemAutoaimSlider            1        100
+ListMenuItemPlayerNameBox              1         84
+SpawnController                        1         76
+
+Cached lumps: 1
+
+Large arena, live blocks by caller (addr2line on the ELF):
+0x004c6888     51    2024800
+0x00123828      2    1423312
+0x004d6570      1    1347584
+0x00510964      2     769040
+0x00115788      2     692240
+0x004cf760      1     499712
+0x00185c60      1     445984
+0x00156094      1     445968
+0x0010cb9c      1     385024
+0x00217398      1     384016
+0x0033790c      2     379488
+0x004ce038      1     274448
+0x007064a0      3     270688
+0x00137eec      1     266256
+0x004d05ec      1     249200
+0x004cda38      1     220720
+0x0048a330      1     167936
+0x00516930      1     166272
+0x004d5a64      2     159744
+0x00155c00      1     144976
+0x004d5258      1     144416
+0x0012aca4      1     131104
+0x0075032c      1     131088
+0x0075168c      1     131088
+0x003f1a08      1      98592
+0x002173f0      1      96016
+0x0012a760      1      91040
+0x00459c20      1      67888
+0x004892e8      1      67472
+0x00155fac      1      65552
+
+Small allocations since boot by caller (not live; top 40 by bytes):
+0x005ac450     3093   18123032
+0x0071791c     2191   15599920
+0x004965f0     2653   12883718
+0x004d6570     1592    8380694
+0x004c6888      696    7127040
+0x004c640c     1634    6843192
+0x00498018      555    6101344
+0x005ad4d4    40070    5770080
+0x005ab024    89443    4489112
+0x00488dd8      830    3595552
+0x0052c394     3536    2715648
+0x0033790c      287    1281280
+0x005ab600    36259    1128496
+0x005ab6d0     5967     859248
+0x00340778      709     848074
+0x005ab09c    16185     811208
+0x0048a9bc     3409     709072
+0x00577588    15103     671424
+0x0056213c     2417     618752
+0x0052d1d4     2299     471384
+0x00560424     6679     427456
+0x00138c98     9798     383440
+0x0059933c     2957     378496
+0x0048ec70      963     374904
+0x0048eca8      963     374904
+0x002f5a64      825     316800
+0x0048a9a0     3409     313628
+0x005ab3c4     5062     312320
+0x005aba24    13420     293992
+0x005ac4d4     7634     289840
+0x004e7130     4367     279488
+0x0055ad94     7448     268128
+0x004cda7c       65     266240
+0x00575c84     3360     262800
+0x0040e5a8     3259     208576
+0x0040e608     3259     208576
+0x0040e548     3259     208576
+0x0055de10     3203     204992
+0x0048e77c      976     203008
+0x00580ff4     3043     194752
