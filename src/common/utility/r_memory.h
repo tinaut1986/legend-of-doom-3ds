@@ -25,7 +25,12 @@ public:
 private:
 	void *AllocBytes(int size);
 		
+#ifdef __3DS__
+	// 256 KB: a 1 MB block found no room on the 2DS's fragmented heap with 8.6 MB free (2026-10-17).
+	enum { BlockSize = 256 * 1024 };
+#else
 	enum { BlockSize = 1024 * 1024 };
+#endif
 		
 	struct MemoryBlock
 	{

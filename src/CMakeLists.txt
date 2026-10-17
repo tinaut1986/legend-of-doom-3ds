@@ -1366,6 +1366,8 @@ if( CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS" )
 	target_link_libraries( zdoom "${NOVAGL_LIBRARY}" citro2d citro3d )
 	target_link_directories( zdoom PRIVATE "$ENV{DEVKITPRO}/libctru/lib" )
 	target_link_options( zdoom PRIVATE "-Wl,-Map,${CMAKE_BINARY_DIR}/gzdoom.map" )
+	# memory.cpp logs where a std::bad_alloc is thrown from (2DS bring-up).
+	target_link_options( zdoom PRIVATE "-Wl,--wrap=__cxa_throw" )
 	# GCC resolves start files inside the active armv6k/fpu multilib folder.
 	set( N3DS_CRT_VARIANT "pica" )
 	set( N3DS_CRT_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/common/platform/3ds/3dsx_crt0.s" )

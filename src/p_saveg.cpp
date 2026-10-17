@@ -1009,10 +1009,11 @@ void FLevelLocals::Serialize(FSerializer &arc, bool hubload)
 	Behaviors.SerializeModuleStates(arc);
 	// The order here is important: First world state, then portal state, then thinkers, and last polyobjects.
 	SetCompatLineOnSide(false);	// This flag should not be saved. It solely depends on current compatibility state.
-	arc("linedefs", lines, loadlines);
+	// Without the map's backup copies (Old 3DS, p_setup.cpp) the fields are stored whole.
+	arc("linedefs", lines, loadlines.Size() == lines.Size() ? &loadlines : nullptr);
 	SetCompatLineOnSide(true);
-	arc("sidedefs", sides, loadsides);
-	arc("sectors", sectors, loadsectors);
+	arc("sidedefs", sides, loadsides.Size() == sides.Size() ? &loadsides : nullptr);
+	arc("sectors", sectors, loadsectors.Size() == sectors.Size() ? &loadsectors : nullptr);
 	arc("zones", Zones);
 	arc("lineportals", linePortals);
 	arc("sectorportals", sectorPortals);

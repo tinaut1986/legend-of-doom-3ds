@@ -17,6 +17,9 @@ void I_3DSReleaseRendererMemory();
 bool I_3DSReserveMapLoadMemory();
 void I_3DSReleaseMapLoadMemory();
 
+// True on an Old 3DS / 2DS.
+bool I_3DSIsOld3DS();
+
 size_t I_3DSLastFailedNewRequest();
 uintptr_t I_3DSLastFailedNewCaller();
 

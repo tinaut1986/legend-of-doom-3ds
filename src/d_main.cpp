@@ -2538,6 +2538,8 @@ static void NewFailure ()
     {
         char what[128];
         void *retry = malloc(I_3DSLastFailedNewRequest());
+        // GCC would otherwise drop the malloc/free pair and report success.
+        __asm__ volatile("" : "+r"(retry) : : "memory");
         const bool retryWorked = retry != nullptr;
         free(retry);
         snprintf(what, sizeof(what), "operator new failure: %zu bytes, caller 0x%08lx, largest free block %zu, retry %s",

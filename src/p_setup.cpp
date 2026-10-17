@@ -609,12 +609,19 @@ void P_SetupLevel(FLevelLocals *Level, int position, bool newGame)
 	// Create a backup of the map data so the savegame code can toss out all fields that haven't changed in order to reduce processing time and file size.
 	// Note that we want binary identity here, so assignment is not sufficient because it won't initialize any padding bytes.
 	// Note that none of these structures may contain non POD fields anyway.
+#ifdef __3DS__
+	// The Old 3DS / 2DS has no room for the copies (MAP01's sides alone are 2.5 MB; the 2DS failed
+	// here, 2026-10-17): its saves store these fields whole (p_saveg.cpp).
+	if (!I_3DSIsOld3DS())
+#endif
+	{
 	Level->loadsectors.Resize(Level->sectors.Size());
 	memcpy(&Level->loadsectors[0], &Level->sectors[0], Level->sectors.Size() * sizeof(Level->sectors[0]));
 	Level->loadlines.Resize(Level->lines.Size());
 	memcpy(&Level->loadlines[0], &Level->lines[0], Level->lines.Size() * sizeof(Level->lines[0]));
 	Level->loadsides.Resize(Level->sides.Size());
 	memcpy(&Level->loadsides[0], &Level->sides[0], Level->sides.Size() * sizeof(Level->sides[0]));
+	}
 
 	Level->automap = AM_Create(Level);
 	Level->automap->LevelInit();
