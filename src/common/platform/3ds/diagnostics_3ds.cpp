@@ -1978,6 +1978,10 @@ bool BottomSelectItem(unsigned index)
 	AActor *owner = player.mo;
 	if (owner == nullptr) return false;
 	const FBottomItem &item = items[index];
+	// Only what the grid shows can be picked: the potion's weapon (ZeldaPotion) stays in the
+	// inventory with no potion, letter or refill left, and its empty cell equipped it (#17).
+	if (!BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3))
+		return false;
 	AActor *weapon = BottomFindInventory(owner, item.Ready1, item.Ready2, item.Ready3);
 	if (weapon != nullptr)
 	{
