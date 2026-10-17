@@ -396,8 +396,24 @@ void FStringTable::LoadLanguage (int lumpnum, const TArray<uint8_t> &buffer)
 //
 //==========================================================================
 
+#ifdef __3DS__
+// The port speaks English and Spanish (OPTIONS -> VIDEO -> LANGUAGE): the other languages'
+// tables from gzdoom.pk3 took about 2 MB of the 2DS's heap (census, 2026-10-17). Another system
+// language falls back to the default table, as it would for a language with no table.
+static bool KeepLanguage(int langid)
+{
+	const uint32_t id = (uint32_t)langid;
+	if (id == FStringTable::default_table || id == FStringTable::global_table || id == FStringTable::override_table) return true;
+	const uint32_t two = id & MAKE_ID(0xff, 0xff, 0, 0);
+	return two == MAKE_ID('e', 'n', 0, 0) || two == MAKE_ID('e', 's', 0, 0);
+}
+#endif
+
 void FStringTable::DeleteString(int langid, FName label)
 {
+#ifdef __3DS__
+	if (!KeepLanguage(langid)) return;
+#endif
 	allStrings[langid].Remove(label);
 }
 
@@ -433,6 +449,9 @@ void FStringTable::DeleteForLabel(int lumpnum, FName label)
 
 void FStringTable::InsertString(int lumpnum, int langid, FName label, const FString &string)
 {
+#ifdef __3DS__
+	if (!KeepLanguage(langid)) return;
+#endif
 	const char *strlangid = (const char *)&langid;
 	TableElement te = { fileSystem.GetFileContainer(lumpnum), { string, string, string, string } };
 	ptrdiff_t index;

@@ -28,3 +28,6 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread);
 // True while the GPU draws the world of the frame being rendered: the swrenderer then only
 // walks the scene (its visibility) and draws no walls, planes, sky or translucent pass.
 bool I_3DSGpuWorldActive();
+// True when this build draws the world on the GPU (outside a frame too): the software renderer's
+// own copies of the world's textures are then not wanted ahead of time.
+bool I_3DSGpuWorldEnabled();
