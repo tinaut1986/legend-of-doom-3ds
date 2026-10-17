@@ -147,7 +147,7 @@ void *Carve(size_t size, size_t alignment, uintptr_t caller)
 		}
 	}
 	// Split: the used part goes at the top of the free block.
-	if (found->Size >= need + LargeBlockMin)
+	if (found->Size >= need + 4 * Granule)
 	{
 		const size_t rest = found->Size - need;
 		found->Size = rest;
@@ -249,7 +249,11 @@ void *__wrap_malloc(size_t size)
 		if (void *pointer = AllocateLarge(size, Granule, caller)) return pointer;
 	}
 	CountSmall(caller, size);
-	return __real_malloc(size);
+	if (void *pointer = __real_malloc(size)) return pointer;
+	// newlib's heap is full (its break is at the arena) or in crumbs: the arena takes small
+	// blocks too rather than fail. The 2DS closed after a long play on a 4.6 KB request with
+	// 2.1 MB free in the small heap, all of it in pieces (2026-10-18).
+	return size != 0 ? AllocateLarge(size, Granule, caller) : nullptr;
 }
 
 void __wrap_free(void *block)
@@ -278,7 +282,12 @@ void *__wrap_calloc(size_t count, size_t size)
 			return pointer;
 		}
 	}
-	return __real_calloc(count, size);
+	if (void *pointer = __real_calloc(count, size)) return pointer;
+	if (total == 0) return nullptr;
+	void *pointer = AllocateLarge(total, Granule,
+		CallerOr(reinterpret_cast<uintptr_t>(__builtin_return_address(0))));
+	if (pointer != nullptr) std::memset(pointer, 0, total);
+	return pointer;
 }
 
 size_t __wrap_malloc_usable_size(void *block)
@@ -302,7 +311,11 @@ void *__wrap_realloc(void *block, size_t size)
 		return nullptr;
 	}
 	const bool inArena = InArena(block);
-	if (!inArena && size < LargeBlockMin) return __real_realloc(block, size);
+	if (!inArena && size < LargeBlockMin)
+	{
+		if (void *pointer = __real_realloc(block, size)) return pointer;
+		// Fall through: move it, into the arena if newlib has no room.
+	}
 
 	const size_t have = inArena ? __wrap_malloc_usable_size(block) : __real_malloc_usable_size(block);
 	if (inArena && size <= have) return block;
@@ -321,7 +334,9 @@ void *__wrap_memalign(size_t alignment, size_t size)
 		if (void *pointer = AllocateLarge(size, alignment,
 			CallerOr(reinterpret_cast<uintptr_t>(__builtin_return_address(0))))) return pointer;
 	}
-	return __real_memalign(alignment, size);
+	if (void *pointer = __real_memalign(alignment, size)) return pointer;
+	return size != 0 && alignment <= 4096 ? AllocateLarge(size, alignment,
+		CallerOr(reinterpret_cast<uintptr_t>(__builtin_return_address(0)))) : nullptr;
 }
 
 int __wrap_posix_memalign(void **result, size_t alignment, size_t size)
