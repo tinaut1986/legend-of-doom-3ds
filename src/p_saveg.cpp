@@ -1009,11 +1009,19 @@ void FLevelLocals::Serialize(FSerializer &arc, bool hubload)
 	Behaviors.SerializeModuleStates(arc);
 	// The order here is important: First world state, then portal state, then thinkers, and last polyobjects.
 	SetCompatLineOnSide(false);	// This flag should not be saved. It solely depends on current compatibility state.
-	// Without the map's backup copies (Old 3DS, p_setup.cpp) the fields are stored whole.
-	arc("linedefs", lines, loadlines.Size() == lines.Size() ? &loadlines : nullptr);
+	// Without the map's backup copies (Old 3DS, p_setup.cpp) the fields are written whole and read
+	// without defaults: save_full keeps the element serializers from taking fields of a null
+	// default (they write `def->flags`; the 2DS crashed on a hub snapshot, 2026-10-17). A save
+	// that leaves out unchanged fields still loads, since they keep the freshly loaded map's values.
+	const bool backups = loadlines.Size() == lines.Size() && loadsides.Size() == sides.Size() &&
+		loadsectors.Size() == sectors.Size();
+	const bool wasFull = save_full;
+	if (!backups) save_full = true;
+	arc("linedefs", lines, backups ? &loadlines : nullptr);
 	SetCompatLineOnSide(true);
-	arc("sidedefs", sides, loadsides.Size() == sides.Size() ? &loadsides : nullptr);
-	arc("sectors", sectors, loadsectors.Size() == sectors.Size() ? &loadsectors : nullptr);
+	arc("sidedefs", sides, backups ? &loadsides : nullptr);
+	arc("sectors", sectors, backups ? &loadsectors : nullptr);
+	save_full = wasFull;
 	arc("zones", Zones);
 	arc("lineportals", linePortals);
 	arc("sectorportals", sectorPortals);
