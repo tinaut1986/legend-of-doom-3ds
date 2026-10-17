@@ -35,6 +35,7 @@ loading screen's two progress bars and message (owner saw them on the 2DS, 2026-
 | Branch | What | State |
 |---|---|---|
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
+| `perf/large-block-arena` | P4.6: the large-block arena; the census by caller | Pushed, **not merged**; on top of `perf/memory-census` (needs it); unchecked on the New 3DS |
 | `perf/memory-census` | P4.5: the memory census (`lod3ds_memcensus`, `census-on-load.txt`) | Pushed, **not merged**; cut from `fix/2ds-memory` (needs it) with `release/v0.2.5` merged in for the version |
 | `fix/2ds-memory` | P4.1 bring-up: `no-audio.txt` (#16), honest allocation-failure diagnostics, and the map-load memory fixes that get MAP01 loaded on the 2DS (decisions log, 2026-10-17) | Pushed, **not merged**: works on the 2DS up to the first frame; changes the Old 3DS save format (full sides/lines/sectors); unchecked on the New 3DS. The base for P4.5-P4.8 |
 
@@ -48,8 +49,10 @@ start"; then #16 (audio on the Old 3DS); #7 and #14 last. The owner asked again 
 can be restructured to need less RAM: yes, that is P4.7 / P4.8.
 
 **Start here:**
-0. **P4.6** (an arena for large transient blocks), from `perf/memory-census`, measured with the
-   census before and after. P4.5's findings are in `docs/measurements/memory-census-2026-10-17.md`.
+0. **P4.7 / P4.8**, from `perf/large-block-arena`: the cuts listed in
+   `docs/measurements/memory-census-2026-10-17.md` ("With the large-block arena"), biggest and cheapest
+   first: the string table's other languages, the hex font, software textures, the debug network buffer,
+   SoftPoly's second thread data. Then check the whole stack on the New 3DS.
    The 2DS needs `allow-old3ds.txt` and `no-audio.txt` in its data folder (both there now,
    with `census-on-load.txt`). P4.7 and P4.8 make the room last.
 1. **#16** after P4.6, so the audio can be tested in a level.
@@ -62,8 +65,8 @@ can be restructured to need less RAM: yes, that is P4.7 / P4.8.
   `test2` (the 48-50 fps spot of #12) and three autosaves. DISTANCE is HIGH (the owner's setting);
   FRAMES was last left at NO SKIP by Claude.
 - **2DS**, `192.168.1.139` (`.3ds_ftp_ip` still says `.141`): a debug build of `perf/memory-census`,
-  build `3faa2353b0c0` (it says `0.0.0-dev+291d5ea`, so the updater offers v0.2.4; dismiss it), FTP
-  server on. The data folder has `allow-old3ds.txt`, `no-audio.txt`, `census-on-load.txt` and the
+  `perf/large-block-arena`, `0.2.5-dev.10.8+c74ffc4`, build `9514e8e43726`, FTP server on; a new game
+  plays MAP01 (no audio) until memory runs out. The data folder has `allow-old3ds.txt`, `no-audio.txt`, `census-on-load.txt` and the
   two census reports, no saves. A new game closes to HOME at MAP01's
   first frame. `/cias/` holds the CIAs uploaded over ftpd during the session. Luma's
   `crash_dump_00000000` and `00000019` are from the Minish Cap port and were left.
@@ -338,6 +341,11 @@ third of the CPU, so neither is reachable with SoftPoly on the CPU.
   2 MB of unusable crumbs).
   *Done when:* after MAP01 loads on the 2DS the largest free block is 2 MB or more, and a new game
   plays the first screens.
+  *Result (2026-10-17, Claude):* `perf/large-block-arena`. Blocks of 32 KB or more are carved down from
+  the top of the heap region while newlib grows up (`large_arena_3ds.cpp`, `-Wl,--wrap=malloc`...);
+  the pool and the map-load reserve are off. A new game plays MAP01 on the 2DS. The owner's longer play
+  ran out of memory for real (2.6 MB free), so P4.7 / P4.8 decide how long it lasts. Not checked on the
+  New 3DS.
 - [ ] **P4.7** Lower the startup peak.
   *Spec:* about 131,000 blocks of 256 B or less (8.9 MB) are live at the title, from startup:
   find them by allocation site and cut them (census, P4.5). The ZScript compile adds 11.6 MB at its peak and gives back 4 MB;
@@ -612,3 +620,12 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
     (the 10 MB pool) instead of the actors.
   - Side finding: `version.sh` gives `0.0.0-dev` on a topic branch once its release branch has
     moved on, and the console's updater then offers the published release.
+- **2026-10-17** P4.6: a large-block arena carved down from the top of the heap region (newlib keeps
+  the bottom) took the 2DS from "fails at MAP01's first frame" to "plays MAP01". Census by caller
+  (`docs/measurements/memory-census-2026-10-17.md`): the arena holds 27 MB in MAP01. The biggest
+  cuttable items are the true-colour software textures (2.75 MB), the string table with every language
+  (2.15 MB), the Unicode hex font (2 MB), the canvases (1.8 MB) and the debug network buffer (1 MB).
+  Two lessons:
+  - GCC drops a plain store to a global just before `malloc`, since it assumes malloc reads no
+    program memory, so the caller hint has to be `volatile`.
+  - `version.sh` needs `release/v0.2.5` merged into stacked branches (`0.0.0` otherwise).
