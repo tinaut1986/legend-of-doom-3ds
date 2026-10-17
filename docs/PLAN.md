@@ -35,6 +35,7 @@ loading screen's two progress bars and message (owner saw them on the 2DS, 2026-
 | Branch | What | State |
 |---|---|---|
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
+| `perf/memory-cuts` | P4.7 / P4.8 first cuts: languages, hex font, software precache, socket buffer, one raster worker (-12.7 MB in MAP01) | Pushed, **not merged**; on top of `perf/large-block-arena`; waiting for the owner's longer play on the 2DS; unchecked on the New 3DS |
 | `perf/large-block-arena` | P4.6: the large-block arena; the census by caller | Pushed, **not merged**; on top of `perf/memory-census` (needs it); unchecked on the New 3DS |
 | `perf/memory-census` | P4.5: the memory census (`lod3ds_memcensus`, `census-on-load.txt`) | Pushed, **not merged**; cut from `fix/2ds-memory` (needs it) with `release/v0.2.5` merged in for the version |
 | `fix/2ds-memory` | P4.1 bring-up: `no-audio.txt` (#16), honest allocation-failure diagnostics, and the map-load memory fixes that get MAP01 loaded on the 2DS (decisions log, 2026-10-17) | Pushed, **not merged**: works on the 2DS up to the first frame; changes the Old 3DS save format (full sides/lines/sectors); unchecked on the New 3DS. The base for P4.5-P4.8 |
@@ -49,10 +50,10 @@ start"; then #16 (audio on the Old 3DS); #7 and #14 last. The owner asked again 
 can be restructured to need less RAM: yes, that is P4.7 / P4.8.
 
 **Start here:**
-0. **P4.7 / P4.8**, from `perf/large-block-arena`: the cuts listed in
-   `docs/measurements/memory-census-2026-10-17.md` ("With the large-block arena"), biggest and cheapest
-   first: the string table's other languages, the hex font, software textures, the debug network buffer,
-   SoftPoly's second thread data. Then check the whole stack on the New 3DS.
+0. **The owner plays `perf/memory-cuts` on the 2DS** (20 MB free in MAP01 now). If it holds, check the
+   whole stack (`fix/2ds-memory` -> `perf/memory-census` -> `perf/large-block-arena` -> `perf/memory-cuts`)
+   on the New 3DS, then merge it into the line. The remaining items are in
+   `docs/measurements/memory-census-2026-10-17.md` ("First cuts").
    The 2DS needs `allow-old3ds.txt` and `no-audio.txt` in its data folder (both there now,
    with `census-on-load.txt`). P4.7 and P4.8 make the room last.
 1. **#16** after P4.6, so the audio can be tested in a level.
@@ -629,3 +630,7 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   - GCC drops a plain store to a global just before `malloc`, since it assumes malloc reads no
     program memory, so the caller hint has to be `volatile`.
   - `version.sh` needs `release/v0.2.5` merged into stacked branches (`0.0.0` otherwise).
+- **2026-10-17** First P4.7 / P4.8 cuts (`perf/memory-cuts`): only English / Spanish string tables, a
+  Latin-only hex font, no software precache under the GPU world, a 256 KB socket buffer and one raster
+  worker on the Old 3DS. MAP01 on the 2DS: 44.6 -> 31.9 MB in use, 20.6 MB free. Another system
+  language now falls back to the default (English) strings on the 3DS.
