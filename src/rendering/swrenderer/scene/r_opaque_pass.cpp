@@ -1055,6 +1055,22 @@ namespace swrenderer
 			auto thing = p->m_thing;
 #ifdef __3DS__
 			if (!SeenActors.Insert(thing)) continue;
+			// Two cheap rejections first, before the sprite's frame is worked out: past MAP01's
+			// fog (IsPotentiallyVisible's own test, which comes after its other checks), and well
+			// behind the camera, where not even the edge of a sprite can show.
+			{
+				const DVector3 &eye = Thread->Viewport->viewpoint.Pos;
+				const double dx = thing->X() - eye.X, dy = thing->Y() - eye.Y;
+				if (Map01RootDistanceCullActive(Thread) &&
+					Map01ExteriorDistanceCullCandidate(thing->Sector) &&
+					dx * dx + dy * dy + (thing->Z() - eye.Z) * (thing->Z() - eye.Z) > Map01CullDistanceSquared())
+				{
+					I_3DSRecordDrawDistanceSpriteCull();
+					continue;
+				}
+				const double forward = dx * Thread->Viewport->viewpoint.Cos + dy * Thread->Viewport->viewpoint.Sin;
+				if (forward < -256.0) continue;
+			}
 #else
 			if (SeenActors.find(thing) != SeenActors.end()) continue;
 			SeenActors.insert(thing);
