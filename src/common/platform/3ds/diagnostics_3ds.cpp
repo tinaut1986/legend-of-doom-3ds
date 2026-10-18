@@ -166,7 +166,7 @@ constexpr uint64_t OverlayNotificationMilliseconds = 4000;
 uint64_t OverlayLastDrawMilliseconds;
 uint64_t OverlayNotificationUntilMilliseconds;
 bool OverlayAudioReady;
-char OverlayNotification[96];
+char OverlayNotification[48];
 // Changes whenever a toast appears or goes, so the static bottom presentations redraw for it.
 uint32_t OverlayNotificationSerial;
 // A bar under the toast's text, in thousandths (an FTP install's progress), or -1 for none.
@@ -2557,42 +2557,11 @@ void DrawInstallBar(unsigned char *framebuffer)
 
 // The toast's top row, above the install bar when it is there; the screen's height when there
 // is none. The GPU map stops above it (I_3DSOverlayFrame), or it would draw over the toast.
-// The toast's text in one or two lines: a game message (a pickup in Spanish) can be wider than
-// the screen. The break is the last space that leaves the first line within the toast.
-constexpr int ToastTextWidth = 280;
-bool SplitToastText(const char *text, char *first, char *second, size_t size)
-{
-	std::snprintf(first, size, "%s", text);
-	second[0] = '\0';
-	if (NesTextWidth(text, 1) <= ToastTextWidth) return false;
-	char *cut = nullptr;
-	for (char *c = first; *c != '\0'; ++c)
-	{
-		if (*c != ' ') continue;
-		*c = '\0';
-		const bool fits = NesTextWidth(first, 1) <= ToastTextWidth;
-		*c = ' ';
-		if (!fits) break;
-		cut = c;
-	}
-	if (cut == nullptr) return false;
-	*cut = '\0';
-	std::snprintf(second, size, "%s", cut + 1);
-	return true;
-}
-
-int BottomToastHeight()
-{
-	char first[sizeof(OverlayNotification)], second[sizeof(OverlayNotification)];
-	const bool twoLines = SplitToastText(Tr(OverlayNotification), first, second, sizeof(first));
-	return (OverlayNotificationProgress >= 0 ? 33 : 21) + (twoLines ? 11 : 0);
-}
-
 int BottomToastTop()
 {
 	if (OverlayNotification[0] == '\0') return static_cast<int>(BottomScreenHeight);
-	LoadNesFont();
-	return (InstallBarVisible() ? InstallBarY - 4 : 231) - BottomToastHeight();
+	const int height = OverlayNotificationProgress >= 0 ? 33 : 21;
+	return (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
 }
 
 void DrawBottomToast(unsigned char *framebuffer)
@@ -2600,22 +2569,15 @@ void DrawBottomToast(unsigned char *framebuffer)
 	DrawInstallBar(framebuffer);
 	if (OverlayNotification[0] == '\0') return;
 	LoadNesFont();
-	char text[sizeof(OverlayNotification)], second[sizeof(OverlayNotification)];
-	const bool twoLines = SplitToastText(Tr(OverlayNotification), text, second, sizeof(text));
+	const char *text = Tr(OverlayNotification);
 	const bool bar = OverlayNotificationProgress >= 0;
-	const int textWidth = std::max(NesTextWidth(text, 1), NesTextWidth(second, 1));
-	const int width = std::min(304, std::max(bar ? 200 : 0, textWidth + 24));
-	const int height = BottomToastHeight();
+	const int width = std::min(304, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
+	const int height = bar ? 33 : 21;
 	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
 	const int y = BottomToastTop();
 	OverlayRect(framebuffer, x, y, width, height, OverlayInk);
 	OverlayFrame(framebuffer, x, y, width, height, 1, OverlayBlue);
 	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
-	if (twoLines)
-	{
-		NesText(framebuffer, x + (width - NesTextWidth(second, 1)) / 2, y + 18, second, 1,
-			OverlayIvory);
-	}
 	if (bar)
 	{
 		// The percentage sits beside the bar, not in the text above it: the text, in Spanish
@@ -2629,12 +2591,11 @@ void DrawBottomToast(unsigned char *framebuffer)
 			percentWidth = NesTextWidth("100%", 1) + 6;
 		}
 		const int barWidth = width - 24 - percentWidth;
-		const int barY = y + 20 + (twoLines ? 11 : 0);
-		OverlayRect(framebuffer, x + 12, barY, barWidth, 6, FOverlayColor{ 60, 60, 60 });
-		OverlayRect(framebuffer, x + 12, barY,
+		OverlayRect(framebuffer, x + 12, y + 20, barWidth, 6, FOverlayColor{ 60, 60, 60 });
+		OverlayRect(framebuffer, x + 12, y + 20,
 			barWidth * std::min(OverlayNotificationProgress, 1000) / 1000, 6, OverlayRed);
 		if (percentWidth > 0)
-			NesText(framebuffer, x + width - 12 - NesTextWidth(percent, 1), barY - 1, percent, 1,
+			NesText(framebuffer, x + width - 12 - NesTextWidth(percent, 1), y + 19, percent, 1,
 				OverlayIvory);
 	}
 }
@@ -6692,27 +6653,6 @@ const char *I_3DSTranslate(const char *english)
 void I_3DSToast(const char *english)
 {
 	SetOverlayNotification(english);
-}
-
-void I_3DSToastMessage(const char *text)
-{
-	// The engine's text may carry colour escapes and line breaks: the toast has one colour, and
-	// breaks its own lines.
-	char plain[sizeof(OverlayNotification)];
-	size_t length = 0;
-	for (const char *c = text; *c != '\0' && length + 1 < sizeof(plain); ++c)
-	{
-		if (*c == '\x1c') // TEXTCOLOR_ESCAPE: a letter, or a [name]
-		{
-			if (c[1] == '[') { while (c[1] != '\0' && c[1] != ']') ++c; if (c[1] == ']') ++c; }
-			else if (c[1] != '\0') ++c;
-			continue;
-		}
-		plain[length++] = (*c == '\n' || *c == '\r') ? ' ' : *c;
-	}
-	while (length > 0 && plain[length - 1] == ' ') --length;
-	plain[length] = '\0';
-	if (length > 0) SetOverlayNotification(plain);
 }
 
 bool I_3DSNoAudioRequested()

@@ -86,10 +86,9 @@ void FNotifyBuffer::Clear()
 }
 
 #ifdef __3DS__
-// OPTIONS -> DISPLAY -> MESSAGES: the game's messages as a toast on the touch screen (BOTTOM), or
-// over the picture (TOP).
+// OPTIONS -> DISPLAY -> MESSAGES: the game's messages along the top of the picture (TOP) or along
+// its bottom (BOTTOM, the newest lowest).
 CVAR(Bool, lod3ds_messages_bottom, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
-#include "common/platform/3ds/diagnostics_3ds.h"
 #endif
 
 // The notify lines' font. On the 3DS, the game's own small font (SMALLFNT, the NES letters, at
@@ -124,13 +123,6 @@ void FNotifyBuffer::AddString(int printlevel, FString source)
 		}
 	}
 
-#ifdef __3DS__
-	if (lod3ds_messages_bottom)
-	{
-		I_3DSToastMessage(source.GetChars());
-		return;
-	}
-#endif
 	int width = DisplayWidth / active_con_scaletext(twod, generic_ui);
 #ifdef __3DS__
 	width -= 16; // room for the band's margins
@@ -152,11 +144,19 @@ void FNotifyBuffer::Draw()
 
 	lineadv = font->GetHeight ();
 #ifdef __3DS__
-	// In the game's style: centred at the top, white, each line on a black band, as the NES game
-	// writes its text.
+	// In the game's style: centred, white, each line on a black band, as the NES game writes its
+	// text; along the top of the picture or along its bottom.
 	center = true;
 	line += 4;
 	lineadv += 4;
+	if (lod3ds_messages_bottom)
+	{
+		int shown = 0;
+		for (const FNotifyText &notify : Text)
+			if (notify.TimeOut != 0 && notify.TimeOut > notify.Ticker) ++shown;
+		const int scale = active_con_scaletext(twod, generic_ui);
+		line = twod->GetHeight() / scale - 6 - shown * lineadv + 4 + font->GetDisplacement();
+	}
 #endif
 
 	for (unsigned i = 0; i < Text.Size(); ++ i)
