@@ -550,6 +550,32 @@ namespace swrenderer
 		Printf("visible: %s\n", line.GetChars());
 	}
 
+	// lod3ds_sectorsubs SECTOR (debug): that sector's subsectors, their segs' ends, and whether
+	// the last main walk found each visible.
+	CCMD(lod3ds_sectorsubs)
+	{
+		if (argv.argc() < 2 || primaryLevel == nullptr) return;
+		const int wanted = atoi(argv[1]);
+		for (unsigned i = 0; i < primaryLevel->subsectors.Size(); ++i)
+		{
+			const subsector_t &sub = primaryLevel->subsectors[i];
+			if (sub.sector == nullptr || sub.sector->Index() != wanted) continue;
+			bool visible = false;
+			if (LastMainOpaquePass3DS != nullptr)
+				for (uint32_t index : LastMainOpaquePass3DS->VisibleSubsectors())
+					if (index == i) { visible = true; break; }
+			FString line;
+			line.AppendFormat("sub %u %s:", i, visible ? "VISIBLE" : "hidden");
+			for (uint32_t k = 0; k < sub.numlines; ++k)
+			{
+				const seg_t &seg = sub.firstline[k];
+				line.AppendFormat(" (%.0f,%.0f)", seg.v1->fX(), seg.v1->fY());
+				if (seg.linedef != nullptr) line.AppendFormat("L%d", seg.linedef->Index());
+			}
+			Printf("%s\n", line.GetChars());
+		}
+	}
+
 	// The walk's parts, summed over a RenderScene and handed to lod3ds_sections at its end.
 	static uint64_t WalkPlaneTicks, WalkSpriteTicks, WalkLineTicks, WalkSubsectors;
 #endif
