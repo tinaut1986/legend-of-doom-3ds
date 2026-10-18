@@ -1010,6 +1010,24 @@ namespace swrenderer
 	// Just call with BSP root and -1.
 	// killough 5/2/98: reformatted, removed tail recursion
 
+#ifdef __3DS__
+	// lod3ds_tracesub SUBSECTOR (debug): the next walk prints why it leaves out the subtree that
+	// holds it: the box CheckBBox rejected and the solid ranges at that moment. -1 stops.
+	static int TraceSubsector3DS = -1;
+	CCMD(lod3ds_tracesub)
+	{
+		TraceSubsector3DS = argv.argc() > 1 ? atoi(argv[1]) : -1;
+	}
+
+	static bool SubtreeHolds3DS(void *node, int wanted)
+	{
+		if ((size_t)node & 1)
+			return int(((subsector_t *)((uint8_t *)node - 1))->Index()) == wanted;
+		node_t *bsp = (node_t *)node;
+		return SubtreeHolds3DS(bsp->children[0], wanted) || SubtreeHolds3DS(bsp->children[1], wanted);
+	}
+#endif
+
 	void RenderOpaquePass::RenderBSPNode(void *node)
 	{
 		if (Thread->Viewport->Level()->nodes.Size() == 0)
@@ -1032,7 +1050,22 @@ namespace swrenderer
 			// Possibly divide back space (away from the viewer).
 			side ^= 1;
 			if (!CheckBBox(bsp->bbox[side]))
+			{
+#ifdef __3DS__
+				if (TraceSubsector3DS >= 0 && Thread->MainThread &&
+					SubtreeHolds3DS(bsp->children[side], TraceSubsector3DS))
+				{
+					char solid[512];
+					Thread->ClipSegments->Describe3DS(solid, sizeof(solid));
+					const float *box = bsp->bbox[side];
+					Printf("tracesub %d: box l%.0f r%.0f b%.0f t%.0f rejected; viewwidth %d; solid %s\n",
+						TraceSubsector3DS, box[BOXLEFT], box[BOXRIGHT], box[BOXBOTTOM], box[BOXTOP],
+						viewwidth, solid);
+					TraceSubsector3DS = -1;
+				}
+#endif
 				return;
+			}
 
 			node = bsp->children[side];
 		}
