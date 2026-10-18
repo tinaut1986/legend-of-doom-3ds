@@ -345,6 +345,7 @@ char LoadingMessages[2][64];
 float LoadingInitialSpeed = 1.0f;
 
 void DrawLoadingProgressOverlay(unsigned char *framebuffer);
+void MapLoadProgressStage(const char *stage);
 
 bool EnsureDirectory(const char *path);
 
@@ -3040,6 +3041,167 @@ void DrawLoadingProgressOverlay(unsigned char *framebuffer)
 	char percent[8];
 	std::snprintf(percent, sizeof(percent), "%d%%", static_cast<int>(overall * 100.0));
 	text(BarX + BarWidth + 10, 193, percent, 245, 151, 49);
+}
+
+// The map-change loading overlay: while the main thread loads a level (a door, stairs, a
+// warp, a saved game), a thread keeps the last picture on the top screen, dimmed, with a box in
+// the game's style: the area's name, what the load is doing and a bar. The phases begin at the
+// startup-log stages named here (logged with their times, so the numbers can be redone). The
+// seconds are what each phase took on the owner's 2DS (2026-10-18): fixed, plus a part per MB
+// of the map's WAD, since reading and building the map grow with it (MAP01, 2.3 MB: 7.7 s to
+// read; MAP02, 0.3 MB: 1.0 s). The bar creeps through a phase by time, scaled by how fast the
+// finished ones ran, and waits at 98% until the next stage.
+struct FMapLoadPhase
+{
+	const char *Stage;
+	const char *Message;
+	float Seconds;
+	float SecondsPerMB;
+};
+
+constexpr FMapLoadPhase MapLoadPhases[] = {
+	{ "map-load-begin", "Leaving the area", 0.5f, 0.0f },
+	{ "level-freed", "Reading the map", 0.3f, 3.2f },
+	{ "map-nodes", "Building the map", 0.05f, 0.4f },
+	{ "map-things", "Placing enemies and objects", 0.1f, 0.0f },
+	{ "map-render-info", "Preparing the graphics", 0.1f, 0.4f },
+	{ "level-built", "Starting the area", 2.0f, 0.0f },
+	{ "map-restore", "Restoring the saved game", 1.8f, 0.0f },
+};
+constexpr int MapLoadPhaseCount = sizeof(MapLoadPhases) / sizeof(MapLoadPhases[0]);
+// The last phase only happens when a saved game is loaded.
+constexpr int MapLoadRestorePhase = MapLoadPhaseCount - 1;
+
+float MapLoadSeconds[sizeof(MapLoadPhases) / sizeof(MapLoadPhases[0])];
+bool MapLoadAwaitFirstFrame;
+std::atomic<bool> MapLoadStop{false};
+Thread MapLoadThread;
+int MapLoadDepth;
+bool MapLoadRestoring;
+std::atomic<int> MapLoadPhaseIndex{0};
+std::atomic<uint32_t> MapLoadPhaseStartMs{0};
+std::atomic<uint32_t> MapLoadFinishedActualMs{0};
+std::atomic<uint32_t> MapLoadFinishedExpectedMs{0};
+char MapLoadTitle[48];
+char MapLoadMessages[MapLoadPhaseCount][48];
+
+// Halves the colour of every pixel: the picture stays, but reads as paused.
+void DimTopFramebuffer(unsigned char *framebuffer)
+{
+	auto *pixels = reinterpret_cast<uint32_t *>(framebuffer);
+	for (size_t i = 0; i < 400u * 240u; ++i)
+		pixels[i] = ((pixels[i] >> 1) & 0x7F7F7F00u) | (pixels[i] & 0xFFu);
+}
+
+void DrawMapLoadBox(unsigned char *framebuffer)
+{
+	int phase = std::clamp(MapLoadPhaseIndex.load(std::memory_order_acquire), 0,
+		MapLoadPhaseCount - 1);
+	const double elapsed = static_cast<double>(static_cast<uint32_t>(osGetTime()) -
+		MapLoadPhaseStartMs.load(std::memory_order_acquire)) / 1000.0;
+	const double finishedExpected = MapLoadFinishedExpectedMs.load(std::memory_order_acquire);
+	const double speed = finishedExpected >= 500.0 ? std::clamp(
+		MapLoadFinishedActualMs.load(std::memory_order_acquire) / finishedExpected, 0.15, 4.0) :
+		static_cast<double>(LoadingInitialSpeed);
+	const double phaseSeconds = static_cast<double>(MapLoadSeconds[phase]);
+	const double phaseFraction = std::clamp(elapsed / std::max(phaseSeconds * speed, 0.1),
+		0.0, 0.98);
+	double before = 0.0, total = 0.0;
+	for (int i = 0; i < MapLoadPhaseCount; ++i)
+	{
+		if (i == MapLoadRestorePhase && !MapLoadRestoring) continue;
+		if (i < phase) before += static_cast<double>(MapLoadSeconds[i]);
+		total += static_cast<double>(MapLoadSeconds[i]);
+	}
+	const double overall = std::clamp((before + phaseFraction * phaseSeconds) / total, 0.0, 1.0);
+
+	// A black box with a white frame, as the NES game draws its text.
+	constexpr int BoxX = 56, BoxY = 160, BoxWidth = 288, BoxHeight = 64;
+	LoadingTopRect(framebuffer, BoxX - 3, BoxY - 3, BoxWidth + 6, BoxHeight + 6, 0, 0, 0);
+	LoadingTopRect(framebuffer, BoxX - 1, BoxY - 1, BoxWidth + 2, BoxHeight + 2, 252, 252, 252);
+	LoadingTopRect(framebuffer, BoxX, BoxY, BoxWidth, BoxHeight, 0, 0, 0);
+	auto text = [&](int y, const char *line, unsigned char red, unsigned char green,
+		unsigned char blue)
+	{
+		NesDraw((400 - NesTextWidth(line, 1)) / 2, y, line, 1, [&](int px, int py, int size)
+		{
+			LoadingTopRect(framebuffer, px, py, size, size, red, green, blue);
+		});
+	};
+	text(BoxY + 9, MapLoadTitle, 252, 152, 56);
+	text(BoxY + 25, MapLoadMessages[phase], 252, 252, 252);
+
+	constexpr int BarX = BoxX + 24, BarY = BoxY + 43, BarWidth = BoxWidth - 80, BarHeight = 8;
+	LoadingTopRect(framebuffer, BarX - 1, BarY - 1, BarWidth + 2, BarHeight + 2, 252, 252, 252);
+	LoadingTopRect(framebuffer, BarX, BarY, BarWidth, BarHeight, 0, 0, 0);
+	LoadingTopRect(framebuffer, BarX, BarY, static_cast<int>(BarWidth * overall), BarHeight,
+		216, 40, 0);
+	char percent[8];
+	std::snprintf(percent, sizeof(percent), "%d%%", static_cast<int>(overall * 100.0));
+	NesDraw(BarX + BarWidth + 8, BarY, percent, 1, [&](int px, int py, int size)
+	{
+		LoadingTopRect(framebuffer, px, py, size, size, 252, 252, 252);
+	});
+}
+
+// Copies the picture the LCD shows into the back buffer of each eye, dimmed the first time,
+// draws the box on it and shows it. False when the screen is not in the expected format.
+bool DrawMapLoadFrame(bool first)
+{
+	GSPGPU_CaptureInfo capture{};
+	if (R_FAILED(GSPGPU_ImportDisplayCaptureInfo(&capture))) return false;
+	const auto &top = capture.screencapture[0];
+	if (top.framebuf0_vaddr == nullptr || (top.format & 7u) != GSP_RGBA8_OES ||
+		top.framebuf_widthbytesize != 240u * 4u) return false;
+	constexpr size_t Bytes = 400u * 240u * 4u;
+	const bool stereo = gfxIs3D();
+	for (int eye = 0; eye < (stereo ? 2 : 1); ++eye)
+	{
+		auto *shown = reinterpret_cast<unsigned char *>(eye == 0 ? top.framebuf0_vaddr : top.framebuf1_vaddr);
+		u16 width = 0, height = 0;
+		auto *back = gfxGetFramebuffer(GFX_TOP, eye == 0 ? GFX_LEFT : GFX_RIGHT, &width, &height);
+		if (shown == nullptr || back == nullptr || width != 240 || height != 400) return false;
+		GSPGPU_InvalidateDataCache(shown, Bytes);
+		if (back != shown) std::memcpy(back, shown, Bytes);
+		if (first) DimTopFramebuffer(back);
+		DrawMapLoadBox(back);
+		I_3DSCleanDataCache(back, Bytes);
+	}
+	gfxScreenSwapBuffers(GFX_TOP, stereo);
+	return true;
+}
+
+void MapLoadOverlayMain(void *)
+{
+	while (!MapLoadStop.load(std::memory_order_acquire))
+	{
+		svcSleepThread(150ULL * 1000ULL * 1000ULL);
+		if (MapLoadStop.load(std::memory_order_acquire)) break;
+		gspWaitForVBlank();
+		DrawMapLoadFrame(false);
+	}
+}
+
+// Moves the map-load overlay to the phase that starts at this log stage, if there is one.
+void MapLoadProgressStage(const char *stage)
+{
+	if (MapLoadDepth == 0) return;
+	const int current = MapLoadPhaseIndex.load(std::memory_order_acquire);
+	for (int i = current + 1; i < MapLoadPhaseCount; ++i)
+	{
+		const size_t length = std::strlen(MapLoadPhases[i].Stage);
+		if (std::strncmp(stage, MapLoadPhases[i].Stage, length) != 0 ||
+			(stage[length] != '\0' && stage[length] != ' ')) continue;
+		const uint32_t now = static_cast<uint32_t>(osGetTime());
+		uint32_t expectedMs = 0;
+		for (int done = current; done < i; ++done)
+			expectedMs += static_cast<uint32_t>(MapLoadSeconds[done] * 1000.0f);
+		MapLoadFinishedActualMs.fetch_add(now - MapLoadPhaseStartMs.load(), std::memory_order_acq_rel);
+		MapLoadFinishedExpectedMs.fetch_add(expectedMs, std::memory_order_acq_rel);
+		MapLoadPhaseStartMs.store(now, std::memory_order_release);
+		MapLoadPhaseIndex.store(i, std::memory_order_release);
+		return;
+	}
 }
 
 void DrawNativeMenuBottomFrame(unsigned char *framebuffer,
@@ -5866,6 +6028,7 @@ void I_3DSStartupLog(const char *stage)
 	static bool linearPoolInitialized = false;
 	if (stage == nullptr) stage = "(null)";
 	LoadingProgressStage(stage);
+	MapLoadProgressStage(stage);
 
 	// libctru initializes the linear allocator lazily. Until its first
 	// allocation linearSpaceFree() reports zero even when the reserved arena is
@@ -5954,6 +6117,72 @@ void I_3DSLoadingScreenFinish()
 		LoadingAnimationThread = nullptr;
 	}
 	I_3DSStartupLog("loading-animation-finished");
+}
+
+void I_3DSMapLoadBegin(const char *mapName, const char *levelName, bool restoring)
+{
+	if (MapLoadDepth++ > 0)
+	{
+		MapLoadRestoring |= restoring;
+		return;
+	}
+	MapLoadRestoring = restoring;
+	if (LoadingScreenActive) return; // the startup screen is still up
+	const int lump = fileSystem.CheckNumForFullName(FStringf("maps/%s.wad", mapName).GetChars());
+	const float megabytes = lump >= 0 ? fileSystem.FileLength(lump) / (1024.0f * 1024.0f) : 1.0f;
+	for (int i = 0; i < MapLoadPhaseCount; ++i)
+		MapLoadSeconds[i] = MapLoadPhases[i].Seconds + MapLoadPhases[i].SecondsPerMB * megabytes;
+	std::snprintf(MapLoadTitle, sizeof(MapLoadTitle), "%s", levelName != nullptr ? levelName : "");
+	for (int i = 0; i < MapLoadPhaseCount; ++i)
+		std::snprintf(MapLoadMessages[i], sizeof(MapLoadMessages[i]), "%s", Tr(MapLoadPhases[i].Message));
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+	LoadingInitialSpeed = isNew3DS ? 0.4f : 1.0f;
+	MapLoadPhaseIndex.store(0, std::memory_order_release);
+	MapLoadPhaseStartMs.store(static_cast<uint32_t>(osGetTime()), std::memory_order_release);
+	MapLoadFinishedActualMs.store(0, std::memory_order_release);
+	MapLoadFinishedExpectedMs.store(0, std::memory_order_release);
+	MapLoadStop.store(false, std::memory_order_release);
+	I_3DSStartupLog("map-load-begin");
+	// The last frame the game drew must be on the LCD before it is copied.
+	I_PolyWaitForPresent3DS();
+	gspWaitForVBlank();
+	if (!DrawMapLoadFrame(true)) return;
+	MapLoadThread = threadCreate(MapLoadOverlayMain, nullptr, 16 * 1024, 0x30, -1, false);
+}
+
+void I_3DSMapLoadEnd()
+{
+	if (MapLoadDepth == 0 || --MapLoadDepth > 0) return;
+	MapLoadStop.store(true, std::memory_order_release);
+	if (MapLoadThread != nullptr)
+	{
+		threadJoin(MapLoadThread, U64_MAX);
+		threadFree(MapLoadThread);
+		MapLoadThread = nullptr;
+	}
+	MapLoadAwaitFirstFrame = true;
+	I_3DSStartupLog("map-load-end");
+}
+
+#if LOD3DS_DEBUG_TOOLS
+// lod3ds_maploadshot: shows the map-load box for two seconds (no map is loaded) and saves both
+// screens to debug/shot-top.bmp and debug/shot-bottom.bmp, for checking how it looks.
+CCMD(lod3ds_maploadshot)
+{
+	I_3DSMapLoadBegin("MAP01", "HYRULE", false);
+	svcSleepThread(2000ULL * 1000ULL * 1000ULL);
+	I_3DSSaveScreenShots(LOD3DS_APP_DIR "/debug/shot-top.bmp",
+		LOD3DS_APP_DIR "/debug/shot-bottom.bmp");
+	I_3DSMapLoadEnd();
+}
+#endif
+
+void I_3DSMapLoadFrameShown()
+{
+	if (!MapLoadAwaitFirstFrame) return;
+	MapLoadAwaitFirstFrame = false;
+	I_3DSStartupLog("map-first-frame");
 }
 
 void I_3DSPrepareNativeKeyboardTop()

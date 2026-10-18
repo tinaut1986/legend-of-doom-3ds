@@ -2147,6 +2147,12 @@ void G_DoLoadGame ()
 
 	// load a base level
 	bool demoplaybacksave = demoplayback;
+#ifdef __3DS__
+	// One overlay for the whole restore: the level load nests inside it.
+	level_info_t *loadingInfo = FindLevelInfo(map.GetChars());
+	F3DSMapLoadOverlay loadingOverlay(map.GetChars(), loadingInfo != nullptr ?
+		loadingInfo->LookupLevelName().GetChars() : map.GetChars(), true);
+#endif
 	G_InitNew(map, false);
 	demoplayback = demoplaybacksave;
 	savegamerestore = false;
