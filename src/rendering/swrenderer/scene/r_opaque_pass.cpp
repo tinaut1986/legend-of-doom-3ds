@@ -536,6 +536,7 @@ namespace swrenderer
 	}
 
 #ifdef __3DS__
+	extern bool TraceSolid3DS; // r_line.cpp
 	static RenderOpaquePass *LastMainOpaquePass3DS;
 	// lod3ds_visible (debug): the subsectors the last main walk found visible, as index:sector.
 	CCMD(lod3ds_visible)
@@ -991,6 +992,7 @@ namespace swrenderer
 #endif
 		RenderBSPNode(Level->HeadNode());	// The head node is the last node output.
 #ifdef __3DS__
+		if (Thread->MainThread) TraceSolid3DS = false;
 		const uint64_t walkTotal = svcGetSystemTick() - walkStart;
 		I_3DSSectionAdd("walk: planes", WalkPlaneTicks);
 		I_3DSSectionAdd("walk: sprites, particles", WalkSpriteTicks);
