@@ -43,6 +43,8 @@ struct F3DSGpuStats
 	uint32_t LastVertices;
 	uint32_t TextureBytes;
 	uint32_t Textures;
+	uint32_t WorldFrames;	// presented frames whose world the GPU drew
+	uint32_t CanvasFrames;	// presented frames that showed the CPU's canvas
 };
 F3DSGpuStats I_3DSGpuGetStats();
 void I_3DSGpuCountSoftware2D();
