@@ -1700,7 +1700,6 @@ const std::vector<FMapLine> &MapLines()
 	return lines;
 }
 
-// clipBottom: the first row the GPU must leave alone (the CPU draws something over the map there).
 // lod3ds_mapprofile (debug): where QueueGpuMap's time goes, summed since the last reset.
 struct FMapProfile
 {
@@ -1708,6 +1707,137 @@ struct FMapProfile
 };
 FMapProfile MapProfile;
 
+// The level's subsectors (or lines) by square cell of the map, so the view asks only the cells
+// it covers: MAP01 has 3818 subsectors, and testing them all took 2-3 ms a build on the 2DS for
+// the ~30 in view (2026-10-18). Compact: each cell's items are a range of one array.
+struct FMapGrid
+{
+	static constexpr float CellUnits = 512.0f;
+	float OriginX = 0.0f, OriginY = 0.0f;
+	int Columns = 0, Rows = 0;
+	std::vector<uint32_t> CellStart; // Columns * Rows + 1 offsets into Items
+	std::vector<uint32_t> Items;
+	std::vector<uint32_t> Seen;      // an item's last query, so one in several cells comes once
+	uint32_t Query = 0;
+
+	// box(index, left, right, bottom, top) gives each item's box; false leaves it out.
+	template<class FBox>
+	void Build(unsigned count, FBox &&box)
+	{
+		float left = 1e30f, right = -1e30f, bottom = 1e30f, top = -1e30f;
+		for (unsigned i = 0; i < count; ++i)
+		{
+			float l, r, b, t;
+			if (!box(i, l, r, b, t)) continue;
+			left = std::min(left, l); right = std::max(right, r);
+			bottom = std::min(bottom, b); top = std::max(top, t);
+		}
+		Items.clear();
+		Seen.assign(count, 0);
+		Query = 0;
+		if (left > right) { Columns = Rows = 0; CellStart.assign(1, 0); return; }
+		OriginX = left;
+		OriginY = bottom;
+		Columns = int((right - left) / CellUnits) + 1;
+		Rows = int((top - bottom) / CellUnits) + 1;
+		CellStart.assign(size_t(Columns) * Rows + 1, 0);
+		// Two passes: count each cell's items, then place them.
+		for (int pass = 0; pass < 2; ++pass)
+		{
+			std::vector<uint32_t> fill;
+			if (pass == 1)
+			{
+				for (size_t c = 1; c < CellStart.size(); ++c) CellStart[c] += CellStart[c - 1];
+				Items.resize(CellStart.back());
+				fill.assign(CellStart.begin(), CellStart.end() - 1);
+			}
+			for (unsigned i = 0; i < count; ++i)
+			{
+				float l, r, b, t;
+				if (!box(i, l, r, b, t)) continue;
+				const int c0 = CellX(l), c1 = CellX(r), r0 = CellY(b), r1 = CellY(t);
+				for (int row = r0; row <= r1; ++row)
+					for (int column = c0; column <= c1; ++column)
+					{
+						const size_t cell = size_t(row) * Columns + column;
+						if (pass == 0) CellStart[cell + 1]++;
+						else Items[fill[cell]++] = i;
+					}
+			}
+		}
+	}
+
+	int CellX(float x) const { return std::clamp(int((x - OriginX) / CellUnits), 0, Columns - 1); }
+	int CellY(float y) const { return std::clamp(int((y - OriginY) / CellUnits), 0, Rows - 1); }
+
+	// Calls visit(index) once for every item whose cells meet the rectangle.
+	template<class FVisit>
+	void ForEach(double minX, double maxX, double minY, double maxY, FVisit &&visit)
+	{
+		if (Columns == 0) return;
+		if (++Query == 0) { std::fill(Seen.begin(), Seen.end(), 0); Query = 1; }
+		const int c0 = CellX(float(minX)), c1 = CellX(float(maxX));
+		const int r0 = CellY(float(minY)), r1 = CellY(float(maxY));
+		for (int row = r0; row <= r1; ++row)
+			for (int column = c0; column <= c1; ++column)
+			{
+				const size_t cell = size_t(row) * Columns + column;
+				for (uint32_t k = CellStart[cell]; k < CellStart[cell + 1]; ++k)
+				{
+					const uint32_t index = Items[k];
+					if (Seen[index] == Query) continue;
+					Seen[index] = Query;
+					visit(index);
+				}
+			}
+	}
+};
+
+// The grids follow MapBounds() and MapLines(): built again when they are.
+FMapGrid &MapSubsectorGrid()
+{
+	static FMapGrid grid;
+	static FLevelLocals *builtLevel;
+	static FString builtMap;
+	const std::vector<FMapBounds> &bounds = MapBounds();
+	if (builtLevel != primaryLevel || builtMap.Compare(primaryLevel->MapName) != 0 ||
+		grid.Seen.size() != bounds.size())
+	{
+		builtLevel = primaryLevel;
+		builtMap = primaryLevel->MapName;
+		grid.Build(unsigned(bounds.size()), [&](unsigned i, float &l, float &r, float &b, float &t)
+		{
+			const FMapBounds &box = bounds[i];
+			l = box.Left; r = box.Right; b = box.Bottom; t = box.Top;
+			return box.Left <= box.Right;
+		});
+	}
+	return grid;
+}
+
+FMapGrid &MapLineGrid()
+{
+	static FMapGrid grid;
+	static FLevelLocals *builtLevel;
+	static FString builtMap;
+	const std::vector<FMapLine> &lines = MapLines();
+	if (builtLevel != primaryLevel || builtMap.Compare(primaryLevel->MapName) != 0 ||
+		grid.Seen.size() != lines.size())
+	{
+		builtLevel = primaryLevel;
+		builtMap = primaryLevel->MapName;
+		grid.Build(unsigned(lines.size()), [&](unsigned i, float &l, float &r, float &b, float &t)
+		{
+			const FMapLine &end = lines[i];
+			l = std::min(end.X0, end.X1); r = std::max(end.X0, end.X1);
+			b = std::min(end.Y0, end.Y1); t = std::max(end.Y0, end.Y1);
+			return !(end.X0 == 1.0f && end.Y0 == 1.0f && end.X1 == -1.0f && end.Y1 == -1.0f);
+		});
+	}
+	return grid;
+}
+
+// clipBottom: the first row the GPU must leave alone (the CPU draws something over the map there).
 void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int mapHeight,
 	double worldUnitsPerPixel, int clipBottom = 1 << 30)
 {
@@ -1748,17 +1878,12 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 	static std::vector<FFloor> floors;
 	floors.clear();
 	const std::vector<FMapBounds> &bounds = MapBounds();
-	for (unsigned index = 0; index < bounds.size(); ++index)
+	MapSubsectorGrid().ForEach(minX, maxX, minY, maxY, [&](unsigned index)
 	{
 		const FMapBounds &box = bounds[index];
-		// An empty box (Left > Right) is a subsector the map never draws.
-		if (box.Right < minX || box.Left > maxX || box.Top < minY || box.Bottom > maxY ||
-			box.Left > box.Right)
-		{
-			continue;
-		}
+		if (box.Right < minX || box.Left > maxX || box.Top < minY || box.Bottom > maxY) return;
 		const subsector_t &subsector = primaryLevel->subsectors[index];
-		if (!BottomSubsectorShown(&subsector)) continue;
+		if (!BottomSubsectorShown(&subsector)) return;
 
 		const FTextureID floorTexture = subsector.render_sector->GetTexture(sector_t::floor);
 		const int textureIndex = floorTexture.isValid() ? floorTexture.GetIndex() : -1;
@@ -1773,7 +1898,7 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 			found = floors.end() - 1;
 		}
 		polygons.push_back(FPolygon{ found->Texture, found->GameTexture, &subsector });
-	}
+	});
 	const uint64_t profileCulled = svcGetSystemTick();
 	std::sort(polygons.begin(), polygons.end(),
 		[](const FPolygon &a, const FPolygon &b) { return a.Texture < b.Texture; });
@@ -1854,22 +1979,22 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 		static std::vector<unsigned> shown;
 		shown.clear();
 		const std::vector<FMapLine> &lines = MapLines();
-		for (unsigned index = 0; index < lines.size(); ++index)
+		MapLineGrid().ForEach(minX, maxX, minY, maxY, [&](unsigned index)
 		{
 			const FMapLine &end = lines[index];
 			if (std::max(end.X0, end.X1) < minX || std::min(end.X0, end.X1) > maxX ||
 				std::max(end.Y0, end.Y1) < minY || std::min(end.Y0, end.Y1) > maxY)
 			{
-				continue;
+				return;
 			}
 			const line_t &line = primaryLevel->lines[index];
 			if (line.v1 == nullptr || line.v2 == nullptr || (line.flags & ML_DONTDRAW) != 0 ||
 				(line.flags & (ML_MAPPED | ML_REVEALED)) == 0)
 			{
-				continue;
+				return;
 			}
 			shown.push_back(index);
-		}
+		});
 		F3DSGpuVertex *out = shown.empty() ? nullptr :
 			I_3DSGpuQueueTriangles(screen, nullptr, static_cast<int>(shown.size()) * 6, scissor);
 		if (out != nullptr)
