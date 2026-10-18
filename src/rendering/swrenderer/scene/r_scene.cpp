@@ -98,6 +98,10 @@ namespace swrenderer
 
 	void RenderScene::RenderView(player_t *player, DCanvas *target, void *videobuffer, int bufferpitch)
 	{
+#ifdef __3DS__
+		F3DSSection sectionTotal("scene: RenderView total");
+		const uint64_t sectionStart = svcGetSystemTick();
+#endif
 		auto viewport = MainThread()->Viewport.get();
 		viewport->RenderTarget = target;
 		viewport->RenderingToCanvas = false;
@@ -139,6 +143,9 @@ namespace swrenderer
 			}
 		}
 
+#ifdef __3DS__
+		I_3DSSectionAdd("scene: viewport", svcGetSystemTick() - sectionStart);
+#endif
 		RenderActorView(player->mo, true, false);
 
 		if (videobuffer != target->GetPixels())

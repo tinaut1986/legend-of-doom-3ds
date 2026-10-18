@@ -134,6 +134,7 @@
 #endif // __unix__
 #ifdef __3DS__
 #include "common/platform/3ds/perf_3ds.h"
+#include <3ds.h>
 #endif
 
 EXTERN_CVAR(Bool, hud_althud)
@@ -522,6 +523,10 @@ CVAR(Float, m_yaw, 1.f, CVAR_GLOBALCONFIG | CVAR_ARCHIVE)
 
 void D_Render(std::function<void()> action, bool interpolate)
 {
+#ifdef __3DS__
+	F3DSSection section("d_render: total");
+	uint64_t sectionStart = svcGetSystemTick();
+#endif
 	for (auto Level : AllLevels())
 	{
 		// Check for the presence of dynamic lights at the start of the frame once.
@@ -534,12 +539,21 @@ void D_Render(std::function<void()> action, bool interpolate)
 		P_FindParticleSubsectors(Level);
 		PO_LinkToSubsectors(Level);
 	}
+#ifdef __3DS__
+	I_3DSSectionAdd("d_render: before view", svcGetSystemTick() - sectionStart);
+#endif
 	action();
+#ifdef __3DS__
+	sectionStart = svcGetSystemTick();
+#endif
 
 	if (interpolate) for (auto Level : AllLevels())
 	{
 		Level->interpolator.RestoreInterpolations();
 	}
+#ifdef __3DS__
+	I_3DSSectionAdd("d_render: after view", svcGetSystemTick() - sectionStart);
+#endif
 }
 
 //==========================================================================
