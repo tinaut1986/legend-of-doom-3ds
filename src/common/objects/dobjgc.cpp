@@ -136,6 +136,14 @@ bool FinalGC;
 void SetThreshold()
 {
 	Threshold = (Estimate / 100) * Pause;
+#ifdef __3DS__
+	// AllocBytes counts every M_Malloc block, not only objects: ~24 MB on the 2DS once a map is
+	// loaded, so 150% of it is more than the heap holds and the collector never ran again. The
+	// actors destroyed every tic (the shield's Sheeld) piled up until the heap was full: stutters,
+	// then the music stopped. Start the next cycle after at most this much more instead.
+	constexpr size_t MaxGrowth = 1024 * 1024;
+	if (Threshold > Estimate + MaxGrowth) Threshold = Estimate + MaxGrowth;
+#endif
 }
 
 //==========================================================================
