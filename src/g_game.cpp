@@ -610,7 +610,16 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 	strafe = buttonMap.ButtonDown(Button_Strafe);
 	bool speedButton = buttonMap.ButtonDown(Button_Speed);
 	#ifdef __3DS__
-	// X is a Zelda-style sprint: it is useful only when enabled and Link is at
+	// Read once here: BUTTON CAMERA sprints with the Circle Pad at its edge.
+	float padAxes[NUM_JOYAXIS];
+	I_GetAxes(padAxes);
+	if (I_3DSButtonCameraScheme())
+	{
+		const float push = padAxes[JOYAXIS_Forward] * padAxes[JOYAXIS_Forward] +
+			padAxes[JOYAXIS_Side] * padAxes[JOYAXIS_Side];
+		if (push >= 0.85f * 0.85f) speedButton = true;
+	}
+	// Sprint (X in CLASSIC) is a Zelda-style sprint: it is useful only when enabled and Link is at
 	// full health. Losing even a quarter-heart immediately returns to walking.
 	AActor *sprintActor = players[consoleplayer].mo;
 	const bool fullHealth = sprintActor != nullptr && sprintActor->health > 0 &&
@@ -629,6 +638,25 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 	else
 		turnheld = 0;
 
+	#ifdef __3DS__
+	// Buttons that turn and look (BUTTON CAMERA): a short ramp, at most as fast as the C-Stick at its
+	// edge, scaled by CAM SENSITIVITY; sprinting does not change it.
+	static int lookheld;
+	if (buttonMap.ButtonDown(Button_LookUp) || buttonMap.ButtonDown(Button_LookDown))
+		lookheld += ticdup;
+	else
+		lookheld = 0;
+	if (!strafe)
+	{
+		const int turn = I_3DSButtonLookStep(static_cast<int>(JoyYawUnitsPerTic), turnheld - ticdup);
+		if (buttonMap.ButtonDown(Button_Right)) G_AddViewAngle(turn);
+		if (buttonMap.ButtonDown(Button_Left)) G_AddViewAngle(-turn);
+	}
+	const int look = I_3DSButtonLookStep(static_cast<int>(JoyPitchUnitsPerTic), lookheld - ticdup);
+	if (buttonMap.ButtonDown(Button_LookUp)) G_AddViewPitch(look);
+	if (buttonMap.ButtonDown(Button_LookDown)) G_AddViewPitch(-look);
+	#endif
+
 	// let movement keys cancel each other out
 	if (strafe)
 	{
@@ -637,6 +665,7 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 		if (buttonMap.ButtonDown(Button_Left))
 			side -= sidemove[speed];
 	}
+	#ifndef __3DS__
 	else
 	{
 		int tspeed = speed;
@@ -662,6 +691,7 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 	{
 		G_AddViewPitch (-lookspeed[speed]);
 	}
+	#endif
 
 	if (buttonMap.ButtonDown(Button_MoveUp))
 		fly += flyspeed[speed];
@@ -720,7 +750,11 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 	// Handle joysticks/game controllers.
 	float joyaxes[NUM_JOYAXIS];
 
+	#ifdef __3DS__
+	memcpy(joyaxes, padAxes, sizeof(joyaxes));
+	#else
 	I_GetAxes(joyaxes);
+	#endif
 	#ifdef __3DS__
 	if (!I_3DSCStickLookEnabled())
 	{

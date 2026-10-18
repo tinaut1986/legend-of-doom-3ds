@@ -62,7 +62,8 @@ effects that cost less are fine; #7 and #14 last.
 
 **Start here:**
 0. The owner's interim task: whatever they ask for, on a topic branch cut from `release/v0.2.5`.
-   (#22, control schemes, is open; not started in any session as far as this file knows.)
+   Done: #22 (control schemes) merged 2026-10-18 after the owner's check on the 2DS; the New 3DS
+   (CLASSIC by default) still to be played before the release.
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
@@ -732,3 +733,14 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   the cliff top; their sky is the SkyViewpoint the port does not draw, so the swrenderer leaves them
   black. The GPU world now draws their ceiling, the gap above the mouth and the walls above the cliff
   top in black, and a visible cave whole (the 3D floor's sides made the walk hide its far half).
+- **2026-10-18** #22, control schemes: each scheme stores one action per remappable button as a list
+  of tokens (`lod3ds_buttons_classic` / `_camera`, empty = its defaults, so a later change of a default
+  reaches players who never edited it), applied over the engine's bindings after `DoKeySetup`; the
+  BUTTONS screen edits the active one through non-archived `lod3ds_button_*` cvars, so it is an
+  ordinary option menu the native drawer already handles. `lod3ds_control_scheme` starts at -1 and is
+  fixed by the model on the first start. Walking into a use line activates it only when its script is
+  one of the six of the issue (by name, not every ACS use line: shops and old men stay on interact).
+  The interaction hint shows once per run of the game until the player interacts with the button once
+  (`lod3ds_use_hint`), not per save: a flag in the save would need the game's own state. It leaves the
+  walk-into lines out (some need a key or the bracelet first): the maps have no other front-use line,
+  so today the hint never shows; it stays for anything the game adds.

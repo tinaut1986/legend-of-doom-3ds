@@ -6,6 +6,7 @@
 #include "ftp_server_3ds.h"
 #include "gpu_world_3ds.h"
 #include "gpu_3ds.h"
+#include "i_input_3ds.h"
 #include "lod3ds_version.h"
 
 #include <3ds.h>
