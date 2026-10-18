@@ -107,6 +107,9 @@ namespace swrenderer
 		viewport->RenderingToCanvas = false;
 
 		R_ExecuteSetViewSize(MainThread()->Viewport->viewpoint, MainThread()->Viewport->viewwindow);
+#ifdef __3DS__
+		I_3DSSectionAdd("vp: set view size", svcGetSystemTick() - sectionStart);
+#endif
 
 		int width = SCREENWIDTH;
 		int height = SCREENHEIGHT;
