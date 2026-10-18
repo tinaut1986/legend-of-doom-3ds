@@ -49,7 +49,6 @@ the console; the measurements are in the decisions log):
 | Branch | What | State |
 |---|---|---|
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
-| `fix/cave-sky-square` | a black cave's ceiling no longer floats in the sky as a black square (#24) | Pushed; checked by Claude on the 2DS (`5b4af21`, installed); waits for the owner's check and merge |
 
 **Waiting for the owner's check:**
 - The v0.2.4 stable via the updater (Release channel, from v0.2.1), still unchecked.
@@ -63,8 +62,9 @@ effects that cost less are fine; #7 and #14 last.
 
 **Start here:**
 0. The owner's interim task: whatever they ask for, on a topic branch cut from `release/v0.2.5`.
-   Done: #22 (control schemes) merged 2026-10-18 after the owner's check on the 2DS; the New 3DS
-   (CLASSIC by default) still to be played before the release.
+   Done: #22 (control schemes) and #24 (the black square in the sky over a cave) merged 2026-10-18
+   after the owner's check on the 2DS; the New 3DS (CLASSIC by default) still to be played before
+   the release.
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
