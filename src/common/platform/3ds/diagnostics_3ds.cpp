@@ -6616,14 +6616,36 @@ void I_3DSServiceDiagnosticDump()
 
 void I_3DSOverlayFrame()
 {
-	// Once a tic (I_StartFrame): this tic's bottom GPU draws replace the last tic's.
-	I_3DSGpuBottomNewTic();
+	// Once a tic (I_StartFrame): the touch screen's interface, and the map's GPU draws, which
+	// replace the last ones and stay on screen until then. Building them walks every subsector
+	// of the map: on the 2DS 4-5 ms a tic in MAP01 (6 ms of a 37 ms frame, 2026-10-18). On the
+	// Old 3DS the map is built every third tic (12 a second), and at once when it was not on
+	// screen, the level changed, the zoom changed or the toast moved its lower edge.
 	DrawBottomOverlay(false);
-	if (I_3DSGpuBottomBuffer() != nullptr && BottomPresentation == EBottomPresentation::Gameplay)
+	const bool mapShown = I_3DSGpuBottomBuffer() != nullptr &&
+		BottomPresentation == EBottomPresentation::Gameplay;
+	static bool isNew3DS = [] { bool isNew = true; APT_CheckNew3DS(&isNew); return isNew; }();
+	static bool builtShown = false;
+	static bool builtZoom = false;
+	static int builtToastTop = 0;
+	static int builtTime = 0;
+	static int ticsSinceBuilt = 0;
+	const int toastTop = BottomToastTop();
+	const int levelTime = primaryLevel != nullptr ? primaryLevel->maptime : 0;
+	const bool stale = !isNew3DS && mapShown && builtShown && builtZoom == BottomMapZoomedOut &&
+		builtToastTop == toastTop && levelTime >= builtTime && ++ticsSinceBuilt < 3;
+	if (stale) return;
+	I_3DSGpuBottomNewTic();
+	ticsSinceBuilt = 0;
+	builtShown = mapShown;
+	builtZoom = BottomMapZoomedOut;
+	builtToastTop = toastTop;
+	builtTime = levelTime;
+	if (mapShown)
 	{
 		using namespace BottomLayout;
 		QueueGpuMap(E3DSGpuScreen::Bottom, MapX, MapY, MapWidth, MapHeight,
-			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear, BottomToastTop());
+			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear, toastTop);
 	}
 }
 
