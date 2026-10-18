@@ -11,6 +11,15 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class HybridPerformanceContractTests(unittest.TestCase):
+    def test_gc_threshold_is_capped_on_the_3ds(self):
+        # 150% of AllocBytes (every M_Malloc block) is more than the 2DS heap: without the cap the
+        # collector never ran again and destroyed actors filled the heap (stutters, music stops).
+        gc = (ROOT / "src/common/objects/dobjgc.cpp").read_text(encoding="utf-8")
+        threshold = gc[gc.index("void SetThreshold()"):]
+        threshold = threshold[:threshold.index("\n}")]
+        self.assertIn("#ifdef __3DS__", threshold)
+        self.assertIn("if (Threshold > Estimate + MaxGrowth) Threshold = Estimate + MaxGrowth;", threshold)
+
     def test_build_profile_enables_safe_world_and_hybrid_presenter(self):
         build = (ROOT / "platform/3ds/build.sh").read_text(encoding="utf-8")
         profile = build[build.index("  hardware-hybrid)") :]
