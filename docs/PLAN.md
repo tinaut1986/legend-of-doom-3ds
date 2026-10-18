@@ -44,6 +44,8 @@ P4.9 slim IWAD, the first P4.10 cut (`MAXWIDTH`), the stored music, and #16 for 
 
 | Branch | What | State |
 |---|---|---|
+| `feat/map-load-progress` | map changes and saved games show the last picture dimmed with a box: the area's name, the phase and a bar (2DS: MAP01 ~13 s, MAP02 ~4 s); `map-*` stages in `startup.log`, `lod3ds_maploadshot` | Pushed; in `test/ui-stack` (`ed036a7de801`, on the 2DS). **Owner to check** |
+| `feat/game-style-messages` | notify lines (pickups, secrets...) in the game's dialogue font `ZeldFNT2`, centred at the top on a black band | Pushed; in `test/ui-stack`. **Owner to check** |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -68,7 +70,7 @@ that cost less. Then merging the stack. #7 and #14 last.
   `742ad9ba845f` (`0.2.5-dev.16.40+d609f5f`, the line as merged) with FBI from `/cias/`; FTP, the
   install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
   autosaves. DISTANCE HIGH.
-- **2DS**, `192.168.1.139`: installed `0db5fd8cb895` (the line as merged on 2026-10-18, later);
+- **2DS**, `192.168.1.139`: installed `ed036a7de801` (`test/ui-stack`: the line plus the two UI branches);
   `2696984274c1` and `742ad9ba845f` in `/cias/` are superseded. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
   the census reports and the owner's saves (first dungeon done). Luma's `crash_dump_00000000` and
   `00000019` are from the Minish Cap port and were left. Installing over the running game near its
