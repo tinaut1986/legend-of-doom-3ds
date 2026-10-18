@@ -192,3 +192,16 @@ namespace swrenderer
 		return true;
 	}
 }
+
+#ifdef __3DS__
+namespace swrenderer
+{
+	void RenderClipSegment::Describe3DS(char *out, size_t size) const
+	{
+		size_t used = 0;
+		out[0] = '\0';
+		for (const cliprange_t *range = solidsegs; range < newend && used + 16 < size; ++range)
+			used += snprintf(out + used, size - used, "%d-%d ", range->first, range->last);
+	}
+}
+#endif

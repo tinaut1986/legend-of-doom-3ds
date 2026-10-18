@@ -75,6 +75,9 @@
 
 #ifdef __3DS__
 #include "common/platform/3ds/diagnostics_3ds.h"
+#include "common/platform/3ds/perf_3ds.h"
+#include "c_dispatch.h"
+#include <3ds.h>
 #endif
 
 EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor);
@@ -532,8 +535,58 @@ namespace swrenderer
 		}
 	}
 
+#ifdef __3DS__
+	extern bool TraceSolid3DS; // r_line.cpp
+	static RenderOpaquePass *LastMainOpaquePass3DS;
+	// lod3ds_visible (debug): the subsectors the last main walk found visible, as index:sector.
+	CCMD(lod3ds_visible)
+	{
+		if (LastMainOpaquePass3DS == nullptr || primaryLevel == nullptr) return;
+		FString line;
+		for (uint32_t index : LastMainOpaquePass3DS->VisibleSubsectors())
+		{
+			if (index >= primaryLevel->subsectors.Size()) continue;
+			line.AppendFormat("%u:%d ", index, primaryLevel->subsectors[index].sector->Index());
+		}
+		Printf("visible: %s\n", line.GetChars());
+	}
+
+	// lod3ds_sectorsubs SECTOR (debug): that sector's subsectors, their segs' ends, and whether
+	// the last main walk found each visible.
+	CCMD(lod3ds_sectorsubs)
+	{
+		if (argv.argc() < 2 || primaryLevel == nullptr) return;
+		const int wanted = atoi(argv[1]);
+		for (unsigned i = 0; i < primaryLevel->subsectors.Size(); ++i)
+		{
+			const subsector_t &sub = primaryLevel->subsectors[i];
+			if (sub.sector == nullptr || sub.sector->Index() != wanted) continue;
+			bool visible = false;
+			if (LastMainOpaquePass3DS != nullptr)
+				for (uint32_t index : LastMainOpaquePass3DS->VisibleSubsectors())
+					if (index == i) { visible = true; break; }
+			FString line;
+			line.AppendFormat("sub %u %s:", i, visible ? "VISIBLE" : "hidden");
+			for (uint32_t k = 0; k < sub.numlines; ++k)
+			{
+				const seg_t &seg = sub.firstline[k];
+				line.AppendFormat(" (%.0f,%.0f)", seg.v1->fX(), seg.v1->fY());
+				if (seg.linedef != nullptr) line.AppendFormat("L%d", seg.linedef->Index());
+			}
+			Printf("%s\n", line.GetChars());
+		}
+	}
+
+	// The walk's parts, summed over a RenderScene and handed to lod3ds_sections at its end.
+	static uint64_t WalkPlaneTicks, WalkSpriteTicks, WalkLineTicks, WalkSubsectors;
+#endif
+
 	void RenderOpaquePass::RenderSubsector(subsector_t *sub)
 	{
+#ifdef __3DS__
+		const uint64_t walkStart = svcGetSystemTick();
+		++WalkSubsectors;
+#endif
 		// Determine floor/ceiling planes.
 		// Add sprites of things in sector.
 		// Draw one or more line segments.
@@ -683,6 +736,10 @@ namespace swrenderer
 		// lightlevels on floor & ceiling lightlevels in the surrounding area.
 		// [RH] Handle sprite lighting like Duke 3D: If the ceiling is a sky, sprites are lit by
 		// it, otherwise they are lit by the floor.
+#ifdef __3DS__
+		const uint64_t walkPlanes = svcGetSystemTick();
+		WalkPlaneTicks += walkPlanes - walkStart;
+#endif
 		auto nc = !!(frontsector->Level->flags3 & LEVEL3_NOCOLOREDSPRITELIGHTING);
 		auto spriteColormap = GetSpriteColorTable(frontsector->Colormap,
 			frontsector->SpecialColors[sector_t::sprites], nc);
@@ -703,6 +760,10 @@ namespace swrenderer
 		}
 
 		DVector2 viewpointPos = Thread->Viewport->viewpoint.Pos.XY();
+#ifdef __3DS__
+		const uint64_t walkSprites = svcGetSystemTick();
+		WalkSpriteTicks += walkSprites - walkPlanes;
+#endif
 
 		seg_t *line = sub->firstline;
 		int count = sub->numlines;
@@ -730,6 +791,9 @@ namespace swrenderer
 			}
 			line++;
 		}
+#ifdef __3DS__
+		WalkLineTicks += svcGetSystemTick() - walkSprites;
+#endif
 		if (outersubsector)
 		{
 			InSubsector = nullptr;
@@ -921,7 +985,22 @@ namespace swrenderer
 		SeenActors.clear();
 
 		InSubsector = nullptr;
+#ifdef __3DS__
+		if (Thread->MainThread) LastMainOpaquePass3DS = this;
+		WalkPlaneTicks = WalkSpriteTicks = WalkLineTicks = WalkSubsectors = 0;
+		const uint64_t walkStart = svcGetSystemTick();
+#endif
 		RenderBSPNode(Level->HeadNode());	// The head node is the last node output.
+#ifdef __3DS__
+		if (Thread->MainThread) TraceSolid3DS = false;
+		const uint64_t walkTotal = svcGetSystemTick() - walkStart;
+		I_3DSSectionAdd("walk: planes", WalkPlaneTicks);
+		I_3DSSectionAdd("walk: sprites, particles", WalkSpriteTicks);
+		I_3DSSectionAdd("walk: lines", WalkLineTicks);
+		I_3DSSectionAdd("walk: bsp, rest",
+			walkTotal - WalkPlaneTicks - WalkSpriteTicks - WalkLineTicks);
+		I_3DSSectionAdd("walk: subsectors (x1000 = count)", WalkSubsectors * SYSCLOCK_ARM11 / 1000000);
+#endif
 
 		if (Thread->MainThread)
 			WallCycles.Unclock();
@@ -932,6 +1011,24 @@ namespace swrenderer
 	// Renders all subsectors below a given node, traversing subtree recursively.
 	// Just call with BSP root and -1.
 	// killough 5/2/98: reformatted, removed tail recursion
+
+#ifdef __3DS__
+	// lod3ds_tracesub SUBSECTOR (debug): the next walk prints why it leaves out the subtree that
+	// holds it: the box CheckBBox rejected and the solid ranges at that moment. -1 stops.
+	static int TraceSubsector3DS = -1;
+	CCMD(lod3ds_tracesub)
+	{
+		TraceSubsector3DS = argv.argc() > 1 ? atoi(argv[1]) : -1;
+	}
+
+	static bool SubtreeHolds3DS(void *node, int wanted)
+	{
+		if ((size_t)node & 1)
+			return int(((subsector_t *)((uint8_t *)node - 1))->Index()) == wanted;
+		node_t *bsp = (node_t *)node;
+		return SubtreeHolds3DS(bsp->children[0], wanted) || SubtreeHolds3DS(bsp->children[1], wanted);
+	}
+#endif
 
 	void RenderOpaquePass::RenderBSPNode(void *node)
 	{
@@ -955,7 +1052,22 @@ namespace swrenderer
 			// Possibly divide back space (away from the viewer).
 			side ^= 1;
 			if (!CheckBBox(bsp->bbox[side]))
+			{
+#ifdef __3DS__
+				if (TraceSubsector3DS >= 0 && Thread->MainThread &&
+					SubtreeHolds3DS(bsp->children[side], TraceSubsector3DS))
+				{
+					char solid[512];
+					Thread->ClipSegments->Describe3DS(solid, sizeof(solid));
+					const float *box = bsp->bbox[side];
+					Printf("tracesub %d: box l%.0f r%.0f b%.0f t%.0f rejected; viewwidth %d; solid %s\n",
+						TraceSubsector3DS, box[BOXLEFT], box[BOXRIGHT], box[BOXBOTTOM], box[BOXTOP],
+						viewwidth, solid);
+					TraceSubsector3DS = -1;
+				}
+#endif
 				return;
+			}
 
 			node = bsp->children[side];
 		}
