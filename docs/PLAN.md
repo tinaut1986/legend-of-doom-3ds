@@ -30,33 +30,20 @@ Published: **`v0.2.4`** stable (2026-10-15, built by the tag workflow), `v0.2.3`
 Merged into the line since v0.2.4: the clock / Wi-Fi / battery in the bottom title row, and the
 loading screen's two progress bars and message (owner saw them on the 2DS, 2026-10-17).
 
-**Where the 2DS stands (2026-10-18):** with `test/2ds-play` it boots and plays MAP01 and the first
-dungeon to the end (owner: "todo bien"). With audio on (`no-audio.txt` removed), MAP01 runs at the
-memory limit: an FTP install closed the game out of memory. The music stutters (#16, a fix is in
-`/cias/` and not yet heard). More memory has to go: P4.9-P4.11.
+**Merged into the line on 2026-10-18** (owner checked the combined build `742ad9ba845f` on the New 3DS:
+fps hold, 3D on, music, dungeons, R held; the 2DS had played through the first dungeon): the 2DS memory
+work (P4.1 bring-up, P4.5 census, P4.6 large-block arena, the first P4.7 / P4.8 cuts), #17, #19, #20, the
+GPU map-change fade (#18, still open: not quite the old effect), the developer overlay's GPU/CPU frame
+lines, and the Old 3DS audio CPU budget (#16, still to hear on the 2DS). Branches deleted.
 
-**Branches** (everything is pushed; nothing is merged into the line yet except the loading bars):
+**Branches:**
 
 | Branch | What | State |
 |---|---|---|
-| `test/2ds-play` | what the 2DS runs: every branch below except `fix/horizon-fog-fade`, plus `release/v0.2.5` | Test branch, never merged itself; build `742ad9ba845f` |
-| `fix/2ds-memory` | P4.1 bring-up: `no-audio.txt`, honest allocation-failure diagnostics, the map-load fixes (reserve handed back, TEXTMAP not cached whole, 256 KB render blocks). The map backup copies were made again: saves as on the New 3DS | Pushed, **not merged**; base of the stack below |
-| `perf/memory-census` | P4.5: `lod3ds_memcensus`, `census-on-load.txt` | On top of `fix/2ds-memory` |
-| `perf/large-block-arena` | P4.6: the large-block arena; small blocks fall back to it; census by caller | On top of `perf/memory-census` |
-| `perf/memory-cuts` | first P4.7 / P4.8 cuts (languages, hex font, software precache, socket buffer, one raster worker) | On top of `perf/large-block-arena`. **This stack (4 branches) has never run on the New 3DS** |
-| `fix/inventory-hidden-select` | #17 | Checked by the owner; ready to merge |
-| `fix/gpu-texture-eviction` | #19: GPU copies of unused textures freed at a level load | Owner played the first dungeon with it; ready to merge after a New 3DS check |
-| `fix/gpu-wipe` | #18: the map-change crossfade on the GPU | Not seen by the owner explicitly |
-| `perf/noise-alert-throttle` | #20: holding R floods noise alerts | 8-tic version measured; 35-tic version unmeasured |
-| `feat/overlay-gpu-cpu-frames` | developer overlay: frames drawn by GPU / CPU (3D and 2D) | Not seen by the owner yet |
-| `fix/old3ds-music-stutter` | #16: 80% of core 1 for the mixer and the music stream | Built (`742ad9ba845f`), not heard yet |
-| `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, **not merged**: does not remove the pop of the tall mountains |
+| `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
-- On the 2DS (`742ad9ba845f`, install it with FBI from `/cias/`): the music plays without gaps (#16);
-  the map-change fade (#18); R held (#20); the overlay's 3D/2D GPU/CPU lines.
-- The whole stack on the New 3DS: MAP01, a save and its load, the dungeon. Nothing of it has run
-  there.
+- #16 on the 2DS: the music without gaps (`742ad9ba845f` is in the 2DS's `/cias/`, to install with FBI).
 - The v0.2.4 stable via the updater (Release channel, from v0.2.1), still unchecked.
 
 **Priority** (2026-10-18, owner): the 2DS fully playable with music. Memory first, through changes
@@ -72,20 +59,20 @@ that cost less. Then merging the stack. #7 and #14 last.
 2. The cheaper leftovers in `docs/measurements/memory-census-2026-10-17.md`: canvases (1.8 MB),
    `FMemArena` blocks (2.1 MB), 32-bit vectors (1.7 MB), a cached zip lump (0.7 MB); small per-frame
    allocations that leave the small heap in crumbs after long play (the GPU world capture's vector).
-3. Then the New 3DS check of the whole stack, and merging it (one branch at a time, in stack order).
-4. Nothing is uncommitted or unpushed.
+3. Later: #18 (make the GPU fade match the old wipe), the New 3DS's 55 fps in stereo at some open-map
+   spots (owner, 2026-10-18; probably older than this work).
+4. Nothing is uncommitted or unpushed; only `fix/horizon-fog-fade` is left as a branch.
 
 **On the owner's consoles now (2026-10-18):**
-- **New 3DS**, `192.168.1.141`: unchanged since 2026-10-15 (debug `0.2.4-dev.56.1+b4d6b62`, the v0.2.4
-  line plus `fix/horizon-fog-fade`, FTP on, `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude
-  loads), `test2`, three autosaves; DISTANCE HIGH, FRAMES NO SKIP).
-- **2DS**, `192.168.1.139` (`.3ds_ftp_ip` may say `.141`): installed is `test/2ds-play` build
-  `67249f86e746`; the newer `742ad9ba845f` (music fix) is in `/cias/` as
-  `legend-of-doom-3ds-0.2.5-dev.16.40+d609f5f.cia`, to install with FBI. The data folder has
-  `allow-old3ds.txt` and `census-on-load.txt` (**no** `no-audio.txt`: audio is on), the census reports
-  and the owner's own saves (first dungeon done). Luma's `crash_dump_00000000` and `00000019` are from
-  the Minish Cap port and were left. The owner opens ftpd when the game's FTP is down; installing over
-  the running game while it is near its memory limit can close it.
+- **New 3DS**, `192.168.1.133` on 2026-10-18 (it has been at `.141`): the owner installed
+  `742ad9ba845f` (`0.2.5-dev.16.40+d609f5f`, the line as merged) with FBI from `/cias/`; FTP, the
+  install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
+  autosaves. DISTANCE HIGH.
+- **2DS**, `192.168.1.139`: installed `67249f86e746`; `742ad9ba845f` waits in `/cias/` (the #16 music
+  fix). The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
+  the census reports and the owner's saves (first dungeon done). Luma's `crash_dump_00000000` and
+  `00000019` are from the Minish Cap port and were left. Installing over the running game near its
+  memory limit can close it: then upload over ftpd.
 
 Tasks ticked [x] have been checked on the console by the owner; do not re-propose them.
 
@@ -686,3 +673,6 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
     core 1 at 30%).
   - **Next step.** The owner wants noticeable engine changes and accepts equivalent effects that
     cost less, hence P4.9 (slim IWAD), P4.10 (CPU drawing buffers) and P4.11 (compiled ZScript).
+- **2026-10-18** Merged the whole 2DS stack after the owner's New 3DS check: fps hold (lowest seen
+  55 in stereo at some open-map spots), music, dungeons, R held. The GPU fade (#18) is not quite the old
+  wipe; the owner wants it matched later, on the GPU.
