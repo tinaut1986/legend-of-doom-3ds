@@ -76,6 +76,7 @@
 #ifdef __3DS__
 #include "common/platform/3ds/diagnostics_3ds.h"
 #include "common/platform/3ds/perf_3ds.h"
+#include "c_dispatch.h"
 #include <3ds.h>
 #endif
 
@@ -535,6 +536,20 @@ namespace swrenderer
 	}
 
 #ifdef __3DS__
+	static RenderOpaquePass *LastMainOpaquePass3DS;
+	// lod3ds_visible (debug): the subsectors the last main walk found visible, as index:sector.
+	CCMD(lod3ds_visible)
+	{
+		if (LastMainOpaquePass3DS == nullptr || primaryLevel == nullptr) return;
+		FString line;
+		for (uint32_t index : LastMainOpaquePass3DS->VisibleSubsectors())
+		{
+			if (index >= primaryLevel->subsectors.Size()) continue;
+			line.AppendFormat("%u:%d ", index, primaryLevel->subsectors[index].sector->Index());
+		}
+		Printf("visible: %s\n", line.GetChars());
+	}
+
 	// The walk's parts, summed over a RenderScene and handed to lod3ds_sections at its end.
 	static uint64_t WalkPlaneTicks, WalkSpriteTicks, WalkLineTicks, WalkSubsectors;
 #endif
@@ -944,6 +959,7 @@ namespace swrenderer
 
 		InSubsector = nullptr;
 #ifdef __3DS__
+		if (Thread->MainThread) LastMainOpaquePass3DS = this;
 		WalkPlaneTicks = WalkSpriteTicks = WalkLineTicks = WalkSubsectors = 0;
 		const uint64_t walkStart = svcGetSystemTick();
 #endif
