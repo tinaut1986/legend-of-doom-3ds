@@ -105,6 +105,7 @@ void I_3DSPerfTic()
 
 void I_3DSPerfFrameDone(int canvasWidth, int canvasHeight)
 {
+	I_3DSSectionsFrameDone();
 	if (!I3DSPerfRunning || RowCount >= PerfCapacity) return;
 	FPerfRow &row = Rows[RowCount++];
 	row.EndTick = svcGetSystemTick();
@@ -215,6 +216,72 @@ CCMD(lod3ds_perf)
 	{
 		Printf("perf recorder: %s, %u of %u rows\n", I3DSPerfRunning ? "running" : "stopped",
 			RowCount, PerfCapacity);
+	}
+}
+#endif
+
+// Named sections (perf_3ds.h). A small table; the names are literals, compared by address.
+namespace
+{
+struct FSectionTotal
+{
+	const char *Name;
+	uint64_t Ticks;
+	uint64_t Calls;
+};
+FSectionTotal SectionTotals[24];
+int SectionCount;
+uint64_t SectionFrames;
+}
+
+static int SectionSlot(const char *name)
+{
+	for (int i = 0; i < SectionCount; ++i)
+		if (SectionTotals[i].Name == name) return i;
+	if (SectionCount >= int(sizeof(SectionTotals) / sizeof(SectionTotals[0]))) return -1;
+	SectionTotals[SectionCount] = { name, 0, 0 };
+	return SectionCount++;
+}
+
+F3DSSection::F3DSSection(const char *name)
+{
+	Slot = SectionSlot(name);
+	Start = svcGetSystemTick();
+}
+
+void I_3DSSectionAdd(const char *name, uint64_t ticks)
+{
+	const int slot = SectionSlot(name);
+	if (slot < 0) return;
+	SectionTotals[slot].Ticks += ticks;
+	SectionTotals[slot].Calls++;
+}
+
+F3DSSection::~F3DSSection()
+{
+	if (Slot < 0) return;
+	SectionTotals[Slot].Ticks += svcGetSystemTick() - Start;
+	SectionTotals[Slot].Calls++;
+}
+
+void I_3DSSectionsFrameDone()
+{
+	++SectionFrames;
+}
+
+#if LOD3DS_DEBUG_TOOLS
+CCMD(lod3ds_sections)
+{
+	const double frames = SectionFrames > 0 ? double(SectionFrames) : 1.0;
+	Printf("sections over %llu frames, ms a frame:\n", (unsigned long long)SectionFrames);
+	for (int i = 0; i < SectionCount; ++i)
+		Printf("  %-22s %7.3f  (%llu calls)\n", SectionTotals[i].Name,
+			SectionTotals[i].Ticks * 1000.0 / SYSCLOCK_ARM11 / frames,
+			(unsigned long long)SectionTotals[i].Calls);
+	if (argv.argc() > 1)
+	{
+		for (int i = 0; i < SectionCount; ++i) SectionTotals[i].Ticks = SectionTotals[i].Calls = 0;
+		SectionFrames = 0;
 	}
 }
 #endif
