@@ -57,6 +57,11 @@ passes a tic (ClearInterpolation; lights and effects) and the PointLights' empty
 god mode: 45.4 -> 46.4 fps; logic 10.1 -> 9.2 ms a tic, "clear interpolation" 2.2 -> 0.6 ms). Saving
 after a long play crashed once (#21: the save's JSON buffer could not grow; rapidjson does not check).
 
+**Merged into the line on 2026-10-18, latest:** the particle textures built once instead of every frame
+(2.15 ms a frame; 2DS save0 46.4 -> 52.2 fps, the heavy MAP01 spot 35.8 -> 40.8, 34.3 with forced 3D),
+and `lod3ds_sections`. Left at the heavy spot: the BSP walk ~6.5 ms, the GPU capture's geometry ~3 ms,
+logic ~9 ms a tic.
+
 **Branches:**
 
 | Branch | What | State |
@@ -85,7 +90,7 @@ that cost less. Then merging the stack. #7 and #14 last.
   `742ad9ba845f` (`0.2.5-dev.16.40+d609f5f`, the line as merged) with FBI from `/cias/`; FTP, the
   install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
   autosaves. DISTANCE HIGH.
-- **2DS**, `192.168.1.139`: installed `d8de984835f9` (the line with the settled actors, 2026-10-18 late);
+- **2DS**, `192.168.1.139`: installed `e49de085f709` (the line with the particle fix, 2026-10-18 latest);
   `2696984274c1` and `742ad9ba845f` in `/cias/` are superseded. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
   the census reports and the owner's saves (first dungeon done). Luma's `crash_dump_00000000` and
   `00000019` are from the Minish Cap port and were left. Installing over the running game near its
