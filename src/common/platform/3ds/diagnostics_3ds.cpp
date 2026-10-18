@@ -6673,13 +6673,15 @@ void I_3DSAudioCpuBudget()
 	APT_CheckNew3DS(&isNew3DS);
 	if (isNew3DS) return;
 	// The 2DS played the music a few seconds on, a few seconds off: the MP3 decoder and OpenAL's
-	// mixer share core 1, where the application gets 30% by default (2026-10-18).
-	u32 previous = 0;
-	APT_GetAppCpuTimeLimit(&previous);
-	const Result result = APT_SetAppCpuTimeLimit(80);
-	char stage[96];
-	std::snprintf(stage, sizeof(stage), "audio cpu limit %lu -> 80: %s 0x%08lx", (unsigned long)previous,
-		R_SUCCEEDED(result) ? "ok" : "refused", (unsigned long)result);
+	// mixer share core 1, where the application gets 30% by default (2026-10-18). 80% fixed the
+	// music but starved the system's own work on that core: the game ran slower, ftpd crawled
+	// and closing the game froze the 2DS. So the limit stays, and the music is made cheaper to
+	// decode instead (22 kHz, build.sh). Only logged, for the reports; lod3ds_audiocpu tries others.
+	u32 current = 0;
+	const Result result = APT_GetAppCpuTimeLimit(&current);
+	char stage[64];
+	std::snprintf(stage, sizeof(stage), "audio cpu limit %lu (0x%08lx)", (unsigned long)current,
+		(unsigned long)result);
 	I_3DSStartupLog(stage);
 }
 

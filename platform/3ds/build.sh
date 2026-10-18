@@ -471,6 +471,19 @@ cmake -E copy "${ROOT}/platform/3ds/assets/menu-top.png" \
 cmake -E copy "${ROOT}/platform/3ds/assets/menu-story.png" \
   "${MOD_PACKAGE_SOURCE}/graphics/ZSTORY.png"
 python3 "${ROOT}/platform/3ds/tools/spanish-game.py" "${MOD_PACKAGE_SOURCE}"
+# The music at 22 kHz: the Old 3DS decodes it on core 1, where the game gets 30%, and at 44.1 kHz
+# the stream ran dry every few seconds (#16). Half the samples, about half the decoding.
+# LOD3DS_FULL_MUSIC=1 keeps the mod's own files.
+if [[ "${LOD3DS_FULL_MUSIC:-0}" != "1" ]]; then
+  if ! command -v lame >/dev/null 2>&1; then
+    printf 'lame is needed to re-encode the music (or set LOD3DS_FULL_MUSIC=1)\n' >&2
+    exit 1
+  fi
+  for song in "${MOD_PACKAGE_SOURCE}"/music/*.mp3; do
+    lame --quiet --mp3input --resample 22.05 -m m -b 40 "${song}" "${song}.22k"
+    mv "${song}.22k" "${song}"
+  done
+fi
 "${HOST_GZDOOM_BUILD}/tools/zipdir/zipdir" -df "${MOD_PK3}" "${MOD_PACKAGE_SOURCE}"
 # Map WADs stored, so the engine reads them from the pk3 instead of inflating them whole.
 python3 "${ROOT}/platform/3ds/tools/store-map-wads.py" "${MOD_PK3}"

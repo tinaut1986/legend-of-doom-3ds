@@ -60,6 +60,7 @@ The version comes from git ([tools/version.sh](tools/version.sh)): `X.Y.Z` on a 
 | `MAKEROM`, `BANNERTOOL` | Explicit packaging executable paths. |
 | `LOD3DS_OPENAL_SOURCE_DIR` | Optional existing OpenAL Soft/NDSP checkout. |
 | `LOD3DS_SKIP_CIA=1` | Build the 3DSX and SD ZIP without the CIA. |
+| `LOD3DS_FULL_MUSIC=1` | Keep the mod's music as it is instead of re-encoding it to 22 kHz mono with `lame` (needed otherwise). |
 | `LOD3DS_SCRIPT_VALIDATOR` | Optional native engine executable for the packaged game-script check. |
 
 The distribution directory is `$LOD3DS_BUILD_ROOT/dist/`, or `build-3ds/dist/` by default. Local builds use a stem such as:

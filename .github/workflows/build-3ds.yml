@@ -30,7 +30,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            ca-certificates cmake curl git make pkg-config unzip zip \
+            ca-certificates cmake curl git lame make pkg-config unzip zip \
             libsdl2-dev
 
       - name: Verify clean source and patch stacks
