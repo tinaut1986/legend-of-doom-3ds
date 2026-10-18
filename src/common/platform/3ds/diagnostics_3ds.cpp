@@ -1701,9 +1701,17 @@ const std::vector<FMapLine> &MapLines()
 }
 
 // clipBottom: the first row the GPU must leave alone (the CPU draws something over the map there).
+// lod3ds_mapprofile (debug): where QueueGpuMap's time goes, summed since the last reset.
+struct FMapProfile
+{
+	uint64_t Calls, CullTicks, SortTicks, EmitTicks, RestTicks, Subsectors, Shown, Triangles;
+};
+FMapProfile MapProfile;
+
 void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int mapHeight,
 	double worldUnitsPerPixel, int clipBottom = 1 << 30)
 {
+	const uint64_t profileStart = svcGetSystemTick();
 	const FBottomMapView view = BottomMapView();
 	if (!view.Valid) return;
 	const int scissor[4] = { mapX, mapY, mapX + mapWidth, std::min(mapY + mapHeight, clipBottom) };
@@ -1766,8 +1774,12 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 		}
 		polygons.push_back(FPolygon{ found->Texture, found->GameTexture, &subsector });
 	}
+	const uint64_t profileCulled = svcGetSystemTick();
 	std::sort(polygons.begin(), polygons.end(),
 		[](const FPolygon &a, const FPolygon &b) { return a.Texture < b.Texture; });
+	const uint64_t profileSorted = svcGetSystemTick();
+	MapProfile.Subsectors += bounds.size();
+	MapProfile.Shown += polygons.size();
 
 	for (size_t first = 0; first < polygons.size();)
 	{
@@ -1779,6 +1791,7 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 			++last;
 		}
 		F3DSGpuTexture *texture = polygons[first].Texture;
+		MapProfile.Triangles += count / 3;
 		F3DSGpuVertex *out = I_3DSGpuQueueTriangles(screen, texture, count, scissor);
 		if (out == nullptr) break;
 		for (size_t index = first; index < last; ++index)
@@ -1826,6 +1839,16 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 		first = last;
 	}
 
+	const uint64_t profileEmitted = svcGetSystemTick();
+	MapProfile.Calls++;
+	MapProfile.CullTicks += profileCulled - profileStart;
+	MapProfile.SortTicks += profileSorted - profileCulled;
+	MapProfile.EmitTicks += profileEmitted - profileSorted;
+	struct FRestTimer
+	{
+		uint64_t Start;
+		~FRestTimer() { MapProfile.RestTicks += svcGetSystemTick() - Start; }
+	} restTimer{ profileEmitted };
 	if (lod3ds_map_collisions)
 	{
 		static std::vector<unsigned> shown;
@@ -6166,6 +6189,19 @@ void I_3DSMapLoadEnd()
 }
 
 #if LOD3DS_DEBUG_TOOLS
+// lod3ds_mapprofile [reset]: the touch screen map's build, a call on average.
+CCMD(lod3ds_mapprofile)
+{
+	const FMapProfile &p = MapProfile;
+	const double calls = p.Calls > 0 ? double(p.Calls) : 1.0;
+	auto ms = [&](uint64_t ticks) { return double(ticks) * 1000.0 / SYSCLOCK_ARM11 / calls; };
+	Printf("map build: %llu calls; cull %.2f ms, sort %.2f ms, emit %.2f ms, rest %.2f ms; "
+		"%.0f subsectors, %.0f shown, %.0f triangles a call\n", (unsigned long long)p.Calls,
+		ms(p.CullTicks), ms(p.SortTicks), ms(p.EmitTicks), ms(p.RestTicks),
+		p.Subsectors / calls, p.Shown / calls, p.Triangles / calls);
+	if (argv.argc() > 1) MapProfile = {};
+}
+
 // lod3ds_maploadshot: shows the map-load box for two seconds (no map is loaded) and saves both
 // screens to debug/shot-top.bmp and debug/shot-bottom.bmp, for checking how it looks.
 CCMD(lod3ds_maploadshot)
