@@ -43,8 +43,8 @@ lines, and the Old 3DS audio CPU budget (#16, still to hear on the 2DS). Branche
 | `perf/slim-iwad` | P4.9: Freedoom trimmed to what the game uses (boot 82 -> 49 s on the 2DS, -2.3 MB) | Local, not pushed; in `test/2ds-stack` |
 | `perf/maxwidth-3ds` | P4.10: renderer column/row arrays sized for 400 px, not 12000 (-0.8 MB) | Local, not pushed; in `test/2ds-stack` |
 | `perf/stored-music` | the pk3's music stored, streamed from the file instead of inflated whole (-0.7 MB in MAP01) | Local, not pushed; in `test/2ds-stack`. **Listen on the 2DS** (#16) |
-| `fix/old3ds-audio-cpu-limit` | #16: 80% of core 1 stopped the gaps but starved the system (slow game, ftpd crawling, the 2DS froze closing); now core 1 stays at 30% and the build re-encodes the music to 22 kHz mono (`lame`). The RSF allows up to 80% for `lod3ds_audiocpu`; `lod3ds_musicstats` counts underruns and the decoder's CPU share | Local, not pushed; in `test/2ds-stack`. **Listen on the 2DS** |
-| `test/2ds-stack` | throwaway merge of the branches above for the console, never merged | `2696984274c1` in the 2DS's `/cias/`, to install with FBI |
+| `fix/old3ds-audio-cpu-limit` | #16: 80% of core 1 stopped the gaps but starved the system (slow game, ftpd crawling, the 2DS froze closing), so core 1 stays at 30%. minimp3 needed 129% of the time it had there even at 22 kHz; the music is now IMA ADPCM, 22 kHz mono (ZMusic patch `zmusic-adpcm.patch`, `ffmpeg` in the build): 0 underruns, ~30%, CIA +2.3 MB. `lod3ds_musicstats`, `lod3ds_audiocpu` (RSF allows 80) | Local, not pushed; in `test/2ds-stack`. **Listen on the 2DS** |
+| `test/2ds-stack` | throwaway merge of the branches above for the console, never merged | `0db5fd8cb895` installed on the 2DS |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -56,7 +56,7 @@ that are noticeable ("algo con lo que se note mucho la diferencia"), accepting e
 that cost less. Then merging the stack. #7 and #14 last.
 
 **Start here:**
-0. The owner plays `test/2ds-stack` (`2696984274c1`, in the 2DS's `/cias/`) and listens to the music (#16 and
+0. The owner plays `test/2ds-stack` (`0db5fd8cb895`, installed on the 2DS) and listens to the music (#16 and
    `perf/stored-music`); then push and merge `perf/slim-iwad`, `perf/maxwidth-3ds`, `perf/stored-music`,
    `fix/old3ds-audio-cpu-limit`.
 1. **P4.10** (drop the CPU world-drawing buffers under the GPU world) and **P4.11** (thinner
@@ -73,8 +73,8 @@ that cost less. Then merging the stack. #7 and #14 last.
   `742ad9ba845f` (`0.2.5-dev.16.40+d609f5f`, the line as merged) with FBI from `/cias/`; FTP, the
   install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
   autosaves. DISTANCE HIGH.
-- **2DS**, `192.168.1.139`: installed `a08e61834928` (80% core 1: slow, to replace); `2696984274c1` (`test/2ds-stack`,
-  30% + 22 kHz music) waits in `/cias/` by SITE INSTALL; `742ad9ba845f` in `/cias/` is
+- **2DS**, `192.168.1.139`: installed `0db5fd8cb895` (`test/2ds-stack`: the branches above, ADPCM music,
+  core 1 at 30%); `2696984274c1` in `/cias/` is superseded by SITE INSTALL; `742ad9ba845f` in `/cias/` is
   superseded. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
   the census reports and the owner's saves (first dungeon done). Luma's `crash_dump_00000000` and
   `00000019` are from the Minish Cap port and were left. Installing over the running game near its
