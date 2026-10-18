@@ -1265,6 +1265,7 @@ void FLevelLocals::DoLoadLevel(const FString &nextmapname, int position, bool au
 	M_3DSLogHeap(FStringf("level-loaded %s gc=%zu", MapName.GetChars(), GC::AllocBytes).GetChars());
 	GC::FullGC();
 	M_3DSLogHeap(FStringf("level-loaded-gc %s gc=%zu", MapName.GetChars(), GC::AllocBytes).GetChars());
+	I_3DSMemoryCensusIfRequested(FStringf("%s-loaded", MapName.GetChars()).GetChars());
 	M_3DSLogHeap(I_3DSReserveMapLoadMemory() ? "map-load-reserve-ready" : "map-load-reserve-unavailable");
 #endif
 	//      unsafe world load
