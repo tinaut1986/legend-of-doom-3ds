@@ -49,6 +49,7 @@
 #include "m_alloc.h"
 #ifdef __3DS__
 #include "common/platform/3ds/diagnostics_3ds.h"
+#include "common/platform/3ds/gpu_3ds.h"
 #include "common/platform/3ds/memory_3ds.h"
 #include "common/platform/3ds/aim_crosshair.inc"
 #endif
@@ -1141,6 +1142,18 @@ void D_Display ()
 	// No wipes when in a stereo3D VR mode
 	else if (gamestate != wipegamestate && gamestate != GS_FULLCONSOLE && gamestate != GS_TITLELEVEL)
 	{
+#ifdef __3DS__
+		// The crossfade on the GPU (#18): the last image fades out over the new frames, which keep
+		// running. The engine's wipe drew two full-screen images through the CPU's 2D every step
+		// (1-9 fps on the 2DS), after a frame of the new view flashed between them.
+		const bool wipeWanted = wipetype != wipe_None || wipegamestate == GS_FORCEWIPEFADE ||
+			wipegamestate == GS_FORCEWIPEBURN || wipegamestate == GS_FORCEWIPEMELT;
+		if (wipeWanted && I_3DSGpuWipeBegin(800))
+		{
+			wipe = nullptr;
+		}
+		else
+#endif
 		if (vr_mode == 0 || vid_rendermode != 4)
 		{
 			// save the current screen if about to wipe
