@@ -49,6 +49,7 @@ the console; the measurements are in the decisions log):
 | Branch | What | State |
 |---|---|---|
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
+| `fix/cave-sky-square` | a black cave's ceiling no longer floats in the sky as a black square (#24) | Pushed; checked by Claude on the 2DS (`5b4af21`, installed); waits for the owner's check and merge |
 
 **Waiting for the owner's check:**
 - The v0.2.4 stable via the updater (Release channel, from v0.2.1), still unchecked.
