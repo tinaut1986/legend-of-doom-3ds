@@ -82,6 +82,9 @@
 #include "vm.h"
 #include "texturemanager.h"
 #include "hw_vertexbuilder.h"
+#ifdef __3DS__
+#include "common/platform/3ds/diagnostics_3ds.h"
+#endif
 
 enum
 {
@@ -3176,6 +3179,9 @@ void MapLoader::LoadLevel(MapData *map, const char *lumpname, int position)
 	// set the head node for gameplay purposes. If the separate gamenodes array is not empty, use that, otherwise use the render nodes.
 	Level->headgamenode = Level->gamenodes.Size() > 0 ? &Level->gamenodes[Level->gamenodes.Size() - 1] : Level->nodes.Size() ? &Level->nodes[Level->nodes.Size() - 1] : nullptr;
 
+#ifdef __3DS__
+	I_3DSStartupLog("map-nodes"); // the map-change overlay's phases
+#endif
 	LoadBlockMap(map);
 
 	LoadReject(map, false);
@@ -3204,6 +3210,9 @@ void MapLoader::LoadLevel(MapData *map, const char *lumpname, int position)
 	// Spawn 3d floors - must be done before spawning things so it can't be done in P_SpawnSpecials
 	Spawn3DFloors();
 
+#ifdef __3DS__
+	I_3DSStartupLog("map-things"); // the map-change overlay's phases
+#endif
 	SpawnThings(position);
 
 	for (int i = 0; i < MAXPLAYERS; ++i)
@@ -3237,6 +3246,9 @@ void MapLoader::LoadLevel(MapData *map, const char *lumpname, int position)
 		node.len = (float)g_sqrt(fdx * fdx + fdy * fdy);
 	}
 
+#ifdef __3DS__
+	I_3DSStartupLog("map-render-info"); // the map-change overlay's phases
+#endif
 	InitRenderInfo();				// create hardware independent renderer resources for the level. This must be done BEFORE the PolyObj Spawn!!!
 	Level->ClearDynamic3DFloorData();	// CreateVBO must be run on the plain 3D floor data.
 	CreateVBO(screen->mVertexData, Level->sectors);

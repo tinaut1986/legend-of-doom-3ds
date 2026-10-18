@@ -25,11 +25,27 @@ void I_3DSWriteFatalLog(const char *message);
 bool I_3DSUnsupportedConsoleScreen();
 // Debug builds: a no-audio.txt in the data folder starts the game without audio (Old 3DS bring-up).
 bool I_3DSNoAudioRequested();
-// After the audio starts: on the Old 3DS / 2DS, more of core 1 for the NDSP mixer and the music
-// stream (both run there), which at the 30% the mixer asks for could not keep up (#16).
+// After the audio starts, on the Old 3DS / 2DS: logs core 1's time limit for the application (the
+// NDSP mixer and the music stream run there at 30%; #16 made the music cheaper instead).
 void I_3DSAudioCpuBudget();
 void I_3DSLoadingScreenStart();
 void I_3DSLoadingScreenFinish();
+// The map-change loading overlay (a level change or a saved game): the dimmed last picture with
+// the area's name, what is loading and a bar. Nested calls count; the phases follow
+// I_3DSStartupLog stages (map-load-begin, level-freed, map-nodes, ...). mapName is the lump
+// (MAP02), levelName what the box shows.
+void I_3DSMapLoadBegin(const char *mapName, const char *levelName, bool restoring);
+void I_3DSMapLoadEnd();
+// After every presented frame: logs map-first-frame for the first one after a map load.
+void I_3DSMapLoadFrameShown();
+struct F3DSMapLoadOverlay
+{
+	F3DSMapLoadOverlay(const char *mapName, const char *levelName, bool restoring)
+	{
+		I_3DSMapLoadBegin(mapName, levelName, restoring);
+	}
+	~F3DSMapLoadOverlay() { I_3DSMapLoadEnd(); }
+};
 
 // Duplicates the most recent upper LCD image into both scanout buffers before
 // launching the system software keyboard, so the applet preserves the game

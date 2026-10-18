@@ -1053,6 +1053,9 @@ static void End2DAndUpdate()
 	CheckBench();
 	screen->Update();
 	twod->OnFrameDone();
+#ifdef __3DS__
+	I_3DSMapLoadFrameShown();
+#endif
 }
 
 //==========================================================================
