@@ -52,6 +52,11 @@ OPTIONS -> DEVELOPER -> FORCE 3D. What is left of that frame (37 ms): logic 11 m
 fires and 66 PointLights ticking, "clear interpolation" 1.7 ms, the player 1.8 ms), the world walk
 7 ms, the GPU world capture 5 ms, present 2 ms; in 3D the GPU adds ~6 ms.
 
+**Merged into the line on 2026-10-18, late:** the settled static actors skipped by the two whole-level
+passes a tic (ClearInterpolation; lights and effects) and the PointLights' empty tick (2DS, save0 in
+god mode: 45.4 -> 46.4 fps; logic 10.1 -> 9.2 ms a tic, "clear interpolation" 2.2 -> 0.6 ms). Saving
+after a long play crashed once (#21: the save's JSON buffer could not grow; rapidjson does not check).
+
 **Branches:**
 
 | Branch | What | State |
@@ -80,7 +85,7 @@ that cost less. Then merging the stack. #7 and #14 last.
   `742ad9ba845f` (`0.2.5-dev.16.40+d609f5f`, the line as merged) with FBI from `/cias/`; FTP, the
   install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
   autosaves. DISTANCE HIGH.
-- **2DS**, `192.168.1.139`: installed `fd38be28c410` (`test/2ds-perf`: the same code as the line, 2026-10-18 night);
+- **2DS**, `192.168.1.139`: installed `d8de984835f9` (the line with the settled actors, 2026-10-18 late);
   `2696984274c1` and `742ad9ba845f` in `/cias/` are superseded. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
   the census reports and the owner's saves (first dungeon done). Luma's `crash_dump_00000000` and
   `00000019` are from the Minish Cap port and were left. Installing over the running game near its
