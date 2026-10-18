@@ -40,6 +40,11 @@ lines, and the Old 3DS audio CPU budget (#16, still to hear on the 2DS). Branche
 
 | Branch | What | State |
 |---|---|---|
+| `perf/slim-iwad` | P4.9: Freedoom trimmed to what the game uses (boot 82 -> 49 s on the 2DS, -2.3 MB) | Local, not pushed; in `test/2ds-stack` |
+| `perf/maxwidth-3ds` | P4.10: renderer column/row arrays sized for 400 px, not 12000 (-0.8 MB) | Local, not pushed; in `test/2ds-stack` |
+| `perf/stored-music` | the pk3's music stored, streamed from the file instead of inflated whole (-0.7 MB in MAP01) | Local, not pushed; in `test/2ds-stack`. **Listen on the 2DS** (#16) |
+| `fix/old3ds-audio-cpu-limit` | #16: 80% of core 1 stopped the gaps but starved the system (slow game, ftpd crawling, the 2DS froze closing), so core 1 stays at 30%. minimp3 needed 129% of the time it had there even at 22 kHz; the music is now IMA ADPCM, 22 kHz mono (ZMusic patch `zmusic-adpcm.patch`, `ffmpeg` in the build): 0 underruns, ~30%, CIA +2.3 MB. `lod3ds_musicstats`, `lod3ds_audiocpu` (RSF allows 80) | Local, not pushed; in `test/2ds-stack`. **Listen on the 2DS** |
+| `test/2ds-stack` | throwaway merge of the branches above for the console, never merged | `0db5fd8cb895` installed on the 2DS |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -51,9 +56,9 @@ that are noticeable ("algo con lo que se note mucho la diferencia"), accepting e
 that cost less. Then merging the stack. #7 and #14 last.
 
 **Start here:**
-0. **P4.9** (a slim IWAD): measure how much of `freedoom2.wad` the game really loads and uses
-   (textures, sprites, sounds, lump directory), then build a minimal WAD at build time. It is
-   expected to save several MB and much of the 2DS's 32 s "Loading textures" phase; not measured yet.
+0. The owner plays `test/2ds-stack` (`0db5fd8cb895`, installed on the 2DS) and listens to the music (#16 and
+   `perf/stored-music`); then push and merge `perf/slim-iwad`, `perf/maxwidth-3ds`, `perf/stored-music`,
+   `fix/old3ds-audio-cpu-limit`.
 1. **P4.10** (drop the CPU world-drawing buffers under the GPU world) and **P4.11** (thinner
    compiled ZScript), in the order the census says.
 2. The cheaper leftovers in `docs/measurements/memory-census-2026-10-17.md`: canvases (1.8 MB),
@@ -68,8 +73,9 @@ that cost less. Then merging the stack. #7 and #14 last.
   `742ad9ba845f` (`0.2.5-dev.16.40+d609f5f`, the line as merged) with FBI from `/cias/`; FTP, the
   install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
   autosaves. DISTANCE HIGH.
-- **2DS**, `192.168.1.139`: installed `67249f86e746`; `742ad9ba845f` waits in `/cias/` (the #16 music
-  fix). The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
+- **2DS**, `192.168.1.139`: installed `0db5fd8cb895` (`test/2ds-stack`: the branches above, ADPCM music,
+  core 1 at 30%); `2696984274c1` in `/cias/` is superseded by SITE INSTALL; `742ad9ba845f` in `/cias/` is
+  superseded. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
   the census reports and the owner's saves (first dungeon done). Luma's `crash_dump_00000000` and
   `00000019` are from the Minish Cap port and were left. Installing over the running game near its
   memory limit can close it: then upload over ftpd.
@@ -371,6 +377,12 @@ third of the CPU, so neither is reachable with SoftPoly on the CPU.
   (`platform/3ds/build.sh`; never committed, like the other game data) and load it instead.
   *Done when:* the census shows the saving at the title and in MAP01 on the 2DS, the load time is
   measured before and after, and the first dungeon plays the same on both consoles.
+  *Result (2026-10-18, Claude):* `perf/slim-iwad`, `platform/3ds/tools/slim-iwad.py` at build time:
+  3610 -> 707 lumps, 28.7 -> 4.9 MB; the CIA 53.7 -> 29.6 MB (the FTP install 5:48 -> 3:02 on the 2DS).
+  On the 2DS, same code with the full and the slim WAD: boot to the title 82 s -> 49 s ("texture
+  manager" 43.6 s -> 11.7 s); title census 24.1 -> 21.8 MB in use (heap 12.62 -> 11.46, large arena
+  11.51 -> 10.33), free gap 16.4 -> 19.2 MB. MAP01 from save0 and MAP02 look right; the only warning
+  was Doom's armour icon (`ARM1A0`, gameinfo), kept since. Not played through by the owner yet.
 - [ ] **P4.10** No CPU world-drawing buffers under the GPU world.
   *Spec:* with the GPU drawing the world, the software renderer only needs its BSP walk (what is
   visible). It still allocates canvases, SoftPoly's thread data, frame memory and wall/plane drawing
@@ -379,6 +391,13 @@ third of the CPU, so neither is reachable with SoftPoly on the CPU.
   log to drop it on the Old 3DS.
   *Done when:* those buffers are gone from the MAP01 census on the 2DS, and the fallback still works
   where it is kept.
+  *Progress (2026-10-18, Claude):* with SoftPoly in true colour the software renderer draws straight
+  into the frame's canvas: there is no separate scene canvas, and the 1.8 MB of canvases in the census
+  are SoftPoly's 2D textures (HUD, fonts), not world buffers. The world-side cut found so far is
+  `perf/maxwidth-3ds`: `MAXWIDTH` 12000 -> 1024 and `MAXHEIGHT` 5000 -> 1024 on the 3DS, which sized
+  every per-column array (445 KB in SoftPoly's thread data alone): -0.72 MB in the arena at the title
+  and in MAP01, plus 88 KB of BSS; the save picture (drawn by the CPU) still comes out right. Left:
+  the swrenderer's `RenderMemory` / drawers, created per thread whether the GPU draws or not.
 - [ ] **P4.11** Thinner compiled ZScript.
   *Spec:* about 130,000 small blocks (~9 MB) are live at the title, mostly compiled ZScript: classes,
   functions, symbols, strings. Many are for things this game never uses (GZDoom's option menus: 354
