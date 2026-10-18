@@ -790,16 +790,43 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 	if (sky) AddSky(level, vp, viewport);
 	const DVector2 eye2(ex, ey);
 	const DVector3 eye3(ex, ey, ez);
-	for (uint32_t index : thread->OpaquePass->VisibleSubsectors())
+	auto addSubsector = [&](const subsector_t *sub)
 	{
-		if (index >= level->subsectors.Size()) continue;
-		const subsector_t *sub = &level->subsectors[index];
 		const sector_t *sector = sub->sector;
-		if (sector == nullptr) continue;
+		if (sector == nullptr) return;
 		for (uint32_t i = 0; i < sub->numlines; ++i) AddSeg(&sub->firstline[i], eye2);
 		AddFlat(sub, sector, sector_t::floor, eye3);
 		AddFlat(sub, sector, sector_t::ceiling, eye3);
 		AddFFloorPlanes(sub, sector, eye3);
+	};
+	// A black cave seen at all is drawn whole. MAP01's caves have a one-unit solid 3D floor at
+	// the cliff top (Sector_Set3DFloor), whose sides the walk counts as solid: from some spots it
+	// hides the cave's far half, which the swrenderer leaves black and the GPU world left empty,
+	// so the sky showed through (2026-10-18). Each cave is two or three subsectors.
+	static std::vector<uint32_t> seen;
+	static std::vector<const sector_t *> caves;
+	seen.clear();
+	caves.clear();
+	for (uint32_t index : thread->OpaquePass->VisibleSubsectors())
+	{
+		if (index >= level->subsectors.Size()) continue;
+		const subsector_t *sub = &level->subsectors[index];
+		addSubsector(sub);
+		if (BlackCave(sub->sector))
+		{
+			seen.push_back(index);
+			if (std::find(caves.begin(), caves.end(), sub->sector) == caves.end())
+				caves.push_back(sub->sector);
+		}
+	}
+	for (const sector_t *cave : caves)
+	{
+		for (int i = 0; i < cave->subsectorcount; ++i)
+		{
+			const subsector_t *sub = cave->subsectors[i];
+			const uint32_t index = uint32_t(sub - &level->subsectors[0]);
+			if (std::find(seen.begin(), seen.end(), index) == seen.end()) addSubsector(sub);
+		}
 	}
 	const uint64_t sectionGeometry = svcGetSystemTick();
 	I_3DSSectionAdd("capture: geometry", sectionGeometry - sectionBegun);
