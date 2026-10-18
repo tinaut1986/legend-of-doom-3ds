@@ -266,6 +266,9 @@ void I_InitSound ()
 	/* Get command line options: */
 	nosound = !!Args->CheckParm ("-nosound");
 	nosfx = !!Args->CheckParm ("-nosfx");
+	#ifdef __3DS__
+	if (I_3DSNoAudioRequested()) nosound = true;
+	#endif
 
 	GSnd = NULL;
 	if (nosound)

@@ -2536,9 +2536,15 @@ static void NewFailure ()
 {
 #ifdef __3DS__
     {
-        char what[96];
-        snprintf(what, sizeof(what), "operator new failure: %zu bytes, caller 0x%08lx",
-            I_3DSLastFailedNewRequest(), static_cast<unsigned long>(I_3DSLastFailedNewCaller()));
+        char what[128];
+        void *retry = malloc(I_3DSLastFailedNewRequest());
+        // GCC would otherwise drop the malloc/free pair and report success.
+        __asm__ volatile("" : "+r"(retry) : : "memory");
+        const bool retryWorked = retry != nullptr;
+        free(retry);
+        snprintf(what, sizeof(what), "operator new failure: %zu bytes, caller 0x%08lx, largest free block %zu, retry %s",
+            I_3DSLastFailedNewRequest(), static_cast<unsigned long>(I_3DSLastFailedNewCaller()),
+            I_3DSLargestFreeBlock(), retryWorked ? "ok" : "failed");
         M_3DSLogHeap(what);
     }
     Printf(PRINT_LOG, "[3DS memory] failed C++ allocation: %zu bytes from %p\n",

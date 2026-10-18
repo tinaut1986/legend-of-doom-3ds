@@ -285,7 +285,21 @@ MapData *P_OpenMapData(const char * mapname, bool justcheck)
 			if (i == 1 && !strnicmp(lumpname, "TEXTMAP", 8))
 			{
 				map->isText = true;
+#ifdef __3DS__
+				// Read the TEXTMAP from the map WAD's file instead of caching it whole: the cache
+				// (MAP01's is 2 MB) plus the parser's own copy were two blocks that a fragmented 2DS
+				// heap could not find (2026-10-17). As FileSystem::OpenFileReader does for lumps.
+				{
+					FResourceLump *textmap = map->resource->GetLump(i);
+					FileReader *owner = textmap->GetReader();
+					if (owner != nullptr && !owner->GetBuffer() && textmap->RefCount == 0)
+						map->MapLumps[ML_TEXTMAP].Reader.OpenFilePart(*owner, textmap->GetFileOffset(), textmap->LumpSize);
+					else
+						map->MapLumps[ML_TEXTMAP].Reader = textmap->NewReader();
+				}
+#else
 				map->MapLumps[ML_TEXTMAP].Reader = map->resource->GetLump(i)->NewReader();
+#endif
 				strncpy(map->MapLumps[ML_TEXTMAP].Name, lumpname, 8);
 				for(int i = 2;; i++)
 				{
