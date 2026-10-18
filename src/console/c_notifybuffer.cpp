@@ -85,14 +85,19 @@ void FNotifyBuffer::Clear()
 
 }
 
-// The notify lines' font. On the 3DS, the game's own dialogue font (the old men's hints use it,
-// lod.acs) instead of the engine's generic one; the generic one if the mod lacks it.
+#ifdef __3DS__
+// OPTIONS -> DISPLAY -> MESSAGES: the game's messages as a toast on the touch screen (BOTTOM), or
+// over the picture (TOP).
+CVAR(Bool, lod3ds_messages_bottom, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+#include "common/platform/3ds/diagnostics_3ds.h"
+#endif
+
+// The notify lines' font. On the 3DS, the game's own small font (SMALLFNT, the NES letters, at
+// their size) instead of the engine's generic one.
 static FFont *NotifyFont()
 {
 #ifdef __3DS__
-	static FFont *gameFont = nullptr; // looked up again until the fonts are loaded
-	if (gameFont == nullptr) gameFont = V_GetFont("ZeldFNT2");
-	if (gameFont != nullptr) return gameFont;
+	if (SmallFont != nullptr) return SmallFont;
 #endif
 	return generic_ui ? NewSmallFont : AlternativeSmallFont;
 }
@@ -119,6 +124,13 @@ void FNotifyBuffer::AddString(int printlevel, FString source)
 		}
 	}
 
+#ifdef __3DS__
+	if (lod3ds_messages_bottom)
+	{
+		I_3DSToastMessage(source.GetChars());
+		return;
+	}
+#endif
 	int width = DisplayWidth / active_con_scaletext(twod, generic_ui);
 #ifdef __3DS__
 	width -= 16; // room for the band's margins

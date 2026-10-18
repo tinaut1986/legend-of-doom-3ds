@@ -229,7 +229,7 @@ diff --git a/MENUDEF b/MENUDEF
 index c7c6d33..dffcba4 100644
 --- a/MENUDEF
 +++ b/MENUDEF
-@@ -1,50 +1,133 @@
+@@ -1,50 +1,140 @@
  DEFAULTLISTMENU
  {
  	// Font "ZeldFNT", "Untranslated"
@@ -330,6 +330,12 @@ index c7c6d33..dffcba4 100644
 +    "es", "ESPAÑOL"
 +}
 +
++OPTIONVALUE "LegendMessagePlace"
++{
++    0, "TOP"
++    1, "BOTTOM"
++}
++
 +OPTIONMENU "LegendDisplayOptions"
 +{
 +    Class "LegendSplitOptionMenu"
@@ -337,6 +343,7 @@ index c7c6d33..dffcba4 100644
 +    Option "LANGUAGE", "language", "LegendLanguage"
 +    RenderDistanceSlider "DISTANCE", "lod3ds_render_distance", 0, 2, 1, -1
 +    Option "TOP HUD", "lod3ds_top_hud", "OnOff"
++    Option "MESSAGES", "lod3ds_messages_bottom", "LegendMessagePlace"
 +    Option "AIM CROSS", "crosshairon", "OnOff"
 +    Option "MAP COLLISIONS", "lod3ds_map_collisions", "OnOff"
 +    Option "SHOW FPS", "vid_fps", "OnOff"
@@ -846,7 +853,7 @@ new file mode 100644
 index 0000000..cadb9e7
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,271 @@
+@@ -0,0 +1,274 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -1118,6 +1125,9 @@ index 0000000..cadb9e7
 +Demon,LOD_DEMON,,,DEMONIO
 +Lion,LOD_LION,,,LEÓN
 +Death Mountain,LOD_DEATH_MOUNTAIN,,,MONTAÑA DE LA MUERTE
++MESSAGES,LOD_MESSAGES,,,MENSAJES
++TOP,LOD_TOP,,,ARRIBA
++BOTTOM,LOD_BOTTOM,,,ABAJO
 diff --git a/actors/items/Fairy.zs b/actors/items/Fairy.zs
 index 1cced56..1fbbfdb 100644
 --- a/actors/items/Fairy.zs

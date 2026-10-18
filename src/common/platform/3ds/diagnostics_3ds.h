@@ -13,6 +13,9 @@ void I_3DSStartupLog(const char *stage);
 // A message for the player, as a toast on the touch screen in the game's own style (English text:
 // it goes through Tr()). The engine's own messages print in its generic font over the top screen.
 void I_3DSToast(const char *english);
+// The same for a message the engine already has in the player's language (its notify lines,
+// pickups and the like, when OPTIONS -> DISPLAY -> MESSAGES is BOTTOM): no Tr() of its own.
+void I_3DSToastMessage(const char *text);
 // The same for the C side (ftp_server_3ds.c): `line` is logged as the stage. Main thread only.
 extern "C" void I_3DSStartupLogLine(const char *line);
 void I_3DSWriteFatalLog(const char *message);
