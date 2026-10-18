@@ -55,6 +55,12 @@ CVAR(Bool, lod3ds_gpu_world, true, 0)
 CVAR(String, lod3ds_gpu_world_stats, "", CVAR_NOSAVE)
 // Stereo 3D with the 3D slider (P3); off draws one image whatever the slider says.
 CVAR(Bool, lod3ds_stereo, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+#if LOD3DS_DEBUG_TOOLS
+// OPTIONS -> DEVELOPER -> FORCE 3D: both eyes drawn as with the slider all the way up, whatever it
+// says, so a 2DS (no 3D screen, it shows the left eye) measures what an Old 3DS pays in 3D.
+// Not saved: it is a test.
+CVAR(Bool, lod3ds_force_stereo, false, 0)
+#endif
 
 namespace
 {
@@ -698,7 +704,10 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 	// image shifted back so that StereoConvergence sits on the screen; nearer pops out, farther
 	// goes in, up to StereoMaxPixels per eye at infinity with the slider up. The visible set is
 	// the centre eye's.
-	const float slider = lod3ds_stereo ? osGet3DSliderState() : 0.0f;
+	float slider = lod3ds_stereo ? osGet3DSliderState() : 0.0f;
+#if LOD3DS_DEBUG_TOOLS
+	if (lod3ds_force_stereo) slider = 1.0f;
+#endif
 	const double screenPixelsPerNdc = 200.0; // the top screen's half width
 	const double halfSeparation = slider * StereoMaxPixels / screenPixelsPerNdc *
 		StereoConvergence * focalTangent / ax;
