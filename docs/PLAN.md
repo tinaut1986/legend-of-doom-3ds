@@ -62,9 +62,10 @@ effects that cost less are fine; #7 and #14 last.
 
 **Start here:**
 0. The owner's interim task: whatever they ask for, on a topic branch cut from `release/v0.2.5`.
-   Done: #22 (control schemes) and #24 (the black square in the sky over a cave) merged 2026-10-18
-   after the owner's check on the 2DS; the New 3DS (CLASSIC by default) still to be played before
-   the release.
+   Done: #22 (control schemes), #24 (the black square in the sky over a cave) and #25 (the GC never
+   ran on the 2DS after a long play: stutters, music gaps) merged 2026-10-18 after the owner's check
+   on the 2DS; the New 3DS (CLASSIC by default) still to be played before the release. Open: the
+   audio sounds "fried" at times on the 2DS (likely older; clipping or the ADPCM's noise, untested).
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
@@ -745,3 +746,8 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   (`lod3ds_use_hint`), not per save: a flag in the save would need the game's own state. It leaves the
   walk-into lines out (some need a key or the bracelet first): the maps have no other front-use line,
   so today the hint never shows; it stays for anything the game adds.
+- **2026-10-18** #25: GZDoom's `GC::AllocBytes` counts every `M_Malloc` block, so on the 2DS it is ~24 MB
+  after a map load and the stock next-cycle threshold (150%) was beyond the heap: the collector never ran
+  again and the `Sheeld` the shield spawns every Ready tic piled up (7391, 8.6 MB). The 3DS caps the
+  threshold at the estimate + 1 MB. Diagnosed live with `lod3ds_memcensus` and by peeking `GC::Threshold`
+  / `Estimate` (`nm` on the ELF; `lod-link.py peek` takes the address); `gc full` freed 10 MB at once.
