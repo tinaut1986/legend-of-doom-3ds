@@ -250,6 +250,25 @@ bool Exterior(const sector_t *sector)
 	return LightContext.Map01Fog && Is3DSMap01ExteriorSector(sector);
 }
 
+// MAP01's caves: a BLACK floor under a sky ceiling. That sky points at the level's SkyViewpoint,
+// whose remote scene the port does not draw, so the swrenderer leaves them black ("BLACK-floor
+// caves remain opaque even with sky ceilings", r_swcolormaps.cpp); drawn as sky here, the cave
+// mouths showed the sky through them. Their ceiling, and the sky-hack gap above their mouths,
+// are drawn with the BLACK flat instead.
+FTextureID BlackFlat()
+{
+	static const FTextureID black = TexMan.CheckForTexture("BLACK", ETextureType::Flat,
+		FTextureManager::TEXMAN_TryAny);
+	return black;
+}
+
+bool BlackCave(const sector_t *sector)
+{
+	return sector != nullptr && LightContext.Map01Fog && BlackFlat().isValid() &&
+		sector->GetTexture(sector_t::ceiling) == skyflatnum &&
+		sector->GetTexture(sector_t::floor) == BlackFlat();
+}
+
 FGameTexture *PartTexture(const side_t *side, int part)
 {
 	const FTextureID id = side->GetTexture(part);
@@ -366,8 +385,9 @@ void AddFlat(const subsector_t *sub, const sector_t *sector, int which, const DV
 	// Only the side of the plane the eye sees.
 	const double planeZ = plane.ZatPoint(eye.XY());
 	if (which == sector_t::floor ? eye.Z <= planeZ : eye.Z >= planeZ) return;
-	AddPlane(sub, plane, sector->GetTexture(which), sector, which, sector->lightlevel,
-		Exterior(sector));
+	const FTextureID texture = which == sector_t::ceiling && BlackCave(sector) ?
+		BlackFlat() : sector->GetTexture(which);
+	AddPlane(sub, plane, texture, sector, which, sector->lightlevel, Exterior(sector));
 }
 
 // The face a 3D floor part goes into: nullptr when it is opaque (the caller draws it in the
@@ -504,11 +524,14 @@ void AddSeg(const seg_t *seg, const DVector2 &eye)
 	const double backFloorB = back->floorplane.ZatPoint(seg->v2);
 	const double backCeilA = back->ceilingplane.ZatPoint(seg->v1);
 	const double backCeilB = back->ceilingplane.ZatPoint(seg->v2);
+	const bool caveMouth = BlackCave(back) && !BlackCave(front);
 	const bool bothSky = front->GetTexture(sector_t::ceiling) == skyflatnum &&
-		back->GetTexture(sector_t::ceiling) == skyflatnum;
+		back->GetTexture(sector_t::ceiling) == skyflatnum && !caveMouth;
 	if (!bothSky && (backCeilA < frontCeilA || backCeilB < frontCeilB))
 	{
-		if (FGameTexture *texture = PartTexture(side, side_t::top))
+		FGameTexture *texture = PartTexture(side, side_t::top);
+		if (texture == nullptr && caveMouth) texture = TexMan.GetGameTexture(BlackFlat(), true);
+		if (texture != nullptr)
 		{
 			const double height = texture->GetDisplayHeight() / side->GetTextureYScale(side_t::top);
 			const double ref = (line->flags & ML_DONTPEGTOP) ?
