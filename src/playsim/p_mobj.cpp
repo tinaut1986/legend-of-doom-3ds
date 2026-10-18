@@ -3580,12 +3580,49 @@ CVAR(Bool, lod3ds_static_thinkers, true, 0)
 // can carry it. Legend of Doom's MAP01 has ~600 of these (bushes, trees, spawn spots, teleport
 // destinations); the call alone, through the VM, cost ~4 microseconds each a tic on the New 3DS.
 // Whatever gives one velocity or a new state (a push, a blast, a scroller) makes it tick again.
+// A skipped static actor whose Prev already is its position needs no ClearInterpolation
+// (FThinkerCollection::ClearActorInterpolations3DS). Should something move it later in the tic,
+// the flag stays one tic too long: its move repeats once in the interpolated frames, then the
+// next check finds Prev behind and clears the flag.
+void P_3DSMarkSettled(DThinker *thinker)
+{
+	// Also nothing for RunThinkers' light and effect pass (P_3DSRecreateLights).
+	AActor *actor = static_cast<AActor *>(thinker);
+	if (actor->Prev == actor->Pos() && actor->PrevAngles == actor->Angles &&
+		!(actor->flags8 & MF8_RECREATELIGHTS) && actor->effects == 0 && actor->fountaincolor == 0)
+		thinker->ObjectFlags |= OF_Settled3DS;
+	else
+		thinker->ObjectFlags &= ~OF_Settled3DS;
+}
+
+void P_3DSClearInterpolation(DThinker *thinker, void *)
+{
+	if (thinker->IsKindOf(RUNTIME_CLASS(AActor))) static_cast<AActor *>(thinker)->ClearInterpolation();
+}
+
+// RunThinkers' recreateLights for one thinker (dthinker.cpp).
+void P_3DSRecreateLights(DThinker *thinker, void *dolights)
+{
+	if (!thinker->IsKindOf(RUNTIME_CLASS(AActor))) return;
+	AActor *ac = static_cast<AActor *>(thinker);
+	if (ac->flags8 & MF8_RECREATELIGHTS)
+	{
+		ac->flags8 &= ~MF8_RECREATELIGHTS;
+		if (*static_cast<bool *>(dolights)) ac->SetDynamicLights();
+	}
+	if ((ac->effects || ac->fountaincolor) && !ac->Level->isFrozen())
+	{
+		P_RunEffect(ac, ac->effects);
+	}
+}
+
 bool P_3DSStaticThinker(DThinker *thinker)
 {
 	if (!lod3ds_static_thinkers || !thinker->IsKindOf(RUNTIME_CLASS(AActor))) return false;
 	static unsigned tickIndex = ~0u;
 	static VMFunction *actorTick = nullptr;
 	static VMFunction *inventoryTick = nullptr;
+	static VMFunction *dynamicLightTick = nullptr;
 	static PClass *inventoryClass = nullptr;
 	static size_t ownerOffset = 0, dropTimeOffset = 0;
 	if (tickIndex == ~0u)
@@ -3594,6 +3631,13 @@ bool P_3DSStaticThinker(DThinker *thinker)
 		actorTick = RUNTIME_CLASS(AActor)->Virtuals[tickIndex];
 		// Inventory's Tick (inventory.zs): an owned item with a state that never ends and no
 		// DropTime does nothing; a loose one only calls Actor's.
+		// DynamicLight's Tick is empty ("Lights do not call the super method"): MAP01's 66
+		// PointLights went through the VM every tic for nothing (r_dynlights is off on the 3DS).
+		if (PClass *lights = PClass::FindClass("DynamicLight"); lights != nullptr &&
+			lights->Virtuals.Size() > tickIndex)
+		{
+			dynamicLightTick = lights->Virtuals[tickIndex];
+		}
 		inventoryClass = PClass::FindClass(NAME_Inventory);
 		auto owner = inventoryClass != nullptr ?
 			dyn_cast<PField>(inventoryClass->FindSymbol(NAME_Owner, true)) : nullptr;
@@ -3610,6 +3654,7 @@ bool P_3DSStaticThinker(DThinker *thinker)
 	if (type->Virtuals.Size() <= tickIndex) return false;
 	VMFunction *tick = type->Virtuals[tickIndex];
 	AActor *actor = static_cast<AActor *>(thinker);
+	if (tick == dynamicLightTick && dynamicLightTick != nullptr) return true;
 	if (tick == inventoryTick && inventoryTick != nullptr)
 	{
 		const char *base = reinterpret_cast<const char *>(actor);
