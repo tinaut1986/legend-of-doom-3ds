@@ -853,7 +853,7 @@ new file mode 100644
 index 0000000..cadb9e7
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,274 @@
+@@ -0,0 +1,297 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -1128,6 +1128,29 @@ index 0000000..cadb9e7
 +MESSAGES,LOD_MESSAGES,,,MENSAJES
 +TOP,LOD_TOP,,,ARRIBA
 +BOTTOM,LOD_BOTTOM,,,ABAJO
++Picked up a potion!,LOD_PICKED_UP_A_POTION,,,¡HAS COGIDO UNA POCIÓN!
++Picked up some bombs.,LOD_PICKED_UP_SOME_BOMBS,,,HAS COGIDO BOMBAS.
++You got the blue candle!,LOD_YOU_GOT_THE_BLUE_CANDLE,,,¡HAS CONSEGUIDO LA VELA AZUL!
++You got the red candle!,LOD_YOU_GOT_THE_RED_CANDLE,,,¡HAS CONSEGUIDO LA VELA ROJA!
++Picked up a key!,LOD_PICKED_UP_A_KEY,,,¡HAS COGIDO UNA LLAVE!
++You got the Lion Key!,LOD_YOU_GOT_THE_LION_KEY,,,¡HAS CONSEGUIDO LA LLAVE DEL LEÓN!
++You picked up a clock!,LOD_YOU_PICKED_UP_A_CLOCK,,,¡HAS COGIDO UN RELOJ!
++You got the blue tunic!,LOD_YOU_GOT_THE_BLUE_TUNIC,,,¡HAS CONSEGUIDO LA TÚNICA AZUL!
++You got the red tunic!,LOD_YOU_GOT_THE_RED_TUNIC,,,¡HAS CONSEGUIDO LA TÚNICA ROJA!
++You can now carry more bombs!,LOD_YOU_CAN_NOW_CARRY_MORE_BOMBS,,,¡AHORA PUEDES LLEVAR MÁS BOMBAS!
++Picked up a small heart!,LOD_PICKED_UP_A_SMALL_HEART,,,¡HAS COGIDO UN CORAZÓN!
++Picked up a heart container!,LOD_PICKED_UP_A_HEART_CONTAINER,,,¡HAS COGIDO UN CONTENEDOR DE CORAZÓN!
++Picked up a rupee!,LOD_PICKED_UP_A_RUPEE,,,¡HAS COGIDO UNA RUPIA!
++Picked up 5 rupees!,LOD_PICKED_UP_5_RUPEES,,,¡HAS COGIDO 5 RUPIAS!
++Picked up 10 rupees!,LOD_PICKED_UP_10_RUPEES,,,¡HAS COGIDO 10 RUPIAS!
++Picked up 20 rupees!,LOD_PICKED_UP_20_RUPEES,,,¡HAS COGIDO 20 RUPIAS!
++Picked up 30 rupees!,LOD_PICKED_UP_30_RUPEES,,,¡HAS COGIDO 30 RUPIAS!
++Picked up 50 rupees!,LOD_PICKED_UP_50_RUPEES,,,¡HAS COGIDO 50 RUPIAS!
++Picked up 100 rupees!,LOD_PICKED_UP_100_RUPEES,,,¡HAS COGIDO 100 RUPIAS!
++You lost 10 rupees!,LOD_YOU_LOST_10_RUPEES,,,¡HAS PERDIDO 10 RUPIAS!
++You lost 20 rupees!,LOD_YOU_LOST_20_RUPEES,,,¡HAS PERDIDO 20 RUPIAS!
++You lost 40 rupees!,LOD_YOU_LOST_40_RUPEES,,,¡HAS PERDIDO 40 RUPIAS!
++You got a bow!,LOD_YOU_GOT_A_BOW,,,¡HAS CONSEGUIDO UN ARCO!
 diff --git a/actors/items/Fairy.zs b/actors/items/Fairy.zs
 index 1cced56..1fbbfdb 100644
 --- a/actors/items/Fairy.zs

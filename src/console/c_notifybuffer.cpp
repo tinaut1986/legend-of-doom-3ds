@@ -89,6 +89,7 @@ void FNotifyBuffer::Clear()
 // OPTIONS -> DISPLAY -> MESSAGES: the game's messages along the top of the picture (TOP) or along
 // its bottom (BOTTOM, the newest lowest).
 CVAR(Bool, lod3ds_messages_bottom, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+#include "common/platform/3ds/diagnostics_3ds.h"
 #endif
 
 // The notify lines' font. On the 3DS, the game's own small font (SMALLFNT, the NES letters, at
@@ -123,6 +124,17 @@ void FNotifyBuffer::AddString(int printlevel, FString source)
 		}
 	}
 
+#ifdef __3DS__
+	// Most of the game's pickup messages are written in English in its actors, not as string
+	// table keys. They have Spanish rows in language.csv under the port's key (Tr(), as the
+	// game's ACS messages); text without a row is shown as it is.
+	{
+		FString line = source;
+		line.StripRight();
+		const char *translated = I_3DSTranslate(line.GetChars());
+		if (translated != line.GetChars()) source = translated;
+	}
+#endif
 	int width = DisplayWidth / active_con_scaletext(twod, generic_ui);
 #ifdef __3DS__
 	width -= 16; // room for the band's margins
