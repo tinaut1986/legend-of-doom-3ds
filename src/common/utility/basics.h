@@ -4,8 +4,15 @@
 #include <stdint.h>
 #include <algorithm>
 
+#ifdef __3DS__
+// The widest canvas the 3DS draws is the 400x240 top screen. These size the renderers'
+// per-column and per-row arrays (each SoftPoly thread holds 37 bytes a column, 445 KB at 12000).
+#define MAXWIDTH 1024
+#define MAXHEIGHT 1024
+#else
 #define MAXWIDTH 12000
 #define MAXHEIGHT 5000
+#endif
 
 //
 // fixed point, 32bit as 16.16.
