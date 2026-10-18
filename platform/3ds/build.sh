@@ -471,6 +471,21 @@ cmake -E copy "${ROOT}/platform/3ds/assets/menu-top.png" \
 cmake -E copy "${ROOT}/platform/3ds/assets/menu-story.png" \
   "${MOD_PACKAGE_SOURCE}/graphics/ZSTORY.png"
 python3 "${ROOT}/platform/3ds/tools/spanish-game.py" "${MOD_PACKAGE_SOURCE}"
+# The music as IMA ADPCM, 22 kHz mono (ZMusic's decoder, patches/zmusic-adpcm.patch): the Old 3DS
+# decodes it on core 1, where the game gets 30%, and minimp3 could not keep up there even at
+# 22 kHz (129% of the time it had, #16). ADPCM costs a few adds a sample; the files are read from
+# the pk3 as they play (stored), so only the package grows. LOD3DS_FULL_MUSIC=1 keeps the MP3s.
+if [[ "${LOD3DS_FULL_MUSIC:-0}" != "1" ]]; then
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    printf 'ffmpeg is needed to convert the music (or set LOD3DS_FULL_MUSIC=1)\n' >&2
+    exit 1
+  fi
+  for song in "${MOD_PACKAGE_SOURCE}"/music/*.mp3; do
+    ffmpeg -v error -nostdin -y -i "${song}" -ac 1 -ar 22050 -c:a adpcm_ima_wav \
+      -map_metadata -1 "${song%.mp3}.wav"
+    rm "${song}"
+  done
+fi
 "${HOST_GZDOOM_BUILD}/tools/zipdir/zipdir" -df "${MOD_PK3}" "${MOD_PACKAGE_SOURCE}"
 # Map WADs and music stored, so the engine reads them from the pk3 instead of inflating them whole.
 python3 "${ROOT}/platform/3ds/tools/store-map-wads.py" "${MOD_PK3}"

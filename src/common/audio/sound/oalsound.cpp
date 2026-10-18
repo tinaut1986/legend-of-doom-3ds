@@ -198,6 +198,15 @@ static ALvoid AL_APIENTRY _wrap_ProcessUpdatesSOFT(void)
 }
 
 
+#ifdef __3DS__
+// Music stream health (#16), read by lod3ds_musicstats: how often the queue ran dry and how much
+// CPU the decoder took for how much audio.
+static std::atomic<uint32_t> MusicUnderruns{0};
+static std::atomic<uint64_t> MusicDecodeTicks{0};
+static std::atomic<uint64_t> MusicDecodedBytes{0};
+static std::atomic<uint32_t> MusicBytesPerSecond{0};
+#endif
+
 class OpenALSoundStream : public SoundStream
 {
 	OpenALSoundRenderer *Renderer;
@@ -433,7 +442,16 @@ public:
 			alSourceUnqueueBuffers(Source, 1, &bufid);
 			processed--;
 
+#ifdef __3DS__
+			const uint64_t decodeStart = svcGetSystemTick();
+			const bool filled = Callback(this, &Data[0], Data.Size(), UserData);
+			MusicDecodeTicks += svcGetSystemTick() - decodeStart;
+			MusicDecodedBytes += Data.Size();
+			MusicBytesPerSecond = uint32_t(SampleRate * FrameSize);
+			if(filled)
+#else
 			if(Callback(this, &Data[0], Data.Size(), UserData))
+#endif
 			{
 				alBufferData(bufid, Format, &Data[0], Data.Size(), SampleRate);
 				alSourceQueueBuffers(Source, 1, &bufid);
@@ -449,6 +467,9 @@ public:
 			alGetSourcei(Source, AL_BUFFERS_QUEUED, &queued);
 
 			ok = (getALError() == AL_NO_ERROR) && (queued > 0);
+#ifdef __3DS__
+			if(ok && state == AL_STOPPED) MusicUnderruns++;
+#endif
 			if(ok)
 			{
 				alSourcePlay(Source);
@@ -957,6 +978,22 @@ void OpenALSoundRenderer::BackgroundProc()
 }
 
 #ifdef __3DS__
+// lod3ds_musicstats [reset]: underruns since the last reset, and the decoder's share of one core
+// (CPU time spent decoding / length of the audio it produced).
+CCMD(lod3ds_musicstats)
+{
+	const double seconds = MusicBytesPerSecond ? double(MusicDecodedBytes) / MusicBytesPerSecond : 0;
+	const double cpu = double(MusicDecodeTicks) / SYSCLOCK_ARM11;
+	Printf("music: %u underruns, %.1f s of audio decoded in %.2f s of CPU (%.1f%% of a core)\n",
+		unsigned(MusicUnderruns), seconds, cpu, seconds > 0 ? 100.0 * cpu / seconds : 0.0);
+	if (argv.argc() > 1)
+	{
+		MusicUnderruns = 0;
+		MusicDecodeTicks = 0;
+		MusicDecodedBytes = 0;
+	}
+}
+
 void OpenALSoundRenderer::BackgroundProc3DS(void *userdata)
 {
 	static_cast<OpenALSoundRenderer *>(userdata)->BackgroundProc();

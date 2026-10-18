@@ -60,6 +60,7 @@ The version comes from git ([tools/version.sh](tools/version.sh)): `X.Y.Z` on a 
 | `MAKEROM`, `BANNERTOOL` | Explicit packaging executable paths. |
 | `LOD3DS_OPENAL_SOURCE_DIR` | Optional existing OpenAL Soft/NDSP checkout. |
 | `LOD3DS_SKIP_CIA=1` | Build the 3DSX and SD ZIP without the CIA. |
+| `LOD3DS_FULL_MUSIC=1` | Keep the mod's MP3 music instead of converting it to IMA ADPCM, 22 kHz mono, with `ffmpeg` (needed otherwise; the Old 3DS cannot decode the MP3s in time, #16). |
 | `LOD3DS_SCRIPT_VALIDATOR` | Optional native engine executable for the packaged game-script check. |
 | `LOD3DS_FULL_IWAD=1` | Ship `freedoom2.wad` whole instead of the slim copy (below). |
 

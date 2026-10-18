@@ -33,7 +33,10 @@ AccessControlInfo:
   IdealProcessor: 0
   AffinityMask: 1
   Priority: 16
-  MaxCpu: 0x9E
+  # Core 1 time: bit 7 the scheduling mode, the rest the most the game may ask for with
+  # APT_SetAppCpuTimeLimit. 0x9E capped it at 30% (more was refused, 0xD8E05BF4); 0xD0 allows up
+  # to 80% for lod3ds_audiocpu's tests. The game itself stays at 30% (#16, 2026-10-18).
+  MaxCpu: 0xD0
   HandleTableSize: 0x200
   DisableDebug: false
   EnableForceDebug: false
