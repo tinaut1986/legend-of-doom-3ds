@@ -49,7 +49,9 @@ class V026InterfaceContractTests(unittest.TestCase):
         diagnostics = (ROOT / "src/common/platform/3ds/diagnostics_3ds.cpp").read_text()
         self.assertIn("StatusBar->DrawMessagesOnly(HUD_None)", main)
         self.assertIn("void DBaseStatusBar::DrawMessagesOnly", status)
-        self.assertIn("CR_BLACK, textX + 1, line + 1", notify)
+        # Legible over any picture: each line on a black band (it replaced a one-pixel shadow).
+        self.assertIn("Dim(twod, 0, float(alpha * 0.85)", notify)
+        self.assertIn("lod3ds_messages_bottom", notify)
         self.assertIn("trackedMapName.Compare(primaryLevel->MapName)", diagnostics)
 
     def test_unified_engine_menus_and_bottom_hud_polish(self):
