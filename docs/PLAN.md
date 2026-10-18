@@ -19,7 +19,7 @@ change (what goes where: the table in `CLAUDE.md`).
   (2026-10-12): almost everything runs on the CPU, it is not known to reach 60 fps
   even on the New 3DS, there is no stereo 3D, and the Old 3DS does not run it.
 
-## Status (2026-10-18)
+## Status (2026-10-18, evening)
 
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
@@ -27,40 +27,22 @@ boxes below. History: `git log` and the decisions log.
 **Release line:** `release/v0.2.5` (renamed from `release/v0.2.4` right after its tag).
 Published: **`v0.2.4`** stable (2026-10-15, built by the tag workflow), `v0.2.3` and `v0.2.2` betas,
 **`v0.2.1`** stable, **`v0.2.0`** stable (the first), `v0.1.0` beta. `main` holds `v0.2.4`.
-Merged into the line since v0.2.4: the clock / Wi-Fi / battery in the bottom title row, and the
-loading screen's two progress bars and message (owner saw them on the 2DS, 2026-10-17).
 
-**Merged into the line on 2026-10-18** (owner checked the combined build `742ad9ba845f` on the New 3DS:
-fps hold, 3D on, music, dungeons, R held; the 2DS had played through the first dungeon): the 2DS memory
-work (P4.1 bring-up, P4.5 census, P4.6 large-block arena, the first P4.7 / P4.8 cuts), #17, #19, #20, the
-GPU map-change fade (#18, still open: not quite the old effect), the developer overlay's GPU/CPU frame
-lines, and the Old 3DS audio CPU budget (#16, still to hear on the 2DS). Branches deleted.
-
-**Merged into the line later on 2026-10-18** (owner played `0db5fd8cb895` on the 2DS: the music works):
-P4.9 slim IWAD, the first P4.10 cut (`MAXWIDTH`), the stored music, and #16 for real (core 1 back at
-30%, the music as IMA ADPCM). Branches deleted.
-
-**Merged into the line on 2026-10-18, evening** (owner's go after playing `dde884031d1e` on the 2DS):
-the map-change loading box (area name, phase, bar; `map-*` stages in `startup.log`), and the game's
-messages in its small NES font on a black band, along the bottom (default) or top of the picture
-(OPTIONS -> DISPLAY -> MESSAGES), with the 23 English pickup messages translated through Tr().
-
-**Merged into the line on 2026-10-18, night:** the touch screen map built every third tic and through a
-grid of the level's subsectors and lines (2DS, MAP01 at the owner's 27 fps spot: the touch screen
-6.2 -> 0.8 ms a frame, 1.4 zoomed out; 28.2 -> 31.2 fps before the grid; forced 3D 24.4 -> 26.6), and
-OPTIONS -> DEVELOPER -> FORCE 3D. What is left of that frame (37 ms): logic 11 ms (9 ms a tic: 44
-fires and 66 PointLights ticking, "clear interpolation" 1.7 ms, the player 1.8 ms), the world walk
-7 ms, the GPU world capture 5 ms, present 2 ms; in 3D the GPU adds ~6 ms.
-
-**Merged into the line on 2026-10-18, late:** the settled static actors skipped by the two whole-level
-passes a tic (ClearInterpolation; lights and effects) and the PointLights' empty tick (2DS, save0 in
-god mode: 45.4 -> 46.4 fps; logic 10.1 -> 9.2 ms a tic, "clear interpolation" 2.2 -> 0.6 ms). Saving
-after a long play crashed once (#21: the save's JSON buffer could not grow; rapidjson does not check).
-
-**Merged into the line on 2026-10-18, latest:** the particle textures built once instead of every frame
-(2.15 ms a frame; 2DS save0 46.4 -> 52.2 fps, the heavy MAP01 spot 35.8 -> 40.8, 34.3 with forced 3D),
-and `lod3ds_sections`. Left at the heavy spot: the BSP walk ~6.5 ms, the GPU capture's geometry ~3 ms,
-logic ~9 ms a tic.
+**In the line since v0.2.4, not yet published** (all merged 2026-10-17/18, each checked by the owner on
+the console; the measurements are in the decisions log):
+- 2DS memory: P4.1 bring-up, P4.5 census, P4.6 large-block arena, the first P4.7 / P4.8 cuts, P4.9 slim
+  IWAD, the first P4.10 cut (`MAXWIDTH`), the music stored in the pk3; #17, #19, #20.
+- Music on the Old 3DS (#16, closed): IMA ADPCM at 22 kHz, core 1 left at 30%.
+- Interface: the clock / Wi-Fi / battery row, the loading screen's bars, the map-change loading box,
+  the game's messages in its NES font (OPTIONS -> DISPLAY -> MESSAGES: BOTTOM / TOP), the 23 English
+  pickup messages in Spanish, the GPU map-change fade (#18, still open), the overlay's GPU/CPU lines.
+- Speed on the 2DS: the touch screen map every third tic and through a grid; settled static actors
+  out of the two per-tic passes; the particle textures built once; the walk's sprite set, early
+  sprite rejection and no visible planes under the GPU world. The owner's heavy MAP01 spot went from
+  27-28 fps to ~44.7 (34 with forced 3D before the walk cuts).
+- MAP01's black caves drawn black on the GPU (the sky showed through two spots of one cave).
+- Debug: FORCE 3D, `lod3ds_sections`, `lod3ds_mapprofile`, `lod3ds_musicstats`, `lod3ds_audiocpu`,
+  `lod3ds_maploadshot`, `lod3ds_visible`, `lod3ds_sectorsubs`, `lod3ds_tracesub`, `lod3ds_tracesolid`.
 
 **Branches:**
 
@@ -70,31 +52,40 @@ logic ~9 ms a tic.
 
 **Waiting for the owner's check:**
 - The v0.2.4 stable via the updater (Release channel, from v0.2.1), still unchecked.
+- The New 3DS has not run anything merged after `742ad9ba845f` (the music as ADPCM, the slim IWAD,
+  the messages, the loading box, the speed cuts, the caves): play it there before the release.
 
-**Priority** (2026-10-18, owner): the 2DS fully playable with music. Memory first, through changes
-that are noticeable ("algo con lo que se note mucho la diferencia"), accepting equivalent effects
-that cost less. Then merging the stack. #7 and #14 last.
+**Priority** (2026-10-18, owner): pause the 2DS speed work here. Next the owner slips in another task
+on its own topic branch (new session), merges it, then a beta / stable of the line, then back to what
+is left to debug on the 2DS. Throughout: the 2DS fully playable, noticeable changes first, equivalent
+effects that cost less are fine; #7 and #14 last.
 
 **Start here:**
-1. **P4.10** (drop the CPU world-drawing buffers under the GPU world) and **P4.11** (thinner
-   compiled ZScript), in the order the census says.
-2. The cheaper leftovers in `docs/measurements/memory-census-2026-10-17.md`: canvases (1.8 MB),
-   `FMemArena` blocks (2.1 MB), 32-bit vectors (1.7 MB), a cached zip lump (0.7 MB); small per-frame
-   allocations that leave the small heap in crumbs after long play (the GPU world capture's vector).
-3. Later: #18 (make the GPU fade match the old wipe), the New 3DS's 55 fps in stereo at some open-map
-   spots (owner, 2026-10-18; probably older than this work).
-4. Nothing is uncommitted or unpushed; only `fix/horizon-fog-fade` is left as a branch.
+0. The owner's interim task: whatever they ask for, on a topic branch cut from `release/v0.2.5`.
+   (#22, control schemes, is open; not started in any session as far as this file knows.)
+1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
+   it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
+   (CLAUDE.md, "Releases" and "After tagging").
+2. Back to the 2DS: the two save crashes, #21 (out of memory growing the save's JSON after a long
+   play) and #23 (an object with no class in `WriteObjects`); then the heavy MAP01 spot's remaining
+   frame: logic ~9 ms a tic, the walk's walls ~2.5 ms, the GPU capture's geometry ~3 ms
+   (`lod3ds_sections` splits them). P4.2 (30 fps minimum) needs the P0.3 spots measured with 3D.
+3. P4.10's rest and P4.11 (thinner compiled ZScript); the census leftovers in
+   `docs/measurements/memory-census-2026-10-17.md`.
+4. Later: #18 (the GPU fade like the old wipe), the New 3DS's 55 fps in stereo at some open-map spots,
+   #14, #7.
 
 **On the owner's consoles now (2026-10-18):**
 - **New 3DS**, `192.168.1.133` on 2026-10-18 (it has been at `.141`): the owner installed
   `742ad9ba845f` (`0.2.5-dev.16.40+d609f5f`, the line as merged) with FBI from `/cias/`; FTP, the
   install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
   autosaves. DISTANCE HIGH.
-- **2DS**, `192.168.1.139`: installed `e49de085f709` (the line with the particle fix, 2026-10-18 latest);
-  `2696984274c1` and `742ad9ba845f` in `/cias/` are superseded. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
-  the census reports and the owner's saves (first dungeon done). Luma's `crash_dump_00000000` and
-  `00000019` are from the Minish Cap port and were left. Installing over the running game near its
-  memory limit can close it: then upload over ftpd.
+- **2DS**, `192.168.1.139`: installed `92c16b35a0f6` (debug, the same code as `release/v0.2.5` at
+  `82bc7d0`), by SITE INSTALL. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (audio
+  on), the census reports and the owner's saves (save0..2, auto0..3; first dungeon done). Claude's test
+  saves were removed; Luma's `crash_dump_00000000` and `00000019` are from the Minish Cap port and
+  were left. Installing over the running game near its memory limit can close it: then upload over
+  ftpd.
 
 Tasks ticked [x] have been checked on the console by the owner; do not re-propose them.
 
@@ -414,6 +405,9 @@ third of the CPU, so neither is reachable with SoftPoly on the CPU.
   every per-column array (445 KB in SoftPoly's thread data alone): -0.72 MB in the arena at the title
   and in MAP01, plus 88 KB of BSS; the save picture (drawn by the CPU) still comes out right. Left:
   the swrenderer's `RenderMemory` / drawers, created per thread whether the GPU draws or not.
+  *Later (2026-10-18):* the walk itself got cheaper under the GPU world: no visible planes are made
+  (-0.35 ms a frame at the heavy spot), the seen sprites go into a reusable set, and far or behind
+  sprites are rejected before their frame is found (sprites 2.5 -> 1.2 ms).
 - [ ] **P4.11** Thinner compiled ZScript.
   *Spec:* about 130,000 small blocks (~9 MB) are live at the title, mostly compiled ZScript: classes,
   functions, symbols, strings. Many are for things this game never uses (GZDoom's option menus: 354
@@ -423,6 +417,9 @@ third of the CPU, so neither is reachable with SoftPoly on the CPU.
   and nothing the game uses is missing (the compiler's messages in `fatal.log`).
 - [ ] **P4.2** 30 fps minimum on the Old 3DS.
   *Done when:* the P0.3 spots never drop under 30 fps (1% low) on the 2DS, steady pacing.
+  *Progress (2026-10-18):* the owner's heavy MAP01 spot (around 1251, 3609) went from 27-28 fps to
+  ~44.7 on the 2DS in one day of cuts (decisions log); with FORCE 3D it was 34.3 before the walk
+  cuts. The P0.3 spots are not measured yet.
 - [ ] **P4.3** 60 fps on the Old 3DS (aim).
   *Done when:* the P0.3 spots hold 60 fps on the 2DS, or the decisions log says what
   stops it and the best steady rate reached.
@@ -711,3 +708,27 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
 - **2026-10-18** Merged the whole 2DS stack after the owner's New 3DS check: fps hold (lowest seen
   55 in stereo at some open-map spots), music, dungeons, R held. The GPU fade (#18) is not quite the old
   wipe; the owner wants it matched later, on the GPU.
+- **2026-10-18** Music on the Old 3DS (#16). Raising core 1's limit needed the RSF's `MaxCpu` (0x9E
+  capped it at 30%; now 0xD0), and 80% stopped the gaps but starved the system: slower game, ftpd
+  crawling, the 2DS froze on closing. minimp3 needed 129% of its time even at 22 kHz
+  (`lod3ds_musicstats`), so the music became IMA ADPCM (a ZMusic decoder, bit-exact with ffmpeg) at
+  22 kHz mono: no underruns at 30%, CIA +2.3 MB, no RAM.
+- **2026-10-18** Interface choices of the owner: a map-change loading box (dimmed last picture, the
+  area's name, the phase, a bar timed on the 2DS and scaled by the map's size); the game's messages
+  in its own small NES font on a black band, the place an option (TOP / BOTTOM of the top screen,
+  BOTTOM by default; they meant the top screen's bottom, not the touch screen).
+- **2026-10-18** 2DS speed at the owner's 27 fps MAP01 spot, measured with the perf recorder and
+  `lod3ds_sections`. What paid off: the touch screen map every third tic and through a 512-unit grid
+  (6.2 -> 0.8 ms a frame), settled static actors out of ClearInterpolation and the light/effect pass
+  (-0.9 ms a tic), the particle textures built once instead of every frame (2.15 ms a frame, the
+  biggest single find), the walk's std::set of seen actors replaced and far / behind sprites rejected
+  early (2.5 -> 1.2 ms), no visible planes under the GPU world (1.0 -> 0.7 ms). Render scale did not
+  matter: the walk costs per subsector, not per column. The New 3DS builds the map every third tic
+  too, so both play alike (owner).
+- **2026-10-18** Not to do on the 2DS: `lod3ds_gpu_world 0` in MAP01 (the CPU path's software textures
+  ran it out of memory in seconds), and console saves after a long play (#21, #23). To reach a spot
+  again, `warp X Y` and steer the camera with `lod-link.py stick CSTICK`.
+- **2026-10-18** MAP01's caves are a BLACK floor under a sky ceiling, with a one-unit solid 3D floor at
+  the cliff top; their sky is the SkyViewpoint the port does not draw, so the swrenderer leaves them
+  black. The GPU world now draws their ceiling, the gap above the mouth and the walls above the cliff
+  top in black, and a visible cave whole (the 3D floor's sides made the walk hide its far half).
