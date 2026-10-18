@@ -1080,25 +1080,113 @@ namespace swrenderer
 		fillshort(ceilingclip, viewwidth, 0);
 	}
 
+#ifdef __3DS__
+	static size_t SeenSlot(const void *key, size_t mask)
+	{
+		uintptr_t h = reinterpret_cast<uintptr_t>(key) >> 3;
+		h ^= h >> 15;
+		h *= 0x2c1b3c6dU;
+		h ^= h >> 12;
+		return h & mask;
+	}
+
+	bool RenderOpaquePass::FSeenSet::Insert(const void *key)
+	{
+		if ((Count + 1) * 2 > Keys.size()) Grow();
+		const size_t mask = Keys.size() - 1;
+		for (size_t slot = SeenSlot(key, mask);; slot = (slot + 1) & mask)
+		{
+			if (Generations[slot] != Generation)
+			{
+				Keys[slot] = key;
+				Generations[slot] = Generation;
+				++Count;
+				return true;
+			}
+			if (Keys[slot] == key) return false;
+		}
+	}
+
+	bool RenderOpaquePass::FSeenSet::Contains(const void *key) const
+	{
+		if (Keys.empty()) return false;
+		const size_t mask = Keys.size() - 1;
+		for (size_t slot = SeenSlot(key, mask);; slot = (slot + 1) & mask)
+		{
+			if (Generations[slot] != Generation) return false;
+			if (Keys[slot] == key) return true;
+		}
+	}
+
+	void RenderOpaquePass::FSeenSet::clear()
+	{
+		Count = 0;
+		if (++Generation == 0)
+		{
+			std::fill(Generations.begin(), Generations.end(), 0);
+			Generation = 1;
+		}
+	}
+
+	void RenderOpaquePass::FSeenSet::Grow()
+	{
+		std::vector<const void *> oldKeys;
+		std::vector<uint32_t> oldGenerations;
+		oldKeys.swap(Keys);
+		oldGenerations.swap(Generations);
+		const size_t size = oldKeys.empty() ? 256 : oldKeys.size() * 2;
+		Keys.assign(size, nullptr);
+		Generations.assign(size, 0);
+		Count = 0;
+		for (size_t i = 0; i < oldKeys.size(); ++i)
+			if (oldGenerations[i] == Generation) Insert(oldKeys[i]);
+	}
+#endif
+
 	void RenderOpaquePass::AddSprites(sector_t *sec, int lightlevel, WaterFakeSide fakeside, bool foggy, FDynamicColormap *basecolormap)
 	{
 		// BSP is traversed by subsector.
 		// A sector might have been split into several
 		//	subsectors during BSP building.
 		// Thus we check whether it was already added.
+#ifdef __3DS__
+		if (sec->touching_renderthings == nullptr || !SeenSpriteSectors.Insert(sec))
+			return;
+#else
 		if (sec->touching_renderthings == nullptr || SeenSpriteSectors.find(sec) != SeenSpriteSectors.end()/*|| sec->validcount == validcount*/)
 			return;
 
 		// Well, now it will be done.
 		//sec->validcount = validcount;
 		SeenSpriteSectors.insert(sec);
+#endif
 
 		// Handle all things in sector.
 		for (auto p = sec->touching_renderthings; p != nullptr; p = p->m_snext)
 		{
 			auto thing = p->m_thing;
+#ifdef __3DS__
+			if (!SeenActors.Insert(thing)) continue;
+			// Two cheap rejections first, before the sprite's frame is worked out: past MAP01's
+			// fog (IsPotentiallyVisible's own test, which comes after its other checks), and well
+			// behind the camera, where not even the edge of a sprite can show.
+			{
+				const DVector3 &eye = Thread->Viewport->viewpoint.Pos;
+				const double dx = thing->X() - eye.X, dy = thing->Y() - eye.Y;
+				if (Map01RootDistanceCullActive(Thread) &&
+					Map01ExteriorDistanceCullCandidate(thing->Sector) &&
+					dx * dx + dy * dy + (thing->Z() - eye.Z) * (thing->Z() - eye.Z) > Map01CullDistanceSquared())
+				{
+					I_3DSRecordDrawDistanceSpriteCull();
+					continue;
+				}
+				const double forward = dx * Thread->Viewport->viewpoint.Cos + dy * Thread->Viewport->viewpoint.Sin;
+				if (forward < -256.0) continue;
+			}
+#else
 			if (SeenActors.find(thing) != SeenActors.end()) continue;
 			SeenActors.insert(thing);
+#endif
 			//if (thing->validcount == validcount) continue;
 			//thing->validcount = validcount;
 
