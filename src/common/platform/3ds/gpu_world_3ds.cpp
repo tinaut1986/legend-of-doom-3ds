@@ -832,6 +832,11 @@ bool I_3DSGpuWorldActive()
 	return Active && (lod3ds_gpu_world || !LOD3DS_DEBUG_TOOLS);
 }
 
+bool I_3DSGpuWorldEnabled()
+{
+	return lod3ds_gpu_world || !LOD3DS_DEBUG_TOOLS;
+}
+
 #else
 
 void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *) {}
@@ -840,5 +845,6 @@ void I_3DSGpuWorldAddSprite(FGameTexture *, double, double, double, double, doub
 	int, bool, const sector_t *, int, double, uint32_t) {}
 void I_3DSGpuWorldCapture(swrenderer::RenderThread *) {}
 bool I_3DSGpuWorldActive() { return false; }
+bool I_3DSGpuWorldEnabled() { return false; }
 
 #endif

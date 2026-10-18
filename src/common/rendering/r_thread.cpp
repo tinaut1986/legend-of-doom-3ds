@@ -249,8 +249,12 @@ void DrawerThreads::StartThreads()
 		num_threads = r_multithreaded;
 
 	#ifdef __3DS__
-	// Only CPU0 and CPU2 are available to raster workers.
+	// Only CPU0 and CPU2 are available to raster workers. The Old 3DS / 2DS has no CPU2: one
+	// worker, which also saves the second worker's ~450 KB of raster data (census, 2026-10-17).
 	num_threads = clamp(num_threads, 1, 2);
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+	if (!isNew3DS) num_threads = 1;
 	#endif
 
 	if (num_threads != (int)threads.size())

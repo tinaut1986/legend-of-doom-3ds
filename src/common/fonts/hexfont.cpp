@@ -70,7 +70,14 @@ struct HexDataSource
 			int codepoint = (int)strtoull(sc.String, nullptr, 16);
 			sc.MustGetStringName(":");
 			sc.MustGetString();
-			if (codepoint >= 0 && codepoint < 65536 && !sc.Compare("00000000000000000000000000000000"))	// don't set up empty glyphs.
+#ifdef __3DS__
+			// Latin and punctuation only: the game shows English and Spanish, and the whole
+			// Unicode font took 2 MB of the 2DS's heap plus a texture per glyph (census, 2026-10-17).
+			const bool wanted = codepoint < 0x250 || (codepoint >= 0x2000 && codepoint < 0x20d0) || codepoint == 0xfffd;
+#else
+			const bool wanted = true;
+#endif
+			if (wanted && codepoint >= 0 && codepoint < 65536 && !sc.Compare("00000000000000000000000000000000"))	// don't set up empty glyphs.
 			{
 				unsigned size = (unsigned)strlen(sc.String);
 				unsigned offset = glyphdata.Reserve(size / 2 + 1);
