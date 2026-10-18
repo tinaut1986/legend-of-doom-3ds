@@ -524,6 +524,16 @@ void AddSeg(const seg_t *seg, const DVector2 &eye)
 	const double backFloorB = back->floorplane.ZatPoint(seg->v2);
 	const double backCeilA = back->ceilingplane.ZatPoint(seg->v1);
 	const double backCeilB = back->ceilingplane.ZatPoint(seg->v2);
+	// A cave's own walls where the next sector's floor meets its ceiling: the walk counts them
+	// solid and clips everything behind, and the swrenderer paints the cave's sky (black) above
+	// them. Here they go on up in black to the next sector's ceiling, or the sky showed there.
+	if (BlackCave(front) && !BlackCave(back) && (backCeilA > frontCeilA || backCeilB > frontCeilB))
+	{
+		if (FGameTexture *black = TexMan.GetGameTexture(BlackFlat(), true))
+			AddWall(black, a, b, frontCeilA, frontCeilB, std::max(backCeilA, frontCeilA),
+				std::max(backCeilB, frontCeilB), frontCeilA, along, side, side_t::top, lightLevel,
+				exterior);
+	}
 	const bool caveMouth = BlackCave(back) && !BlackCave(front);
 	const bool bothSky = front->GetTexture(sector_t::ceiling) == skyflatnum &&
 		back->GetTexture(sector_t::ceiling) == skyflatnum && !caveMouth;
