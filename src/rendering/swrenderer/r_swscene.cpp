@@ -29,6 +29,9 @@
 #include "hw_material.h"
 #include "swrenderer/r_renderer.h"
 #include "r_swscene.h"
+#ifdef __3DS__
+#include "common/platform/3ds/perf_3ds.h"
+#endif
 #include "filesystem.h"
 #include "d_player.h"
 #include "bitmap.h"
@@ -137,6 +140,9 @@ sector_t *SWSceneDrawer::RenderView(player_t *player)
 		DCanvas *canvas = screen->GetCanvas();
 		SWRenderer->RenderView(player, canvas, canvas->GetPixels(), canvas->GetPitch());
 
+#ifdef __3DS__
+		F3DSSection section("view: after (2D, sprites)");
+#endif
 		int cm = CM_DEFAULT;
 		auto map = swrenderer::CameraLight::Instance()->ShaderColormap();
 		if (map) cm = (int)(ptrdiff_t)(map - SpecialColormaps.Data()) + CM_FIRSTSPECIALCOLORMAP;

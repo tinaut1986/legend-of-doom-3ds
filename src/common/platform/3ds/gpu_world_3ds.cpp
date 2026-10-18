@@ -49,6 +49,7 @@
 #include "swrenderer/r_swcolormaps.h"
 #include "swrenderer/distance_fog_math.h"
 #include "gpu_3ds.h"
+#include "perf_3ds.h"
 #include "lod3ds_version.h"
 
 CVAR(Bool, lod3ds_gpu_world, true, 0)
@@ -746,6 +747,8 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		(uint32_t(Map01DistanceFogRed) << 24) | (uint32_t(Map01DistanceFogGreen) << 16) |
 		(uint32_t(Map01DistanceFogBlue) << 8) | 0xff);
 
+	const uint64_t sectionBegun = svcGetSystemTick();
+	I_3DSSectionAdd("capture: setup", sectionBegun - start);
 	BatchIndex.clear();
 	TextureCache.clear();
 	SpriteTextureCache.clear();
@@ -765,6 +768,8 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		AddFlat(sub, sector, sector_t::ceiling, eye3);
 		AddFFloorPlanes(sub, sector, eye3);
 	}
+	const uint64_t sectionGeometry = svcGetSystemTick();
+	I_3DSSectionAdd("capture: geometry", sectionGeometry - sectionBegun);
 	// The opaque sprites with the world; the see-through ones after every opaque batch, far
 	// to near (I_3DSGpuWorldQueueBlended draws them in that order).
 	for (const FSprite &sprite : Sprites)
@@ -802,6 +807,8 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 	std::sort(SeeThrough.begin(), SeeThrough.end(),
 		[](const FSeeThrough &a, const FSeeThrough &b) { return a.Depth > b.Depth; });
 
+	const uint64_t sectionSprites = svcGetSystemTick();
+	I_3DSSectionAdd("capture: sprites, sort", sectionSprites - sectionGeometry);
 	uint32_t vertices = 0;
 	for (size_t i = 0; i < BatchesUsed; ++i)
 	{
@@ -829,6 +836,7 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		vertices += static_cast<uint32_t>(face.Vertices.size());
 	}
 
+	I_3DSSectionAdd("capture: queue", svcGetSystemTick() - sectionSprites);
 	StatTicks += svcGetSystemTick() - start;
 	StatFrames += 1;
 	StatVertices += vertices;
