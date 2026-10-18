@@ -45,6 +45,13 @@ the map-change loading box (area name, phase, bar; `map-*` stages in `startup.lo
 messages in its small NES font on a black band, along the bottom (default) or top of the picture
 (OPTIONS -> DISPLAY -> MESSAGES), with the 23 English pickup messages translated through Tr().
 
+**Merged into the line on 2026-10-18, night:** the touch screen map built every third tic and through a
+grid of the level's subsectors and lines (2DS, MAP01 at the owner's 27 fps spot: the touch screen
+6.2 -> 0.8 ms a frame, 1.4 zoomed out; 28.2 -> 31.2 fps before the grid; forced 3D 24.4 -> 26.6), and
+OPTIONS -> DEVELOPER -> FORCE 3D. What is left of that frame (37 ms): logic 11 ms (9 ms a tic: 44
+fires and 66 PointLights ticking, "clear interpolation" 1.7 ms, the player 1.8 ms), the world walk
+7 ms, the GPU world capture 5 ms, present 2 ms; in 3D the GPU adds ~6 ms.
+
 **Branches:**
 
 | Branch | What | State |
@@ -73,7 +80,7 @@ that cost less. Then merging the stack. #7 and #14 last.
   `742ad9ba845f` (`0.2.5-dev.16.40+d609f5f`, the line as merged) with FBI from `/cias/`; FTP, the
   install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
   autosaves. DISTANCE HIGH.
-- **2DS**, `192.168.1.139`: installed `dde884031d1e` (the UI branches before their merge: the same code as the line);
+- **2DS**, `192.168.1.139`: installed `fd38be28c410` (`test/2ds-perf`: the same code as the line, 2026-10-18 night);
   `2696984274c1` and `742ad9ba845f` in `/cias/` are superseded. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
   the census reports and the owner's saves (first dungeon done). Luma's `crash_dump_00000000` and
   `00000019` are from the Minish Cap port and were left. Installing over the running game near its
