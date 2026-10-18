@@ -269,6 +269,23 @@ bool BlackCave(const sector_t *sector)
 		sector->GetTexture(sector_t::floor) == BlackFlat();
 }
 
+// Every MAP01 cave is roofed by a solid 3D floor at the cliff top. Most caves' ceiling is far
+// above that roof, in the open air, where black drew a square floating in the sky (#24): only a
+// ceiling that is the cave's roof goes black, the others stay sky like the sectors around.
+bool BlackCaveCeiling(const sector_t *sector)
+{
+	if (!BlackCave(sector)) return false;
+	const DVector2 centre = sector->centerspot;
+	const double ceiling = sector->ceilingplane.ZatPoint(centre);
+	for (const F3DFloor *ff : sector->e->XFloor.ffloors)
+	{
+		if ((ff->flags & (FF_EXISTS | FF_SOLID)) == (FF_EXISTS | FF_SOLID) &&
+			ff->top.plane->ZatPoint(centre) < ceiling - 1.0)
+			return false;
+	}
+	return true;
+}
+
 FGameTexture *PartTexture(const side_t *side, int part)
 {
 	const FTextureID id = side->GetTexture(part);
@@ -385,7 +402,7 @@ void AddFlat(const subsector_t *sub, const sector_t *sector, int which, const DV
 	// Only the side of the plane the eye sees.
 	const double planeZ = plane.ZatPoint(eye.XY());
 	if (which == sector_t::floor ? eye.Z <= planeZ : eye.Z >= planeZ) return;
-	const FTextureID texture = which == sector_t::ceiling && BlackCave(sector) ?
+	const FTextureID texture = which == sector_t::ceiling && BlackCaveCeiling(sector) ?
 		BlackFlat() : sector->GetTexture(which);
 	AddPlane(sub, plane, texture, sector, which, sector->lightlevel, Exterior(sector));
 }
