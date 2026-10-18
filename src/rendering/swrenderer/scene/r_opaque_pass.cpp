@@ -75,6 +75,8 @@
 
 #ifdef __3DS__
 #include "common/platform/3ds/diagnostics_3ds.h"
+#include "common/platform/3ds/perf_3ds.h"
+#include <3ds.h>
 #endif
 
 EXTERN_CVAR(Bool, r_fullbrightignoresectorcolor);
@@ -532,8 +534,17 @@ namespace swrenderer
 		}
 	}
 
+#ifdef __3DS__
+	// The walk's parts, summed over a RenderScene and handed to lod3ds_sections at its end.
+	static uint64_t WalkPlaneTicks, WalkSpriteTicks, WalkLineTicks, WalkSubsectors;
+#endif
+
 	void RenderOpaquePass::RenderSubsector(subsector_t *sub)
 	{
+#ifdef __3DS__
+		const uint64_t walkStart = svcGetSystemTick();
+		++WalkSubsectors;
+#endif
 		// Determine floor/ceiling planes.
 		// Add sprites of things in sector.
 		// Draw one or more line segments.
@@ -683,6 +694,10 @@ namespace swrenderer
 		// lightlevels on floor & ceiling lightlevels in the surrounding area.
 		// [RH] Handle sprite lighting like Duke 3D: If the ceiling is a sky, sprites are lit by
 		// it, otherwise they are lit by the floor.
+#ifdef __3DS__
+		const uint64_t walkPlanes = svcGetSystemTick();
+		WalkPlaneTicks += walkPlanes - walkStart;
+#endif
 		auto nc = !!(frontsector->Level->flags3 & LEVEL3_NOCOLOREDSPRITELIGHTING);
 		auto spriteColormap = GetSpriteColorTable(frontsector->Colormap,
 			frontsector->SpecialColors[sector_t::sprites], nc);
@@ -703,6 +718,10 @@ namespace swrenderer
 		}
 
 		DVector2 viewpointPos = Thread->Viewport->viewpoint.Pos.XY();
+#ifdef __3DS__
+		const uint64_t walkSprites = svcGetSystemTick();
+		WalkSpriteTicks += walkSprites - walkPlanes;
+#endif
 
 		seg_t *line = sub->firstline;
 		int count = sub->numlines;
@@ -730,6 +749,9 @@ namespace swrenderer
 			}
 			line++;
 		}
+#ifdef __3DS__
+		WalkLineTicks += svcGetSystemTick() - walkSprites;
+#endif
 		if (outersubsector)
 		{
 			InSubsector = nullptr;
@@ -921,7 +943,20 @@ namespace swrenderer
 		SeenActors.clear();
 
 		InSubsector = nullptr;
+#ifdef __3DS__
+		WalkPlaneTicks = WalkSpriteTicks = WalkLineTicks = WalkSubsectors = 0;
+		const uint64_t walkStart = svcGetSystemTick();
+#endif
 		RenderBSPNode(Level->HeadNode());	// The head node is the last node output.
+#ifdef __3DS__
+		const uint64_t walkTotal = svcGetSystemTick() - walkStart;
+		I_3DSSectionAdd("walk: planes", WalkPlaneTicks);
+		I_3DSSectionAdd("walk: sprites, particles", WalkSpriteTicks);
+		I_3DSSectionAdd("walk: lines", WalkLineTicks);
+		I_3DSSectionAdd("walk: bsp, rest",
+			walkTotal - WalkPlaneTicks - WalkSpriteTicks - WalkLineTicks);
+		I_3DSSectionAdd("walk: subsectors (x1000 = count)", WalkSubsectors * SYSCLOCK_ARM11 / 1000000);
+#endif
 
 		if (Thread->MainThread)
 			WallCycles.Unclock();
