@@ -16,7 +16,7 @@ This repository is a Nintendo 3DS adaptation of GZDoom 4.7.1. The main source tr
 | curl | 8.4.0 with devkitPro 3DS patches | HTTPS updater transport | curl license, under `platform/3ds/update-dependencies/` |
 | mbedTLS | 2.28.8 with devkitPro 3DS patches | TLS and SHA-256 verification | Apache-2.0, under `platform/3ds/update-dependencies/` |
 | Jansson | 2.14 | Release metadata parsing | MIT, under `platform/3ds/update-dependencies/` |
-| Freedoom: Phase 2 | 0.13.0 | Free Doom-compatible IWAD | BSD-3-Clause; the SD package includes `FREEDOOM-COPYING.txt` |
+| Freedoom: Phase 2 | 0.13.0 | Free Doom-compatible IWAD | BSD-3-Clause; the SD package includes `FREEDOOM-COPYING.txt`. Shipped trimmed to the lumps the game uses (`platform/3ds/tools/slim-iwad.py`) |
 
 The build downloads source dependencies from their official repositories and applies the compatibility patches under `platform/3ds/patches/`.
 
