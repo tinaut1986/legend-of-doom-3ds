@@ -6667,6 +6667,22 @@ bool I_3DSNoAudioRequested()
 	return false;
 }
 
+void I_3DSAudioCpuBudget()
+{
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+	if (isNew3DS) return;
+	// The 2DS played the music a few seconds on, a few seconds off: the MP3 decoder and OpenAL's
+	// mixer share core 1, where the application gets 30% by default (2026-10-18).
+	u32 previous = 0;
+	APT_GetAppCpuTimeLimit(&previous);
+	const Result result = APT_SetAppCpuTimeLimit(80);
+	char stage[80];
+	std::snprintf(stage, sizeof(stage), "audio cpu limit %lu -> 80: %s", (unsigned long)previous,
+		R_SUCCEEDED(result) ? "ok" : "refused");
+	I_3DSStartupLog(stage);
+}
+
 bool I_3DSUnsupportedConsoleScreen()
 {
 	return UnsupportedConsoleScreen();

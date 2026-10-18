@@ -25,6 +25,9 @@ void I_3DSWriteFatalLog(const char *message);
 bool I_3DSUnsupportedConsoleScreen();
 // Debug builds: a no-audio.txt in the data folder starts the game without audio (Old 3DS bring-up).
 bool I_3DSNoAudioRequested();
+// After the audio starts: on the Old 3DS / 2DS, more of core 1 for the NDSP mixer and the music
+// stream (both run there), which at the 30% the mixer asks for could not keep up (#16).
+void I_3DSAudioCpuBudget();
 void I_3DSLoadingScreenStart();
 void I_3DSLoadingScreenFinish();
 
