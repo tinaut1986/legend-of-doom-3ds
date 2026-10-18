@@ -6677,11 +6677,31 @@ void I_3DSAudioCpuBudget()
 	u32 previous = 0;
 	APT_GetAppCpuTimeLimit(&previous);
 	const Result result = APT_SetAppCpuTimeLimit(80);
-	char stage[80];
-	std::snprintf(stage, sizeof(stage), "audio cpu limit %lu -> 80: %s", (unsigned long)previous,
-		R_SUCCEEDED(result) ? "ok" : "refused");
+	char stage[96];
+	std::snprintf(stage, sizeof(stage), "audio cpu limit %lu -> 80: %s 0x%08lx", (unsigned long)previous,
+		R_SUCCEEDED(result) ? "ok" : "refused", (unsigned long)result);
 	I_3DSStartupLog(stage);
 }
+
+#if LOD3DS_DEBUG_TOOLS
+// lod3ds_audiocpu [PERCENT]: reads core 1's time limit for the application, or sets it (#16).
+CCMD(lod3ds_audiocpu)
+{
+	u32 current = 0;
+	const Result get = APT_GetAppCpuTimeLimit(&current);
+	if (argv.argc() < 2)
+	{
+		Printf("audio cpu limit %lu (0x%08lx)\n", (unsigned long)current, (unsigned long)get);
+		return;
+	}
+	const u32 wanted = (u32)atoi(argv[1]);
+	const Result set = APT_SetAppCpuTimeLimit(wanted);
+	u32 now = 0;
+	APT_GetAppCpuTimeLimit(&now);
+	Printf("audio cpu limit %lu -> %lu: 0x%08lx, now %lu\n", (unsigned long)current,
+		(unsigned long)wanted, (unsigned long)set, (unsigned long)now);
+}
+#endif
 
 bool I_3DSUnsupportedConsoleScreen()
 {
