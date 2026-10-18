@@ -41,6 +41,8 @@
 #include "v_video.h"
 #include "i_time.h"
 #include "c_notifybufferbase.h"
+#include "v_font.h"
+#include "v_draw.h"
 
 struct FNotifyBuffer : public FNotifyBufferBase
 {
@@ -83,6 +85,18 @@ void FNotifyBuffer::Clear()
 
 }
 
+// The notify lines' font. On the 3DS, the game's own dialogue font (the old men's hints use it,
+// lod.acs) instead of the engine's generic one; the generic one if the mod lacks it.
+static FFont *NotifyFont()
+{
+#ifdef __3DS__
+	static FFont *gameFont = nullptr; // looked up again until the fonts are loaded
+	if (gameFont == nullptr) gameFont = V_GetFont("ZeldFNT2");
+	if (gameFont != nullptr) return gameFont;
+#endif
+	return generic_ui ? NewSmallFont : AlternativeSmallFont;
+}
+
 void FNotifyBuffer::AddString(int printlevel, FString source)
 {
 	if (!show_messages ||
@@ -106,7 +120,10 @@ void FNotifyBuffer::AddString(int printlevel, FString source)
 	}
 
 	int width = DisplayWidth / active_con_scaletext(twod, generic_ui);
-	FFont *font = generic_ui ? NewSmallFont : AlternativeSmallFont;
+#ifdef __3DS__
+	width -= 16; // room for the band's margins
+#endif
+	FFont *font = NotifyFont();
 	FNotifyBufferBase::AddString(printlevel & PRINT_TYPES, font, source, width, con_notifytime, con_notifylines);
 }
 
@@ -116,12 +133,19 @@ void FNotifyBuffer::Draw()
 	int line, lineadv, color, j;
 	bool canskip;
 	
-	FFont* font = generic_ui ? NewSmallFont : AlternativeSmallFont;
+	FFont* font = NotifyFont();
 
 	line = Top + font->GetDisplacement();
 	canskip = true;
 
 	lineadv = font->GetHeight ();
+#ifdef __3DS__
+	// In the game's style: centred at the top, white, each line on a black band, as the NES game
+	// writes its text.
+	center = true;
+	line += 4;
+	lineadv += 4;
+#endif
 
 	for (unsigned i = 0; i < Text.Size(); ++ i)
 	{
@@ -148,13 +172,10 @@ void FNotifyBuffer::Draw()
 			const int textX = center ? (twod->GetWidth() -
 				font->StringWidth(notify.Text) * scale) / 2 / scale : 0;
 			#ifdef __3DS__
-			// A one-pixel black shadow keeps pickup notices legible over bright
-			// skies, waterfalls and dungeon floors without changing their color.
-			DrawText(twod, font, CR_BLACK, textX + 1, line + 1, notify.Text,
-				DTA_VirtualWidth, twod->GetWidth() / scale,
-				DTA_VirtualHeight, twod->GetHeight() / scale,
-				DTA_KeepRatio, true,
-				DTA_Alpha, alpha, TAG_DONE);
+			color = CR_UNTRANSLATED;
+			const int textWidth = font->StringWidth(notify.Text);
+			Dim(twod, 0, float(alpha * 0.85), (textX - 6) * scale, (line - 3) * scale,
+				(textWidth + 12) * scale, (font->GetHeight() + 5) * scale);
 			#endif
 			DrawText(twod, font, color, textX, line, notify.Text,
 					DTA_VirtualWidth, twod->GetWidth() / scale,
