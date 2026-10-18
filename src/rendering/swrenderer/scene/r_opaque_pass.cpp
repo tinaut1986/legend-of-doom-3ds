@@ -611,11 +611,20 @@ namespace swrenderer
 
 		FSectorPortal *portal = frontsector->ValidatePortal(sector_t::ceiling);
 
+#ifdef __3DS__
+		// The GPU draws the world (gpu_world_3ds.cpp): the visible planes are never drawn and the
+		// walls mark none (RenderWallSegment returns at once), so none is made. 1 ms of each frame
+		// in MAP01 on the 2DS went to finding them (2026-10-18). The save picture, drawn by the
+		// CPU with the GPU world suspended, still gets them.
+		const bool planesWanted = !I_3DSGpuWorldActive();
+#else
+		const bool planesWanted = true;
+#endif
 		VisiblePlane *ceilingplane = nullptr;
-		if (frontsector->ceilingplane.PointOnSide(Thread->Viewport->viewpoint.Pos) > 0 ||
+		if (planesWanted && (frontsector->ceilingplane.PointOnSide(Thread->Viewport->viewpoint.Pos) > 0 ||
 			frontsector->GetTexture(sector_t::ceiling) == skyflatnum ||
 			portal ||
-			(frontsector->GetHeightSec() && frontsector->heightsec->GetTexture(sector_t::floor) == skyflatnum))
+			(frontsector->GetHeightSec() && frontsector->heightsec->GetTexture(sector_t::floor) == skyflatnum)))
 		{
 			ceilingplane = Thread->PlaneList->FindPlane(
 				frontsector->ceilingplane,
@@ -656,10 +665,10 @@ namespace swrenderer
 		portal = frontsector->ValidatePortal(sector_t::floor);
 
 		VisiblePlane *floorplane = nullptr;
-		if (frontsector->floorplane.PointOnSide(Thread->Viewport->viewpoint.Pos) > 0 ||
+		if (planesWanted && (frontsector->floorplane.PointOnSide(Thread->Viewport->viewpoint.Pos) > 0 ||
 			frontsector->GetTexture(sector_t::floor) == skyflatnum ||
 			portal ||
-			(frontsector->GetHeightSec() && frontsector->heightsec->GetTexture(sector_t::ceiling) == skyflatnum))
+			(frontsector->GetHeightSec() && frontsector->heightsec->GetTexture(sector_t::ceiling) == skyflatnum)))
 		{
 			floorplane = Thread->PlaneList->FindPlane(frontsector->floorplane,
 				frontsector->GetTexture(sector_t::floor),
