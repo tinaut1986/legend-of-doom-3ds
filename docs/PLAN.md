@@ -69,8 +69,7 @@ that cost less. Then merging the stack. #7 and #14 last.
   install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
   autosaves. DISTANCE HIGH.
 - **2DS**, `192.168.1.139`: installed `0db5fd8cb895` (the line as merged on 2026-10-18, later);
-  `2696984274c1` and `742ad9ba845f` in `/cias/` are superseded by SITE INSTALL; `742ad9ba845f` in `/cias/` is
-  superseded. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
+  `2696984274c1` and `742ad9ba845f` in `/cias/` are superseded. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (no `no-audio.txt`: audio on),
   the census reports and the owner's saves (first dungeon done). Luma's `crash_dump_00000000` and
   `00000019` are from the Minish Cap port and were left. Installing over the running game near its
   memory limit can close it: then upload over ftpd.
