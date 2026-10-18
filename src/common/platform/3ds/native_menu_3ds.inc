@@ -309,6 +309,12 @@ int OptionTabIndex(FName menu)
 	return -1;
 }
 
+// Option menus opened from a tab, drawn here without the tabs: their title instead.
+bool OptionSubmenu(FName menu)
+{
+	return menu == FName("LegendButtonsMenu");
+}
+
 // A menu label: a $STRING of the table, or English text the port translates itself (Tr).
 const char *Localized(const FString &text)
 {
@@ -477,7 +483,8 @@ bool NativeMenuSupported()
 	if (CurrentMenu->GetClass()->TypeName == FName("LegendSplitOptionMenu"))
 	{
 		auto *descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
-		if (descriptor == nullptr || OptionTabIndex(descriptor->mMenuName) < 0) return false;
+		if (descriptor == nullptr || (OptionTabIndex(descriptor->mMenuName) < 0 &&
+			!OptionSubmenu(descriptor->mMenuName))) return false;
 		TArray<FNativeRow> rows;
 		return DescribeOptionMenu(descriptor, rows);
 	}
@@ -535,7 +542,14 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 	DescribeOptionMenu(descriptor, rows);
 	const int currentTab = OptionTabIndex(descriptor->mMenuName);
 
-	for (int tab = 0; tab < OptionTabCount; ++tab)
+	if (currentTab < 0)
+	{
+		// BUTTONS: the scheme it edits after the title (#22).
+		FString title = Localized(descriptor->mTitle);
+		title << ": " << Tr(I_3DSButtonCameraScheme() ? "BUTTON CAMERA" : "CLASSIC");
+		NesText(framebuffer, 16, 10, title.GetChars(), 1, NesGold);
+	}
+	for (int tab = 0; currentTab >= 0 && tab < OptionTabCount; ++tab)
 	{
 		const bool active = tab == currentTab;
 		const int x = 8 + tab * 76;
@@ -617,7 +631,7 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 			break;
 		}
 	}
-	NesHint(framebuffer, "L R TAB   A CHANGE   B BACK");
+	NesHint(framebuffer, currentTab < 0 ? "A CHANGE   B BACK" : "L R TAB   A CHANGE   B BACK");
 }
 
 // Splits `text` into lines of at most `columns` characters, at spaces where it can.
@@ -853,22 +867,27 @@ void DrawNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int hei
 
 void DrawNativeControlsMenu(unsigned char *framebuffer)
 {
-	// The same list as LegendControlsReferenceMenu's ZScript Drawer (the game patch).
-	static constexpr const char *Inputs[] = {
-		"CIRCLE PAD", "C-STICK / TOUCH", "A", "R", "L", "X", "Y",
-		"DPAD LEFT / RIGHT", "ZL / ZR", "DPAD DOWN", "DPAD UP", "START", "SELECT" };
-	static constexpr const char *Actions[] = {
-		"MOVE / STRAFE", "LOOK", "USE / INTERACT", "ATTACK", "ALT ATTACK",
-		"SPRINT AT FULL LIFE", "JUMP", "CHANGE WEAPON", "CHANGE ITEM", "USE ITEM", "MAP",
-		"PAUSE", "MENU / OVERLAY" };
-	NesCenteredText(framebuffer, 8, Tr("CONTROLS"), 2, NesRed);
-	for (int row = 0; row < 13; ++row)
+	// The active scheme and what its buttons do now, from the bindings (#22). The same list as
+	// LegendControlsReferenceMenu's ZScript Drawer (the game patch).
+	const bool camera = I_3DSButtonCameraScheme();
+	NesCenteredText(framebuffer, 6, Tr("CONTROLS"), 2, NesRed);
+	NesCenteredText(framebuffer, 26, Tr(camera ? "BUTTON CAMERA" : "CLASSIC"), 1, NesGold);
+	int y = 40;
+	auto row = [&](const char *input, const char *action) {
+		const char *shown = Tr(input);
+		NesText(framebuffer, 152 - NesTextWidth(shown, 1), y, shown, 1, NesGold);
+		NesText(framebuffer, 168, y, Tr(action), 1, NesWhite);
+		y += 11;
+	};
+	row("CIRCLE PAD", camera ? "MOVE / SPRINT AT EDGE" : "MOVE / STRAFE");
+	row("C-STICK / TOUCH", "LOOK");
+	for (int slot = 0; slot < I_3DSRemappableButtonCount(); ++slot)
 	{
-		const int y = 32 + row * 15;
-		const char *input = Tr(Inputs[row]);
-		NesText(framebuffer, 152 - NesTextWidth(input, 1), y, input, 1, NesGold);
-		NesText(framebuffer, 168, y, Tr(Actions[row]), 1, NesWhite);
+		const char *action = I_3DSRemappableButtonAction(slot);
+		if (std::strcmp(action, "NONE") != 0) row(I_3DSRemappableButtonLabel(slot), action);
 	}
+	row("START", "PAUSE");
+	row("SELECT", "MENU / OVERLAY");
 	NesHint(framebuffer, "B BACK");
 }
 

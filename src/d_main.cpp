@@ -50,6 +50,7 @@
 #ifdef __3DS__
 #include "common/platform/3ds/diagnostics_3ds.h"
 #include "common/platform/3ds/gpu_3ds.h"
+#include "common/platform/3ds/i_input_3ds.h"
 #include "common/platform/3ds/memory_3ds.h"
 #include "common/platform/3ds/aim_crosshair.inc"
 #endif
@@ -3641,6 +3642,9 @@ static int D_DoomMain_Internal (void)
 		D_GrabCVarDefaults(); //parse DEFCVARS
 
 		GameConfig->DoKeySetup(gameinfo.ConfigName);
+#ifdef __3DS__
+		I_3DSApplyControlScheme(); // the control scheme's buttons over the loaded bindings (#22)
+#endif
 
 		// Now that wads are loaded, define mod-specific cvars.
 		ParseCVarInfo();

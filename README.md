@@ -48,7 +48,7 @@ Audio on a real console requires its own DSP firmware at `sdmc:/3ds/dspfirm.cdc`
 
 - New menus drawn natively for the bottom screen: options change in place (button or touch) with no nested submenus, in English and Spanish.
 - NES-style bottom screen during play: items, map and hearts.
-- Circle Pad movement and configurable C-Stick / touch camera input.
+- Two remappable control schemes: C-Stick / touch camera, or a camera on the buttons for the Old 3DS / 2DS.
 - Save/load menus with previews and the native Nintendo 3DS keyboard.
 - Music and sound effects through OpenAL Soft/NDSP.
 - A draw distance option.
@@ -57,25 +57,30 @@ Audio on a real console requires its own DSP firmware at `sdmc:/3ds/dspfirm.cdc`
 
 ## Controls
 
-The in-game control reference is authoritative if it differs from this table.
+Two control schemes, chosen in OPTIONS -> CONTROL -> SCHEME: **CLASSIC** (the default on the
+New 3DS family) and **BUTTON CAMERA** (the default on the Old 3DS / 2DS, which have no C-Stick).
+Each one keeps its own buttons, remappable in OPTIONS -> CONTROL -> BUTTONS (DEFAULTS restores
+them); CONTROLS shows what every button does now. In both, walking into a locked door or a push
+block uses it, as on the NES.
 
-| Nintendo 3DS input | Action |
-|---|---|
-| Circle Pad | Move / strafe |
-| C-Stick | Look |
-| Touch screen | Look when camera input is Touch or Both; select menu rows and items |
-| A | Use / interact; confirm in menus |
-| B | Back / cancel in menus |
-| X | Sprint at full health (optional) |
-| Y | Jump |
-| L / R | Alternate attack / attack |
-| ZL / ZR | Previous / next inventory item |
-| D-Pad left / right | Previous / next weapon |
-| D-Pad down | Use inventory item |
-| D-Pad up | Automap |
-| START / SELECT | Open the menu |
+| Nintendo 3DS input | CLASSIC | BUTTON CAMERA |
+|---|---|---|
+| Circle Pad | Move / strafe | Move / strafe; sprint at its edge (full health) |
+| C-Stick, touch screen | Look (as CAMERA INPUT says) | Look as well (New 3DS) |
+| A | Use / interact | Turn right |
+| B | — | Look down |
+| X | Sprint at full health | Look up |
+| Y | Jump | Turn left |
+| L / R | Alternate attack / attack | Alternate attack / attack |
+| ZL / ZR | Previous / next inventory item | — |
+| D-Pad left / right | Previous / next weapon | Previous / next weapon |
+| D-Pad down | Use inventory item | Automap |
+| D-Pad up | Automap | Use / interact |
+| START / SELECT | Open the menu | Open the menu |
 
-Controller options include C-Stick sensitivity, C-Stick/Touch/Both camera input, the full-health X sprint toggle and a control reference.
+In menus A confirms and B goes back, whatever the scheme. Controller options also include the
+camera sensitivity (it sets the buttons' turning speed too), C-Stick/Touch/Both camera input and
+the full-health sprint toggle.
 
 ## Updating
 

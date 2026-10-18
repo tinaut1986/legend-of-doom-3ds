@@ -2125,6 +2125,93 @@ void P_FakeZMovement(AActor *mo)
 //
 //===========================================================================
 
+#ifdef __3DS__
+//===========================================================================
+//
+// Walking into a door or a push block uses it, as in the NES game (#22).
+// Only the lines whose use runs one of these scripts of the game: what the
+// player opens or moves by bumping into it there. Once per contact: another
+// only after a few tics without touching that line, so a locked door spends
+// exactly one key.
+//
+//===========================================================================
+
+static bool P_3DSWalkIntoLine(const line_t *line)
+{
+	static const FName WalkIntoScripts[] = {
+		"UnlockAndOpenDoor", "RevealStairs", "RevealSecret", "RevealDoor",
+		"RevealPowerBracelet", "ToggleShoreMusic" };
+	if (!P_IsACSSpecial(line->special) || line->args[0] >= 0) return false;
+	const FName script = ENamedName(-line->args[0]);
+	for (const FName &name : WalkIntoScripts)
+		if (script == name) return true;
+	return false;
+}
+
+static void P_3DSWalkIntoUse(line_t *line, int side, AActor *mobj)
+{
+	constexpr int ContactGapTics = 10;
+	static line_t *lastLine;
+	static int lastTouch = INT_MIN / 2;
+
+	player_t *player = mobj->player;
+	if (player == nullptr || player->mo != mobj || (player->cheats & CF_PREDICTING)) return;
+	if (!P_3DSWalkIntoLine(line)) return;
+	const int activation = side == 0 ? SPAC_Use : SPAC_UseBack;
+	if (!(line->activation & activation)) return;
+
+	const int now = mobj->Level->maptime;
+	const bool sameContact = line == lastLine && now >= lastTouch && now - lastTouch <= ContactGapTics;
+	lastLine = line;
+	lastTouch = now;
+	if (sameContact) return;
+	P_ActivateLine(line, mobj, side, activation);
+}
+
+//===========================================================================
+//
+// Whether the player's use would reach something now, along the same trace
+// as P_UseLines, without activating it: a line it can use from this side or
+// a thing that reacts to use. For the first interaction hint. The lines used
+// by walking into them do not count: they need no button, and some of them
+// do nothing yet (a locked door without a key, a rock without the bracelet).
+//
+//===========================================================================
+
+bool P_3DSUseTargetInRange(AActor *usething)
+{
+	const DVector2 start = usething->GetPortalTransition(usething->Height / 2);
+	const DVector2 end = start + usething->Angles.Yaw.ToVector(usething->FloatVar(NAME_UseRange));
+	FPathTraverse it(usething->Level, start.X, start.Y, end.X, end.Y, PT_ADDLINES | PT_ADDTHINGS);
+	DVector3 xpos = { start.X, start.Y, usething->Z() };
+	intercept_t *in;
+	while ((in = it.Next()))
+	{
+		if (!in->isaline)
+		{
+			AActor *const mobj = in->d.thing;
+			if (mobj != usething && (mobj->flags5 & MF5_USESPECIAL || mobj->special == UsePuzzleItem))
+				return true;
+			continue;
+		}
+		if (it.PortalRelocate(in, PT_ADDLINES | PT_ADDTHINGS, &xpos)) continue;
+		line_t *const line = in->d.line;
+		// From the front only: the lines used from behind are the shore's music switches.
+		if (line->special != 0 && (line->activation & (SPAC_Use | SPAC_UseThrough)) &&
+			P_PointOnLineSide(xpos, line) == 0)
+		{
+			if (P_3DSWalkIntoLine(line)) return false;
+			return true;
+		}
+		if (line->flags & (ML_BLOCKEVERYTHING | ML_BLOCKUSE)) return false;
+		FLineOpening open;
+		P_LineOpening(open, nullptr, line, it.InterceptPoint(in));
+		if (open.range <= 0) return false;
+	}
+	return false;
+}
+#endif
+
 static void CheckForPushSpecial(line_t *line, int side, AActor *mobj, DVector2 *posforwindowcheck)
 {
 	if (line->special && !(mobj->flags6 & MF6_NOTRIGGER))
@@ -2166,6 +2253,9 @@ static void CheckForPushSpecial(line_t *line, int side, AActor *mobj, DVector2 *
 			}
 		}
 	isblocking:
+#ifdef __3DS__
+		P_3DSWalkIntoUse(line, side, mobj);
+#endif
 		if (mobj->flags2 & MF2_PUSHWALL)
 		{
 			P_ActivateLine(line, mobj, side, SPAC_Push);
