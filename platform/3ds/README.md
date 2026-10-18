@@ -61,6 +61,7 @@ The version comes from git ([tools/version.sh](tools/version.sh)): `X.Y.Z` on a 
 | `LOD3DS_OPENAL_SOURCE_DIR` | Optional existing OpenAL Soft/NDSP checkout. |
 | `LOD3DS_SKIP_CIA=1` | Build the 3DSX and SD ZIP without the CIA. |
 | `LOD3DS_SCRIPT_VALIDATOR` | Optional native engine executable for the packaged game-script check. |
+| `LOD3DS_FULL_IWAD=1` | Ship `freedoom2.wad` whole instead of the slim copy (below). |
 
 The distribution directory is `$LOD3DS_BUILD_ROOT/dist/`, or `build-3ds/dist/` by default. Local builds use a stem such as:
 
@@ -69,6 +70,8 @@ legend-of-doom-3ds-v1.0-hardware-hybrid-<12-digit-build-id>
 ```
 
 The generated files include `.3dsx`, `.cia` (unless skipped), `-sd.zip`, `-debug-symbols.zip`, `BUILD-MANIFEST.txt` and `SHA256SUMS.txt`. Public release assets use the shorter filenames linked from the main README.
+
+The packages carry a slim `freedoom2.wad` (`tools/slim-iwad.py`, PLAN P4.9): Freedoom without the levels, demos, textures, flats, patches and sprites Legend of Doom never uses, since the engine makes an object for each one and the Old 3DS spent 44 s reading them at startup. It keeps the engine's base lumps, the sounds, the music, MAP01 (the IWAD check asks for it) and the sprites listed in the script. The script fails the build if a map of the pk3 names a texture it dropped, or a script names a dropped sprite; a sprite or texture the engine looks up by name (a `Unknown texture` line in the console when a level loads) goes into its keep lists.
 
 The CIA embeds the matching engine and game data in RomFS. The 3DSX needs the matching SD ZIP's `3ds/Legend of Doom 3DS/data/` directory. Configuration, saves, logs and dumps use `sdmc:/3ds/Legend of Doom 3DS/` for both formats. The console's DSP firmware must be dumped separately to `sdmc:/3ds/dspfirm.cdc`.
 
