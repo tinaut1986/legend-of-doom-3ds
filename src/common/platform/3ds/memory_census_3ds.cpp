@@ -202,6 +202,15 @@ void I_3DSMemoryCensus(const char *label)
 	WriteSize(out, "TArray pool in use", poolUsed);
 	WriteSize(out, "TArray pool high", poolHigh);
 	std::fprintf(out, "%-28s %10s\n", "map-load reserve", I_3DSMapLoadReserveHeld() ? "held" : "free");
+	FLargeArenaStats arena;
+	I_3DSLargeArenaStats(arena);
+	WriteSize(out, "large arena in use", arena.Used);
+	WriteSize(out, "large arena peak", arena.Peak);
+	WriteSize(out, "large arena free inside", arena.Free);
+	WriteSize(out, "large arena largest free", arena.LargestFree);
+	WriteSize(out, "gap heap break..arena", arena.Gap);
+	std::fprintf(out, "%-28s %10u used, %u free, %zu failed, 0x%08lx-0x%08lx\n", "large arena blocks",
+		arena.UsedBlocks, arena.FreeBlocks, arena.Failed, (unsigned long)arena.Low, (unsigned long)arena.High);
 	WriteSize(out, "linear free", linearSpaceFree());
 	WriteSize(out, "vram free", vramSpaceFree());
 	WriteSize(out, "app region free", osGetMemRegionFree(MEMREGION_APPLICATION));
@@ -239,6 +248,22 @@ void I_3DSMemoryCensus(const char *label)
 	for (unsigned i = 0; i < sorted.Size() && i < 30; ++i)
 		std::fprintf(out, "%-32s %7zu %10zu\n", sorted[i].Name.GetChars(), sorted[i].Count, sorted[i].Bytes);
 	std::fprintf(out, "\nCached lumps: %zu\n", cachedLumps);
+
+	std::sort(arena.Callers, arena.Callers + arena.CallerCount,
+		[](const FAllocCaller &a, const FAllocCaller &b) { return a.Bytes > b.Bytes; });
+	std::fprintf(out, "\nLarge arena, live blocks by caller (addr2line on the ELF):\n");
+	for (unsigned i = 0; i < arena.CallerCount && i < 30; ++i)
+		std::fprintf(out, "0x%08lx %6lu %10lu\n", (unsigned long)arena.Callers[i].Caller,
+			(unsigned long)arena.Callers[i].Count, (unsigned long)arena.Callers[i].Bytes);
+
+	static FAllocCaller small[40];
+	const unsigned smallCount = I_3DSSmallAllocCallers(small, 40);
+	std::sort(small, small + smallCount,
+		[](const FAllocCaller &a, const FAllocCaller &b) { return a.Bytes > b.Bytes; });
+	std::fprintf(out, "\nSmall allocations since boot by caller (not live; top 40 by bytes):\n");
+	for (unsigned i = 0; i < smallCount; ++i)
+		std::fprintf(out, "0x%08lx %8lu %10lu\n", (unsigned long)small[i].Caller,
+			(unsigned long)small[i].Count, (unsigned long)small[i].Bytes);
 	std::fclose(out);
 
 	char stage[96];

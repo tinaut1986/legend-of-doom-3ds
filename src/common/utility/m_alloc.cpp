@@ -50,6 +50,7 @@
 #include <3ds.h>
 #include "printf.h"
 #include "common/platform/3ds/diagnostics_3ds.h"
+#include "common/platform/3ds/memory_3ds.h"
 
 size_t M_3DSPoolUsed(size_t *high);
 
@@ -89,7 +90,13 @@ static void M_FatalOutOfMemory(const char *operation, size_t size, void *caller)
 #if !defined(__solaris__) && !defined(__OpenBSD__) && !defined(__DragonFly__)
 void *M_Malloc(size_t size)
 {
+#ifdef __3DS__
+	I_3DSAllocCaller = (uintptr_t)__builtin_return_address(0);
+#endif
 	void *block = malloc(size);
+#ifdef __3DS__
+	I_3DSAllocCaller = 0;
+#endif
 
 	if (block == NULL)
 #ifdef __3DS__
@@ -108,8 +115,12 @@ void *M_Realloc(void *memblock, size_t size)
 	{
 		GC::AllocBytes -= _msize(memblock);
 	}
+#ifdef __3DS__
+	I_3DSAllocCaller = (uintptr_t)__builtin_return_address(0);
+#endif
 	void *block = realloc(memblock, size);
 #ifdef __3DS__
+	I_3DSAllocCaller = 0;
 	// Large array growth in startup.log with its caller (addr2line on the ELF): these
 	// multi-megabyte blocks are what a fragmented heap fails to find.
 	if (size >= 256u * 1024u && block != NULL)
@@ -295,6 +306,10 @@ namespace
 	{
 		if (PoolTried) return;
 		PoolTried = true;
+		// No pool: the large-block arena (P4.6, large_arena_3ds.cpp) keeps every block of 32 KB or
+		// more apart from the small ones, which is what the pool did for TArray's big blocks.
+		constexpr bool UsePool = false;
+		if (!UsePool) return;
 		Pool = (char *)malloc(PoolBytes);
 		if (Pool != nullptr)
 		{
