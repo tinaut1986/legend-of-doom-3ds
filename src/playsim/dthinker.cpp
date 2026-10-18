@@ -46,6 +46,13 @@
 #include "g_cvars.h"
 #include "d_main.h"
 
+#ifdef __3DS__
+bool P_3DSStaticThinker(DThinker *thinker); // p_mobj.cpp
+void P_3DSMarkSettled(DThinker *thinker); // p_mobj.cpp
+void P_3DSRecreateLights(DThinker *thinker, void *dolights); // p_mobj.cpp
+void P_3DSTickProfileThinker(DThinker *thinker, bool skipped); // p_tick.cpp
+#endif
+
 static int ThinkCount;
 static cycle_t ThinkCycles;
 extern cycle_t BotSupportCycles;
@@ -121,6 +128,11 @@ void FThinkerCollection::RunThinkers(FLevelLocals *Level)
 
 
 	auto recreateLights = [=]() {
+#ifdef __3DS__
+		bool lights = dolights;
+		ForEachUnsettled3DS(P_3DSRecreateLights, &lights);
+		return;
+#endif
 		auto it = Level->GetThinkerIterator<AActor>();
 
 		// Set dynamic lights at the end of the tick, so that this catches all changes being made through the last frame.
@@ -583,8 +595,30 @@ void FThinkerList::SaveList(FSerializer &arc)
 //==========================================================================
 
 #ifdef __3DS__
-bool P_3DSStaticThinker(DThinker *thinker); // p_mobj.cpp
-void P_3DSTickProfileThinker(DThinker *thinker, bool skipped); // p_tick.cpp
+
+// Two passes a tic walk every actor: P_Ticker's ClearInterpolation (Prev = position, so moves
+// made by others during the tic still interpolate) and RunThinkers' lights and effects. MAP01 has
+// ~650 actors and the first alone cost 1.7 ms a tic on the 2DS (2026-10-18), most of it memory:
+// each actor's class walk and fields. The ~525 static ones that are settled (OF_Settled3DS, set
+// while TickThinkers skips them) need neither, and are skipped on their flags alone.
+void FThinkerCollection::ForEachUnsettled3DS(void (*visit)(DThinker *, void *), void *context)
+{
+	for (int stat = 0; stat <= MAX_STATNUM; ++stat)
+	{
+		for (FThinkerList *list : { &Thinkers[stat], &FreshThinkers[stat] })
+		{
+			DThinker *node = list->GetHead();
+			if (node == nullptr) continue;
+			while (!(node->ObjectFlags & OF_Sentinel))
+			{
+				DThinker *next = node->NextThinker;
+				if (!(node->ObjectFlags & OF_Settled3DS)) visit(node, context);
+				if (next == nullptr) break;
+				node = next;
+			}
+		}
+	}
+}
 #endif
 
 int FThinkerList::TickThinkers(FThinkerList *dest)
@@ -621,10 +655,12 @@ int FThinkerList::TickThinkers(FThinkerList *dest)
 #ifdef __3DS__
 			if (!(node->ObjectFlags & OF_JustSpawned) && P_3DSStaticThinker(node))
 			{
+				P_3DSMarkSettled(node);
 				P_3DSTickProfileThinker(node, true);
 				node = NextToThink;
 				continue;
 			}
+			node->ObjectFlags &= ~OF_Settled3DS;
 			P_3DSTickProfileThinker(node, false);
 #endif
 			ThinkCount++;

@@ -124,6 +124,8 @@ void TickProfileTicDone()
 }
 }
 
+void P_3DSClearInterpolation(DThinker *thinker, void *); // p_mobj.cpp
+
 void P_3DSTickProfileThinker(DThinker *thinker, bool skipped)
 {
 	if (TickProfileLeft <= 0) return;
@@ -233,6 +235,9 @@ void P_Ticker (void)
 	{
 		// todo: set up a sandbox for secondary levels here.
 		TICK_PHASE_BEGIN();
+#ifdef __3DS__
+		Level->Thinkers.ForEachUnsettled3DS(P_3DSClearInterpolation, nullptr);
+#else
 		auto it = Level->GetThinkerIterator<AActor>();
 		AActor *ac;
 
@@ -240,7 +245,7 @@ void P_Ticker (void)
 		{
 			ac->ClearInterpolation();
 		}
-
+#endif
 		TICK_PHASE_END(TP_ClearInterpolation);
 		TICK_PHASE_BEGIN();
 		P_ThinkParticles(Level);	// [RH] make the particles think
