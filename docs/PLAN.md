@@ -56,9 +56,8 @@ Claude recommends checking the 2DS saves (#21 / #23) before a stable; the owner 
 2. Ask the owner about a 2DS save test: play long, then save by hand and at caves. #21 (the save's JSON
    could not grow) is probably fixed by #25 (the GC runs again); #23 (an object freed while saved) is
    not explained, and the GC now runs every ~1 MB, which could make a dangling pointer show sooner.
-3. #28: the map stops following the player on the first dungeon's (MAP02) only underground stairs.
-4. U6-U9 (the menu after dying; every message on the top screen where MESSAGES says; the start-up bars
-   on the touch screen; UPDATE always showing the changelog).
+3. U8: the start-up progress bars on the touch screen.
+4. (Done 2026-10-19, owner-checked: U5, U6, U7, U9, #28, and weapprev / weapnext following the bottom grid's order.)
 5. Back to the 2DS's speed: the heavy MAP01 spot's remaining frame (logic ~9 ms a tic, the walk's walls
    ~2.5 ms, the GPU capture's geometry ~3 ms; `lod3ds_sections`), P4.2 with 3D, P4.10's rest, P4.11,
    the census leftovers (`docs/measurements/memory-census-2026-10-17.md`).
@@ -823,3 +822,9 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   start-up (a test guards it).
 - **2026-10-19** The NES font (SMALLFNT) has a dot for `# $ ( ) * + ; @ [ \ ] ^ _` and other symbols for
   `< > %`; `NesExtraAscii` draws `( ) ; + * # [ ] _ : / < > %`.
+- **2026-10-19** #28's cause: `BottomMapView` detached the map from the player past 3072 units from its
+  centre indoors (an overworld rule), so every dungeon's underground stairs lost it, and the centre was
+  kept across loaded games of the same map. Now every map but MAP01 follows the player everywhere, and
+  the view is forgotten when a level loads (`I_3DSMapLoadBegin`). Weapon cycling (`weapprev` /
+  `weapnext`) follows the bottom grid's weapon row, left to right (owner: the B items are not selectable
+  and do nothing; the weapons are what cycles).
