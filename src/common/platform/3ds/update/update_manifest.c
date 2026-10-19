@@ -164,30 +164,24 @@ static void write_notes(json_t **list, size_t count, char *dst, size_t cap) {
     if (n >= cap) n = cap - 1;
   }
 }
-// Everything published between the installed version and the offered one, newest first:
-// every stable release (each lists all since the previous stable, betas included) and
-// the betas no stable in the range already covers. One release keeps its own body.
+// Everything published between the installed version and the offered one, newest first: every
+// stable release and every beta on the way, on either channel (a stable player sees the betas'
+// notes too, so a stable's own notes list only what is new since the previous tag). One release
+// keeps its own body.
 static void gather_notes(json_t *root, bool pre, const char *installed, json_t *latest,
                          UpdateRelease *out) {
+  (void)pre;
   json_t *picked[128]; size_t count = 0, i; json_t *o;
   json_array_foreach(root, i, o) {
     if (count == 128) break;
-    if (!visible(o, pre)) continue;
+    if (!visible(o, true)) continue;
     if (o != latest && newer_release(o, latest)) continue;
     char version[64]; release_version(o, version, sizeof(version));
     if (!Update_IsNewer(version, installed)) continue;
     picked[count++] = o;
   }
   sort_newest_first(picked, count);
-  size_t kept = 0;
-  bool stable_above = false;
-  for (size_t a = 0; a < count; a++) {
-    bool beta = json_is_true(json_object_get(picked[a], "prerelease"));
-    if (beta && stable_above) continue;
-    if (!beta) stable_above = true;
-    picked[kept++] = picked[a];
-  }
-  if (kept >= 2) write_notes(picked, kept, out->notes, sizeof(out->notes));
+  if (count >= 2) write_notes(picked, count, out->notes, sizeof(out->notes));
 }
 int Update_ReleaseHistory(const char *data, size_t size, bool pre, char *out, size_t capacity) {
   if (!capacity) return -1;

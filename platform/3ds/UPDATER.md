@@ -60,9 +60,8 @@ The handheld changelog shows the release body's `<!-- lod-notes -->` block (from
 `docs/release-notes/<tag>.md`), or the `## Changelog` commit list when it is
 missing. When more than one release the channel sees lies between the installed
 version and the offered one, it shows each one's block under its tag (`vX.Y.Z`, or
-`vX.Y.Z BETA`), newest first: every stable release, and the betas no stable release in
-that range already covers (a stable release's notes list everything since the previous
-stable one, betas included). The updater reads up to 100 releases, limits metadata to 2 MiB and CIA
+`vX.Y.Z BETA`), newest first: every stable release and every beta in that range, on
+either channel (a release's notes list only what is new since the previous tag). The updater reads up to 100 releases, limits metadata to 2 MiB and CIA
 files to 128 MiB.
 
 ## Local verification
