@@ -67,6 +67,9 @@ FModule OpenALModule{"OpenAL"};
 #ifndef NO_OPENAL
 static constexpr ALfloat PlatformOutputGain = 1.0f;
 #ifdef __3DS__
+static constexpr int Old3DSSampleRate = 22050;
+#endif
+#ifdef __3DS__
 // The bundled mono MP3 tracks peak between roughly -16 and -12 dBFS. A 3x
 // music-only gain is a true +200% increase (+9.54 dB) and still leaves peak
 // headroom, while listener/SFX gain remains neutral.
@@ -635,10 +638,19 @@ OpenALSoundRenderer::OpenALSoundRenderer()
 	DPrintf(DMSG_SPAMMY, "  ALC Extensions: " TEXTCOLOR_ORANGE"%s\n", alcGetString(Device, ALC_EXTENSIONS));
 
 	TArray<ALCint> attribs;
-	if(*snd_samplerate > 0)
+	int sampleRate = *snd_samplerate;
+	#ifdef __3DS__
+	// The Old 3DS / 2DS mix at 22050 Hz, the music's own rate: the mixer and the music's decoder
+	// share core 1, where the game gets 30%, and at 32000 Hz the mixer fell behind when many
+	// sounds played (fried sound, gaps). The decoder's share of the core went from 56% to 13%.
+	bool isNew3DS = false;
+	APT_CheckNew3DS(&isNew3DS);
+	if(!isNew3DS) sampleRate = Old3DSSampleRate;
+	#endif
+	if(sampleRate > 0)
 	{
 		attribs.Push(ALC_FREQUENCY);
-		attribs.Push(*snd_samplerate);
+		attribs.Push(sampleRate);
 	}
 	// Make sure one source is capable of stereo output with the rest doing
 	// mono, without running out of voices

@@ -11,6 +11,12 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class MusicStreamStabilityContractTests(unittest.TestCase):
+    def test_old_3ds_mixes_at_the_music_rate(self):
+        # The Old 3DS mixer shares core 1 (30%) with the music decoder; at 32000 Hz it fell behind.
+        source = (ROOT / "src/common/audio/sound/oalsound.cpp").read_text(encoding="utf-8")
+        self.assertIn("static constexpr int Old3DSSampleRate = 22050;", source)
+        self.assertIn("if(!isNew3DS) sampleRate = Old3DSSampleRate;", source)
+
     @classmethod
     def setUpClass(cls):
         cls.header = (
