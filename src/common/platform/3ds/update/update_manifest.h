@@ -23,8 +23,8 @@ typedef struct UpdateRelease {
 // only), notes gathers everything published since that version (see gather_notes).
 int Update_ParseRelease(const char *data, size_t size, bool prerelease,
                         bool homebrew, const char *installed, UpdateRelease *out);
-// Every release the channel sees, newest first, each one's notes under its tag: the whole
-// changelog. Returns how many (-1: invalid response).
+// Every release up to the newest one the channel offers (betas included on both channels),
+// newest first, each one's notes under its tag: the whole changelog. Returns how many (-1: invalid response).
 int Update_ReleaseHistory(const char *data, size_t size, bool prerelease, char *out,
                           size_t capacity);
 bool Update_IsNewer(const char *candidate, const char *installed);
