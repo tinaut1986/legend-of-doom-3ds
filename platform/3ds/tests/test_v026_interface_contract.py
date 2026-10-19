@@ -53,6 +53,8 @@ class V026InterfaceContractTests(unittest.TestCase):
         # Legible over any picture: each line on a black band (it replaced a one-pixel shadow).
         self.assertIn("Dim(twod, 0, float(alpha * 0.85)", notify)
         self.assertIn("lod3ds_messages_bottom", notify)
+        # One message a line (the translated and the rupee messages lost or lacked their newline).
+        self.assertIn("if (source.IsNotEmpty() && source.Back() != '\\n') source += '\\n';", notify)
         self.assertIn("trackedMapName.Compare(primaryLevel->MapName)", diagnostics)
 
     def test_unified_engine_menus_and_bottom_hud_polish(self):

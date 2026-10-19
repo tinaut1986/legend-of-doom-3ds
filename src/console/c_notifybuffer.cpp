@@ -133,6 +133,9 @@ void FNotifyBuffer::AddString(int printlevel, FString source)
 		line.StripRight();
 		const char *translated = I_3DSTranslate(line.GetChars());
 		if (translated != line.GetChars()) source = translated;
+		// Every message on its own line: text without a final newline (the rupees' pickup
+		// messages) was appended to the previous message. con_notifylines then drops the oldest.
+		if (source.IsNotEmpty() && source.Back() != '\n') source += '\n';
 	}
 #endif
 	int width = DisplayWidth / active_con_scaletext(twod, generic_ui);
