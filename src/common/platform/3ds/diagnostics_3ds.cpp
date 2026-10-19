@@ -1456,16 +1456,40 @@ FBottomMapView BottomMapView()
 	static bool playerDetached;
 	static double centerX;
 	static double centerY;
+	// Where the map was centred before the player's last jump (stairs teleport them far away):
+	// stairs back from an underground area that fell within reach of the centre lead to the old
+	// centre, not to the underground one (#28).
+	static double previousCenterX, previousCenterY;
+	static bool hasPreviousCenter, hasCameraPosition;
+	static double cameraX, cameraY;
 	if (trackedLevel != primaryLevel || trackedMapName.Compare(primaryLevel->MapName) != 0)
 	{
 		trackedLevel = primaryLevel;
 		trackedMapName = primaryLevel->MapName;
 		hasExteriorCenter = false;
 		playerDetached = false;
+		hasPreviousCenter = false;
+		hasCameraPosition = false;
 	}
 	AActor *camera = players[consoleplayer].camera;
 	if (camera != nullptr)
 	{
+		constexpr double FollowRange = 3072.0;
+		constexpr double JumpDistance = 512.0;
+		if (hasCameraPosition && hasExteriorCenter)
+		{
+			const double jumpX = camera->X() - cameraX;
+			const double jumpY = camera->Y() - cameraY;
+			if (jumpX * jumpX + jumpY * jumpY > JumpDistance * JumpDistance)
+			{
+				previousCenterX = centerX;
+				previousCenterY = centerY;
+				hasPreviousCenter = true;
+			}
+		}
+		cameraX = camera->X();
+		cameraY = camera->Y();
+		hasCameraPosition = true;
 		if (!hasExteriorCenter)
 		{
 			centerX = camera->X();
@@ -1477,9 +1501,13 @@ FBottomMapView BottomMapView()
 			const double deltaX = camera->X() - centerX;
 			const double deltaY = camera->Y() - centerY;
 			const double distanceSquared = deltaX * deltaX + deltaY * deltaY;
+			const double previousX = camera->X() - previousCenterX;
+			const double previousY = camera->Y() - previousCenterY;
+			const bool nearPrevious = hasPreviousCenter &&
+				previousX * previousX + previousY * previousY <= FollowRange * FollowRange;
 			const bool outdoors = camera->Sector != nullptr &&
 				camera->Sector->GetTexture(sector_t::ceiling) == skyflatnum;
-			if (outdoors || distanceSquared <= 3072.0 * 3072.0)
+			if (outdoors || nearPrevious || distanceSquared <= FollowRange * FollowRange)
 			{
 				centerX = camera->X();
 				centerY = camera->Y();
