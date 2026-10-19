@@ -48,6 +48,7 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
+| `fix/bottom-lr-boxes` | the bottom screen's L box on the left, R on the right | Pushed, built; waits for the owner's check |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**

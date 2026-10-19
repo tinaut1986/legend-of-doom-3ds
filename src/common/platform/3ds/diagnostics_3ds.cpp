@@ -2169,7 +2169,8 @@ constexpr FOverlayColor Green{ 0, 168, 0 };
 constexpr FOverlayColor Idle{ 20, 20, 20 };
 
 constexpr int TitleY = 6;
-constexpr int RBoxX = 12, LBoxX = 46, ButtonBoxY = 20, ButtonBoxWidth = 32, ButtonBoxHeight = 40;
+// L on the left and R on the right, as the shoulder buttons are (owner, 2026-10-19).
+constexpr int LBoxX = 12, RBoxX = 46, ButtonBoxY = 20, ButtonBoxWidth = 32, ButtonBoxHeight = 40;
 constexpr int GridX = 86, GridY = 20, CellWidth = 28, CellHeight = 36, Columns = 8;
 // The second row (the boomerang, which L throws, and the carried items) is apart, in grey, and
 // cannot be selected: only the first row's weapons are equipped (owner, 2026-10-14).
@@ -2365,7 +2366,7 @@ void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *read
 {
 	using namespace BottomLayout;
 	const auto &items = BottomItems();
-	NesText(framebuffer, RBoxX, TitleY, Tr("INVENTORY"), 1, Red);
+	NesText(framebuffer, LBoxX, TitleY, Tr("INVENTORY"), 1, Red);
 
 	// The buttons' boxes: R uses the equipped weapon, L throws the boomerang.
 	DrawBottomButtonBox(framebuffer, RBoxX, "R", BottomReadyItem(readyWeapon));
