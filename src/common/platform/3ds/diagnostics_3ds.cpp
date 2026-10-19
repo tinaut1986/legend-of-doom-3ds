@@ -574,8 +574,10 @@ bool DrawTriforceAnimationFrame(unsigned frame)
 
 // A message on the top screen before anything loads, until A, B or START: the game then exits.
 // Nine lines, the last the button prompt; the loading screen's font (no accents).
-// The application memory of the New 3DS family in the 124 MB mode the RSF asks for.
+// The application memory of the modes the RSF asks for: 124 MB on the New 3DS family
+// (SystemModeExt), 80 MB on the Old 3DS / 2DS (SystemMode).
 constexpr u32 New3DSApplicationMemory = 124u * 1024u * 1024u;
+constexpr u32 Old3DSApplicationMemory = 80u * 1024u * 1024u;
 
 bool BlockingMessageScreen(const char *const english[9], const char *const castellano[9], const char *stage)
 {
@@ -636,59 +638,16 @@ bool BlockingMessageScreen(const char *const english[9], const char *const caste
 	return true;
 }
 
-// An Old 3DS / 2DS cannot run the game yet (it runs out of memory loading the first map): say so
-// on the top screen instead of closing with no word. One CIA serves both families (the SMDH has
-// no New 3DS-only flag), so the check is at run time. Returns true when the screen was shown
-// and the game should exit. Debug builds can show it on a New 3DS: a force-old3ds.txt in the
-// data folder.
-bool UnsupportedConsoleScreen()
-{
-	bool isNew3DS = true;
-	APT_CheckNew3DS(&isNew3DS);
-#if LOD3DS_DEBUG_TOOLS
-	if (isNew3DS)
-	{
-		FILE *forced = std::fopen(LOD3DS_APP_DIR "/force-old3ds.txt", "rb");
-		if (forced != nullptr)
-		{
-			std::fclose(forced);
-			isNew3DS = false;
-		}
-	}
-#endif
-	if (isNew3DS) return false;
-#if LOD3DS_DEBUG_TOOLS
-	// For working on the Old 3DS / 2DS port itself: an allow-old3ds.txt in the data folder lets a
-	// debug build try to run (it may still run out of memory; see fatal.log).
-	if (FILE *allowed = std::fopen(LOD3DS_APP_DIR "/allow-old3ds.txt", "rb"))
-	{
-		std::fclose(allowed);
-		return false;
-	}
-#endif
-
-	static const char *const english[] = {
-		"THIS CONSOLE IS NOT SUPPORTED YET", "",
-		"THE OLD 3DS / 2DS VERSION IS STILL", "IN DEVELOPMENT. WE ARE TRYING",
-		"TO MAKE IT WORK.", "",
-		"FOR NOW IT NEEDS A NEW 3DS.", "", "PRESS A OR START TO EXIT" };
-	static const char *const castellano[] = {
-		"ESTA CONSOLA TODAVIA NO ES COMPATIBLE", "",
-		"LA VERSION PARA OLD 3DS / 2DS SIGUE", "EN DESARROLLO. ESTAMOS INTENTANDO",
-		"QUE FUNCIONE.", "",
-		"DE MOMENTO NECESITA UNA NEW 3DS.", "", "PULSA A O START PARA SALIR" };
-	return BlockingMessageScreen(english, castellano, "unsupported-console-screen");
-}
-
-// A New 3DS / New 2DS XL sometimes starts the game in the 64 MB mode instead of the 124 MB the
-// RSF asks for (#27); reopening it from HOME keeps 64 MB, only powering the console off and on
-// restores it, and the game would die loading a map. So it does not start: it says so and exits.
-// The Old 3DS / 2DS are never checked (80 MB is their mode). Debug builds can show it on a New
-// 3DS: a force-low-memory.txt in the data folder.
+// A console sometimes starts the game in a smaller memory mode than the RSF asks for (#27: a New
+// 3DS in 64 MB instead of 124; reopening it from HOME keeps it, only powering the console off and
+// on restores it), and the game would die loading a map. So it does not start: it says so and
+// exits. Each model against its own mode: 124 MB on the New 3DS family, 80 MB on the Old 3DS / 2DS,
+// where the game runs in 80. Debug builds can show it: a force-low-memory.txt in the data folder.
 bool LowMemoryScreen()
 {
-	if (I_3DSIsOld3DS()) return false;
-	bool lowMemory = osGetMemRegionSize(MEMREGION_APPLICATION) < New3DSApplicationMemory;
+	const u32 expected = I_3DSIsOld3DS() ? Old3DSApplicationMemory : New3DSApplicationMemory;
+	const u32 actual = osGetMemRegionSize(MEMREGION_APPLICATION);
+	bool lowMemory = actual < expected;
 #if LOD3DS_DEBUG_TOOLS
 	// One shot: the screen exits the game before its FTP server starts, so the file removes itself.
 	if (FILE *forced = std::fopen(LOD3DS_APP_DIR "/force-low-memory.txt", "rb"))
@@ -699,14 +658,18 @@ bool LowMemoryScreen()
 	}
 #endif
 	if (!lowMemory) return false;
-	static const char *const english[] = {
+	const unsigned actualMB = actual / (1024u * 1024u), expectedMB = expected / (1024u * 1024u);
+	char modeEnglish[48], modeSpanish[48];
+	std::snprintf(modeEnglish, sizeof(modeEnglish), "%u MB MODE INSTEAD OF %u MB: THE", actualMB, expectedMB);
+	std::snprintf(modeSpanish, sizeof(modeSpanish), "MODO DE %u MB EN VEZ DE %u MB: EL", actualMB, expectedMB);
+	const char *const english[] = {
 		"NOT ENOUGH MEMORY", "",
-		"THE CONSOLE STARTED THE GAME IN ITS", "64 MB MODE INSTEAD OF 124 MB: THE",
+		"THE CONSOLE STARTED THE GAME IN ITS", modeEnglish,
 		"GAME WOULD CLOSE LOADING A MAP.", "",
 		"TURN THE CONSOLE OFF AND ON, THEN", "OPEN THE GAME AGAIN.", "PRESS A OR START TO EXIT" };
-	static const char *const castellano[] = {
+	const char *const castellano[] = {
 		"NO HAY MEMORIA SUFICIENTE", "",
-		"LA CONSOLA HA ABIERTO EL JUEGO EN SU", "MODO DE 64 MB EN VEZ DE 124 MB: EL",
+		"LA CONSOLA HA ABIERTO EL JUEGO EN SU", modeSpanish,
 		"JUEGO SE CERRARIA AL CARGAR UN MAPA.", "",
 		"APAGA Y ENCIENDE LA CONSOLA Y VUELVE", "A ABRIR EL JUEGO.", "PULSA A O START PARA SALIR" };
 	return BlockingMessageScreen(english, castellano, "low-memory-screen");
@@ -7161,7 +7124,9 @@ CCMD(lod3ds_audiocpu)
 }
 #endif
 
-bool I_3DSUnsupportedConsoleScreen()
+bool I_3DSStartupBlockingScreen()
 {
-	return UnsupportedConsoleScreen() || LowMemoryScreen();
+	// The Old 3DS / 2DS run the game since release/v0.2.5 (PLAN P4); only the New 3DS's 64 MB
+	// start is stopped.
+	return LowMemoryScreen();
 }

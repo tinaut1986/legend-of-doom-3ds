@@ -21,9 +21,9 @@ void I_3DSWriteFatalLog(const char *message);
 // These functions draw a tiny framebuffer-only progress screen without
 // creating a GZDoom window or a NovaGL context. The final image remains on the
 // LCD until the first real GPU frame replaces it.
-// True when the game cannot run here and a message was shown: the game must exit (main). An Old
-// 3DS / 2DS (unless allowed), or a New 3DS started in its 64 MB mode (#27).
-bool I_3DSUnsupportedConsoleScreen();
+// True when the game cannot run here and a message was shown: the game must exit (main). A New
+// 3DS started in its 64 MB mode (#27).
+bool I_3DSStartupBlockingScreen();
 // Debug builds: a no-audio.txt in the data folder starts the game without audio (Old 3DS bring-up).
 bool I_3DSNoAudioRequested();
 // After the audio starts, on the Old 3DS / 2DS: logs core 1's time limit for the application (the
