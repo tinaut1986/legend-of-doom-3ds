@@ -48,6 +48,7 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
+| `fix/new3ds-64mb-warning` | #27: a New 3DS started in the 64 MB mode gets a notice on the title menus to reboot the console; the trigger (the relaunch after SITE INSTALL / the updater?) still to be tested | Pushed, built (`2f6f672772d0`), **waiting for the owner's check** on the New 3DS |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
