@@ -49,6 +49,8 @@
 #include "m_alloc.h"
 #ifdef __3DS__
 #include "common/platform/3ds/diagnostics_3ds.h"
+#include "common/platform/3ds/gpu_3ds.h"
+#include "common/platform/3ds/i_input_3ds.h"
 #include "common/platform/3ds/memory_3ds.h"
 #include "common/platform/3ds/aim_crosshair.inc"
 #endif
@@ -133,6 +135,7 @@
 #endif // __unix__
 #ifdef __3DS__
 #include "common/platform/3ds/perf_3ds.h"
+#include <3ds.h>
 #endif
 
 EXTERN_CVAR(Bool, hud_althud)
@@ -521,6 +524,10 @@ CVAR(Float, m_yaw, 1.f, CVAR_GLOBALCONFIG | CVAR_ARCHIVE)
 
 void D_Render(std::function<void()> action, bool interpolate)
 {
+#ifdef __3DS__
+	F3DSSection section("d_render: total");
+	uint64_t sectionStart = svcGetSystemTick();
+#endif
 	for (auto Level : AllLevels())
 	{
 		// Check for the presence of dynamic lights at the start of the frame once.
@@ -533,12 +540,21 @@ void D_Render(std::function<void()> action, bool interpolate)
 		P_FindParticleSubsectors(Level);
 		PO_LinkToSubsectors(Level);
 	}
+#ifdef __3DS__
+	I_3DSSectionAdd("d_render: before view", svcGetSystemTick() - sectionStart);
+#endif
 	action();
+#ifdef __3DS__
+	sectionStart = svcGetSystemTick();
+#endif
 
 	if (interpolate) for (auto Level : AllLevels())
 	{
 		Level->interpolator.RestoreInterpolations();
 	}
+#ifdef __3DS__
+	I_3DSSectionAdd("d_render: after view", svcGetSystemTick() - sectionStart);
+#endif
 }
 
 //==========================================================================
@@ -1052,6 +1068,9 @@ static void End2DAndUpdate()
 	CheckBench();
 	screen->Update();
 	twod->OnFrameDone();
+#ifdef __3DS__
+	I_3DSMapLoadFrameShown();
+#endif
 }
 
 //==========================================================================
@@ -1141,6 +1160,18 @@ void D_Display ()
 	// No wipes when in a stereo3D VR mode
 	else if (gamestate != wipegamestate && gamestate != GS_FULLCONSOLE && gamestate != GS_TITLELEVEL)
 	{
+#ifdef __3DS__
+		// The crossfade on the GPU (#18): the last image fades out over the new frames, which keep
+		// running. The engine's wipe drew two full-screen images through the CPU's 2D every step
+		// (1-9 fps on the 2DS), after a frame of the new view flashed between them.
+		const bool wipeWanted = wipetype != wipe_None || wipegamestate == GS_FORCEWIPEFADE ||
+			wipegamestate == GS_FORCEWIPEBURN || wipegamestate == GS_FORCEWIPEMELT;
+		if (wipeWanted && I_3DSGpuWipeBegin(800))
+		{
+			wipe = nullptr;
+		}
+		else
+#endif
 		if (vr_mode == 0 || vid_rendermode != 4)
 		{
 			// save the current screen if about to wipe
@@ -2536,9 +2567,15 @@ static void NewFailure ()
 {
 #ifdef __3DS__
     {
-        char what[96];
-        snprintf(what, sizeof(what), "operator new failure: %zu bytes, caller 0x%08lx",
-            I_3DSLastFailedNewRequest(), static_cast<unsigned long>(I_3DSLastFailedNewCaller()));
+        char what[128];
+        void *retry = malloc(I_3DSLastFailedNewRequest());
+        // GCC would otherwise drop the malloc/free pair and report success.
+        __asm__ volatile("" : "+r"(retry) : : "memory");
+        const bool retryWorked = retry != nullptr;
+        free(retry);
+        snprintf(what, sizeof(what), "operator new failure: %zu bytes, caller 0x%08lx, largest free block %zu, retry %s",
+            I_3DSLastFailedNewRequest(), static_cast<unsigned long>(I_3DSLastFailedNewCaller()),
+            I_3DSLargestFreeBlock(), retryWorked ? "ok" : "failed");
         M_3DSLogHeap(what);
     }
     Printf(PRINT_LOG, "[3DS memory] failed C++ allocation: %zu bytes from %p\n",
@@ -3605,6 +3642,9 @@ static int D_DoomMain_Internal (void)
 		D_GrabCVarDefaults(); //parse DEFCVARS
 
 		GameConfig->DoKeySetup(gameinfo.ConfigName);
+#ifdef __3DS__
+		I_3DSApplyControlScheme(); // the control scheme's buttons over the loaded bindings (#22)
+#endif
 
 		// Now that wads are loaded, define mod-specific cvars.
 		ParseCVarInfo();

@@ -11,6 +11,24 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class HardwareStartupContractTests(unittest.TestCase):
+    def test_new_3ds_in_the_64_mb_mode_does_not_start(self):
+        # #27: a blocking screen before anything loads; never on the Old 3DS / 2DS (80 MB mode).
+        source = (ROOT / "src/common/platform/3ds/diagnostics_3ds.cpp").read_text(encoding="utf-8")
+        screen = source[source.index("bool LowMemoryScreen()"):]
+        screen = screen[:screen.index("\n}\n")]
+        # Each model against its own mode: 124 MB New 3DS, 80 MB Old 3DS / 2DS (it runs in 80).
+        self.assertIn("I_3DSIsOld3DS() ? Old3DSApplicationMemory : New3DSApplicationMemory", screen)
+        self.assertIn("constexpr u32 New3DSApplicationMemory = 124u * 1024u * 1024u;", source)
+        self.assertIn("constexpr u32 Old3DSApplicationMemory = 80u * 1024u * 1024u;", source)
+        # The Old 3DS / 2DS are no longer turned away at start-up.
+        self.assertNotIn("UnsupportedConsoleScreen", source)
+        self.assertNotIn("allow-old3ds.txt", source)
+        self.assertNotIn("LowMemoryNotice", source)
+        # The early exit tears SDL down like the normal one; without it the console froze.
+        main = (ROOT / "src/common/platform/posix/sdl/i_main.cpp").read_text(encoding="utf-8")
+        early = main[main.index("Screen())\n\t\t{"):]
+        self.assertLess(early.index("SDL_Quit();"), early.index("return 0;"))
+
     def test_early_animation_starts_only_after_sdl_owns_video(self):
         source = (ROOT / "src/common/platform/posix/sdl/i_main.cpp").read_text(
             encoding="utf-8"

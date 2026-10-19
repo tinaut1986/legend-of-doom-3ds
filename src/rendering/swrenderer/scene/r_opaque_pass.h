@@ -103,8 +103,31 @@ namespace swrenderer
 		bool r_fakingunderwater = false;
 
 		SWRenderLine renderline;
+#ifdef __3DS__
+		// A set of pointers that keeps its memory from frame to frame: std::set allocated a node
+		// for every actor seen, hundreds a frame in MAP01's big outdoor sectors (2.5 ms of the
+		// walk with the sprites' own work on the 2DS, 2026-10-18). Open addressing; clear() only
+		// moves to a new generation.
+		class FSeenSet
+		{
+		public:
+			bool Insert(const void *key); // false: it was there already
+			bool Contains(const void *key) const;
+			void clear();
+
+		private:
+			void Grow();
+			std::vector<const void *> Keys;
+			std::vector<uint32_t> Generations;
+			uint32_t Generation = 1;
+			size_t Count = 0;
+		};
+		FSeenSet SeenSpriteSectors;
+		FSeenSet SeenActors;
+#else
 		std::set<sector_t*> SeenSpriteSectors;
 		std::set<AActor*> SeenActors;
+#endif
 		std::vector<uint32_t> PvsSubsectors;
 		std::vector<uint32_t> SubsectorDepths;
 	};

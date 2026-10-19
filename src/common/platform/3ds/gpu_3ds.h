@@ -43,6 +43,8 @@ struct F3DSGpuStats
 	uint32_t LastVertices;
 	uint32_t TextureBytes;
 	uint32_t Textures;
+	uint32_t WorldFrames;	// presented frames whose world the GPU drew
+	uint32_t CanvasFrames;	// presented frames that showed the CPU's canvas
 };
 F3DSGpuStats I_3DSGpuGetStats();
 void I_3DSGpuCountSoftware2D();
@@ -53,6 +55,11 @@ bool I_3DSGpuPresentTop(const uint8_t *pixels, int pitchBytes, int width, int he
 // Copies the last presented top image into a BGRA canvas of width x height (scaled), for the
 // wipes. flipRows stores the image bottom-up, as PolyHardwareTexture's wipe textures are.
 bool I_3DSGpuReadTop(uint8_t *pixels, int pitchPixels, int width, int height, bool flipRows);
+
+// The screen wipe on the GPU (#18): keeps the image the LCD shows now and fades it out over the
+// frames presented in the next durationMilliseconds, the game running underneath. False when
+// it cannot (no GPU frame yet, no linear memory): the engine's own wipe then runs.
+bool I_3DSGpuWipeBegin(uint32_t durationMilliseconds);
 
 // GPU copies of engine textures, owned by PolyHardwareTexture (one per wrap mode).
 struct F3DSGpuTexture;

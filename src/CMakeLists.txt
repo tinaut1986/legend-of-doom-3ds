@@ -484,6 +484,8 @@ if( CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS" )
 		common/platform/3ds/i_input_3ds.cpp
 		common/platform/3ds/lifecycle_3ds.cpp
 		common/platform/3ds/memory.cpp
+		common/platform/3ds/memory_census_3ds.cpp
+		common/platform/3ds/large_arena_3ds.cpp
 		common/platform/3ds/net_3ds.c
 		common/platform/3ds/perf_3ds.cpp
 		common/platform/3ds/update/updater.c
@@ -1366,6 +1368,10 @@ if( CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS" )
 	target_link_libraries( zdoom "${NOVAGL_LIBRARY}" citro2d citro3d )
 	target_link_directories( zdoom PRIVATE "$ENV{DEVKITPRO}/libctru/lib" )
 	target_link_options( zdoom PRIVATE "-Wl,-Map,${CMAKE_BINARY_DIR}/gzdoom.map" )
+	# memory.cpp logs where a std::bad_alloc is thrown from (2DS bring-up).
+	target_link_options( zdoom PRIVATE "-Wl,--wrap=__cxa_throw" )
+	# The large-block arena (P4.6, large_arena_3ds.cpp).
+	target_link_options( zdoom PRIVATE "-Wl,--wrap=malloc,--wrap=free,--wrap=realloc,--wrap=calloc,--wrap=memalign,--wrap=posix_memalign,--wrap=aligned_alloc,--wrap=malloc_usable_size" )
 	# GCC resolves start files inside the active armv6k/fpu multilib folder.
 	set( N3DS_CRT_VARIANT "pica" )
 	set( N3DS_CRT_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/common/platform/3ds/3dsx_crt0.s" )

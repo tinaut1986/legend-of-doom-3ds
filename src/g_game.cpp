@@ -360,8 +360,25 @@ CCMD (turn180)
 	sendturn180 = true;
 }
 
+#ifdef __3DS__
+// weapprev / weapnext walk the owned weapons in the order the bottom screen's grid shows them.
+static bool CycleGridWeapon(int direction)
+{
+	player_t &player = players[consoleplayer];
+	AActor *next = I_3DSAdjacentWeapon(player, direction);
+	if (next == nullptr || (paused || pauseext) || player.playerstate != PST_LIVE) return false;
+	player.PendingWeapon = next;
+	SendItemUse = next;
+	if (next != player.ReadyWeapon) S_Sound(CHAN_AUTO, 0, "misc/weaponchange", 1.0, ATTN_NONE);
+	return true;
+}
+#endif
+
 CCMD (weapnext)
 {
+#ifdef __3DS__
+	if (CycleGridWeapon(1)) return;
+#endif
 	auto mo = players[consoleplayer].mo;
 	if (mo)
 	{
@@ -389,6 +406,9 @@ CCMD (weapnext)
 
 CCMD (weapprev)
 {
+#ifdef __3DS__
+	if (CycleGridWeapon(-1)) return;
+#endif
 	auto mo = players[consoleplayer].mo;
 	if (mo)
 	{
@@ -610,12 +630,23 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 	strafe = buttonMap.ButtonDown(Button_Strafe);
 	bool speedButton = buttonMap.ButtonDown(Button_Speed);
 	#ifdef __3DS__
-	// X is a Zelda-style sprint: it is useful only when enabled and Link is at
-	// full health. Losing even a quarter-heart immediately returns to walking.
+	// Read once here: BUTTON CAMERA sprints with the Circle Pad at its edge.
+	float padAxes[NUM_JOYAXIS];
+	I_GetAxes(padAxes);
+	const int sprintMode = I_3DSSprintMode();
+	if (sprintMode == 2) speedButton = true;
+	else if (sprintMode == 1 && I_3DSButtonCameraScheme())
+	{
+		const float push = padAxes[JOYAXIS_Forward] * padAxes[JOYAXIS_Forward] +
+			padAxes[JOYAXIS_Side] * padAxes[JOYAXIS_Side];
+		if (push >= 0.85f * 0.85f) speedButton = true;
+	}
+	// A Zelda-style sprint (AUTO by default, or X in CLASSIC): only while Link is at full health.
+	// Losing even a quarter-heart immediately returns to walking.
 	AActor *sprintActor = players[consoleplayer].mo;
 	const bool fullHealth = sprintActor != nullptr && sprintActor->health > 0 &&
 		sprintActor->health >= sprintActor->GetMaxHealth(true);
-	if (!I_3DSSprintWithXEnabled() || !fullHealth) speedButton = false;
+	if (sprintMode == 0 || !fullHealth) speedButton = false;
 	#endif
 	speed = static_cast<int>(speedButton) ^ (int)cl_run;
 
@@ -629,6 +660,25 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 	else
 		turnheld = 0;
 
+	#ifdef __3DS__
+	// Buttons that turn and look (BUTTON CAMERA): a short ramp, at most as fast as the C-Stick at its
+	// edge, scaled by CAM SENSITIVITY; sprinting does not change it.
+	static int lookheld;
+	if (buttonMap.ButtonDown(Button_LookUp) || buttonMap.ButtonDown(Button_LookDown))
+		lookheld += ticdup;
+	else
+		lookheld = 0;
+	if (!strafe)
+	{
+		const int turn = I_3DSButtonLookStep(static_cast<int>(JoyYawUnitsPerTic), turnheld - ticdup);
+		if (buttonMap.ButtonDown(Button_Right)) G_AddViewAngle(turn);
+		if (buttonMap.ButtonDown(Button_Left)) G_AddViewAngle(-turn);
+	}
+	const int look = I_3DSButtonLookStep(static_cast<int>(JoyPitchUnitsPerTic), lookheld - ticdup);
+	if (buttonMap.ButtonDown(Button_LookUp)) G_AddViewPitch(look);
+	if (buttonMap.ButtonDown(Button_LookDown)) G_AddViewPitch(-look);
+	#endif
+
 	// let movement keys cancel each other out
 	if (strafe)
 	{
@@ -637,6 +687,7 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 		if (buttonMap.ButtonDown(Button_Left))
 			side -= sidemove[speed];
 	}
+	#ifndef __3DS__
 	else
 	{
 		int tspeed = speed;
@@ -662,6 +713,7 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 	{
 		G_AddViewPitch (-lookspeed[speed]);
 	}
+	#endif
 
 	if (buttonMap.ButtonDown(Button_MoveUp))
 		fly += flyspeed[speed];
@@ -720,7 +772,11 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 	// Handle joysticks/game controllers.
 	float joyaxes[NUM_JOYAXIS];
 
+	#ifdef __3DS__
+	memcpy(joyaxes, padAxes, sizeof(joyaxes));
+	#else
 	I_GetAxes(joyaxes);
+	#endif
 	#ifdef __3DS__
 	if (!I_3DSCStickLookEnabled())
 	{
@@ -1147,6 +1203,23 @@ void G_Ticker ()
 {
 	int i;
 	gamestate_t	oldgamestate;
+
+#ifdef __3DS__
+	{
+		// After Link dies, the death menu (LegendDeathMenu) opens by itself once the fall has
+		// settled, with no button press. It is counted only while no menu is open: closed with B,
+		// it does not open again (USE still continues, START opens the pause menu).
+		constexpr int DeathMenuDelayTics = 2 * TICRATE;
+		static int deadTics = 0;
+		if (gamestate == GS_LEVEL && playeringame[consoleplayer] && !multiplayer && !demoplayback &&
+			players[consoleplayer].playerstate == PST_DEAD)
+		{
+			if (menuactive == MENU_Off && ++deadTics == DeathMenuDelayTics)
+				AddCommandString("openmenu LegendDeathMenu");
+		}
+		else deadTics = 0;
+	}
+#endif
 
 	// do player reborns if needed
 	for (i = 0; i < MAXPLAYERS; i++)
@@ -2147,6 +2220,12 @@ void G_DoLoadGame ()
 
 	// load a base level
 	bool demoplaybacksave = demoplayback;
+#ifdef __3DS__
+	// One overlay for the whole restore: the level load nests inside it.
+	level_info_t *loadingInfo = FindLevelInfo(map.GetChars());
+	F3DSMapLoadOverlay loadingOverlay(map.GetChars(), loadingInfo != nullptr ?
+		loadingInfo->LookupLevelName().GetChars() : map.GetChars(), true);
+#endif
 	G_InitNew(map, false);
 	demoplayback = demoplaybacksave;
 	savegamerestore = false;

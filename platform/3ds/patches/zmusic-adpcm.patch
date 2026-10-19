@@ -1,0 +1,301 @@
+diff --git a/source/CMakeLists.txt b/source/CMakeLists.txt
+index 0b9ef48..af11e0a 100644
+--- a/source/CMakeLists.txt
++++ b/source/CMakeLists.txt
+@@ -34,6 +34,7 @@ INTERFACE
+ 	decoder/sndfile_decoder.cpp
+ 	decoder/mpg123_decoder.cpp
+ 	decoder/minimp3_decoder.cpp
++	decoder/adpcm_decoder.cpp
+ 	zmusic/configuration.cpp
+ 	zmusic/zmusic.cpp
+ 	zmusic/critsec.cpp
+diff --git a/source/decoder/adpcm_decoder.cpp b/source/decoder/adpcm_decoder.cpp
+new file mode 100644
+index 0000000..9d864b1
+--- /dev/null
++++ b/source/decoder/adpcm_decoder.cpp
+@@ -0,0 +1,202 @@
++#include "adpcm_decoder.h"
++
++#include <algorithm>
++#include <cstdio>
++#include <cstring>
++
++namespace
++{
++const int StepTable[89] = {
++	7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66,
++	73, 80, 88, 97, 107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408,
++	449, 494, 544, 598, 658, 724, 796, 876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066,
++	2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484, 7132, 7845, 8630,
++	9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794,
++	32767,
++};
++const int IndexTable[16] = { -1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8 };
++
++uint32_t U16(const uint8_t* p) { return uint32_t(p[0]) | uint32_t(p[1]) << 8; }
++uint32_t U32(const uint8_t* p) { return U16(p) | U16(p + 2) << 16; }
++
++struct Channel
++{
++	int predictor;
++	int index;
++
++	int16_t decode(unsigned nibble)
++	{
++		// The exact form, as ffmpeg's encoder and decoder use it (not the shift-and-add one).
++		const int diff = ((2 * int(nibble & 7) + 1) * StepTable[index]) >> 3;
++		predictor += (nibble & 8) ? -diff : diff;
++		predictor = std::clamp(predictor, -32768, 32767);
++		index = std::clamp(index + IndexTable[nibble], 0, 88);
++		return int16_t(predictor);
++	}
++};
++}
++
++ImaAdpcmDecoder::~ImaAdpcmDecoder()
++{
++	if (Reader) Reader->close();
++	Reader = nullptr;
++}
++
++bool ImaAdpcmDecoder::open(MusicIO::FileInterface* reader)
++{
++	uint8_t header[12];
++	if (reader->read(header, 12) != 12 || memcmp(header, "RIFF", 4) || memcmp(header + 8, "WAVE", 4))
++		return false;
++
++	bool format = false;
++	for (;;)
++	{
++		uint8_t chunk[8];
++		if (reader->read(chunk, 8) != 8) return false;
++		const uint32_t length = U32(chunk + 4);
++		if (!memcmp(chunk, "fmt ", 4))
++		{
++			uint8_t fmt[20];
++			if (length < 20 || reader->read(fmt, 20) != 20) return false;
++			if (U16(fmt) != 0x11 || U16(fmt + 14) != 4) return false;
++			Channels = int(U16(fmt + 2));
++			SampleRate = int(U32(fmt + 4));
++			BlockAlign = U16(fmt + 12);
++			FramesPerBlock = length >= 20 ? U16(fmt + 18) : 0;
++			if ((Channels != 1 && Channels != 2) || SampleRate <= 0 || BlockAlign <= 4u * Channels)
++				return false;
++			const uint32_t computed = (BlockAlign - 4u * Channels) * 2u / Channels + 1u;
++			if (FramesPerBlock == 0 || FramesPerBlock > computed) FramesPerBlock = computed;
++			if (reader->seek(long(length - 20 + (length & 1)), SEEK_CUR) != 0) return false;
++			format = true;
++		}
++		else if (!memcmp(chunk, "data", 4))
++		{
++			if (!format) return false;
++			DataStart = reader->tell();
++			Blocks = (length + BlockAlign - 1) / BlockAlign;
++			// The last block may be short: count the frames it really holds.
++			const uint32_t lastBytes = length - (Blocks - 1) * BlockAlign;
++			const uint32_t lastFrames = lastBytes > 4u * Channels
++				? std::min(FramesPerBlock, (lastBytes - 4u * Channels) * 2u / Channels + 1u) : 0;
++			TotalFrames = uint64_t(Blocks - 1) * FramesPerBlock + lastFrames;
++			break;
++		}
++		else if (reader->seek(long(length + (length & 1)), SEEK_CUR) != 0)
++			return false;
++	}
++	if (Blocks == 0) return false;
++
++	Reader = reader;
++	Block.resize(BlockAlign);
++	Pcm.resize(size_t(FramesPerBlock) * Channels);
++	if (!decodeBlock(0))
++	{
++		Reader = nullptr; // Return ownership to CreateDecoder so it can try another format.
++		return false;
++	}
++	return true;
++}
++
++bool ImaAdpcmDecoder::decodeBlock(uint32_t index)
++{
++	PcmFrames = PcmPos = 0;
++	BlockIndex = index;
++	if (index >= Blocks) return false;
++	if (Reader->seek(DataStart + long(index) * long(BlockAlign), SEEK_SET) != 0) return false;
++	const long got = Reader->read(Block.data(), int32_t(BlockAlign));
++	if (got <= 4 * Channels) return false;
++
++	Channel channels[2];
++	for (int c = 0; c < Channels; c++)
++	{
++		const uint8_t* h = &Block[4 * c];
++		channels[c].predictor = int16_t(U16(h));
++		channels[c].index = std::min<int>(h[2], 88);
++		Pcm[c] = int16_t(channels[c].predictor);
++	}
++	const uint32_t frames = std::min<uint32_t>(FramesPerBlock,
++		uint32_t(got - 4 * Channels) * 2u / Channels + 1u);
++
++	const uint8_t* data = &Block[4 * Channels];
++	if (Channels == 1)
++	{
++		for (uint32_t i = 1; i < frames; i += 2, data++)
++		{
++			Pcm[i] = channels[0].decode(*data & 15);
++			if (i + 1 < frames) Pcm[i + 1] = channels[0].decode(*data >> 4);
++		}
++	}
++	else
++	{
++		// Stereo: groups of 4 bytes (8 samples) per channel, alternating.
++		for (uint32_t frame = 1; frame < frames; frame += 8)
++		{
++			for (int c = 0; c < 2; c++, data += 4)
++			{
++				for (int b = 0; b < 4; b++)
++				{
++					const uint32_t f = frame + 2 * b;
++					if (f < frames) Pcm[2 * f + c] = channels[c].decode(data[b] & 15);
++					if (f + 1 < frames) Pcm[2 * (f + 1) + c] = channels[c].decode(data[b] >> 4);
++				}
++			}
++		}
++	}
++	PcmFrames = frames;
++	return true;
++}
++
++void ImaAdpcmDecoder::getInfo(int* samplerate, ChannelConfig* chans, SampleType* type)
++{
++	*samplerate = SampleRate;
++	*chans = Channels == 2 ? ChannelConfig_Stereo : ChannelConfig_Mono;
++	*type = SampleType_Int16;
++}
++
++size_t ImaAdpcmDecoder::read(char* buffer, size_t bytes)
++{
++	const size_t frameBytes = sizeof(int16_t) * Channels;
++	size_t wanted = bytes / frameBytes;
++	size_t done = 0;
++	while (wanted > 0)
++	{
++		if (PcmPos >= PcmFrames && !decodeBlock(BlockIndex + 1)) break;
++		const size_t n = std::min<size_t>(wanted, PcmFrames - PcmPos);
++		memcpy(buffer + done * frameBytes, &Pcm[size_t(PcmPos) * Channels], n * frameBytes);
++		PcmPos += uint32_t(n);
++		FramePos += n;
++		done += n;
++		wanted -= n;
++	}
++	return done * frameBytes;
++}
++
++bool ImaAdpcmDecoder::seek(size_t offset, bool ms, bool /*mayrestart*/)
++{
++	uint64_t frame = offset;
++	if (ms) frame = frame * uint64_t(SampleRate) / 1000u;
++	if (frame > TotalFrames) frame = TotalFrames;
++	const uint32_t block = uint32_t(frame / FramesPerBlock);
++	if (block >= Blocks)
++	{
++		PcmFrames = PcmPos = 0;
++		BlockIndex = Blocks;
++		FramePos = TotalFrames;
++		return true;
++	}
++	if (!decodeBlock(block)) return false;
++	PcmPos = std::min<uint32_t>(uint32_t(frame - uint64_t(block) * FramesPerBlock), PcmFrames);
++	FramePos = frame;
++	return true;
++}
++
++size_t ImaAdpcmDecoder::getSampleOffset()
++{
++	return size_t(FramePos);
++}
++
++size_t ImaAdpcmDecoder::getSampleLength()
++{
++	return size_t(TotalFrames);
++}
+diff --git a/source/decoder/adpcm_decoder.h b/source/decoder/adpcm_decoder.h
+new file mode 100644
+index 0000000..734ac1e
+--- /dev/null
++++ b/source/decoder/adpcm_decoder.h
+@@ -0,0 +1,49 @@
++#ifndef ADPCM_DECODER_H
++#define ADPCM_DECODER_H
++
++#include "zmusic/sounddecoder.h"
++#include <cstdint>
++#include <vector>
++
++// IMA ADPCM in a WAV file (format tag 0x11), mono or stereo. Decoding is a table lookup and a few
++// adds a sample, against an MP3 frame's transforms: the Old 3DS's music stream has 30% of one
++// 268 MHz core, and minimp3 could not keep up even at 22 kHz.
++struct ImaAdpcmDecoder : public SoundDecoder
++{
++	virtual void getInfo(int* samplerate, ChannelConfig* chans, SampleType* type) override;
++
++	virtual size_t read(char* buffer, size_t bytes) override;
++	virtual bool seek(size_t offset, bool ms, bool mayrestart) override;
++	virtual size_t getSampleOffset() override;
++	virtual size_t getSampleLength() override;
++
++	ImaAdpcmDecoder() = default;
++	ImaAdpcmDecoder(const ImaAdpcmDecoder& rhs) = delete;
++	ImaAdpcmDecoder& operator=(const ImaAdpcmDecoder& rhs) = delete;
++
++	virtual ~ImaAdpcmDecoder();
++
++protected:
++	virtual bool open(MusicIO::FileInterface* reader) override;
++
++private:
++	bool decodeBlock(uint32_t index);
++
++	MusicIO::FileInterface* Reader = nullptr;
++	long DataStart = 0;
++	int SampleRate = 0;
++	int Channels = 0;
++	uint32_t BlockAlign = 0;
++	uint32_t FramesPerBlock = 0;
++	uint32_t Blocks = 0;
++	uint64_t TotalFrames = 0;
++
++	std::vector<uint8_t> Block;
++	std::vector<int16_t> Pcm;       // the current block, decoded, interleaved
++	uint32_t BlockIndex = 0;        // the block in Pcm
++	uint32_t PcmFrames = 0;         // frames in Pcm
++	uint32_t PcmPos = 0;            // next frame of Pcm to hand out
++	uint64_t FramePos = 0;          // frames handed out since the start
++};
++
++#endif /* ADPCM_DECODER_H */
+diff --git a/source/decoder/sounddecoder.cpp b/source/decoder/sounddecoder.cpp
+index 76995b5..bd85f1c 100644
+--- a/source/decoder/sounddecoder.cpp
++++ b/source/decoder/sounddecoder.cpp
+@@ -37,6 +37,7 @@
+ #include "sndfile_decoder.h"
+ #include "mpg123_decoder.h"
+ #include "minimp3_decoder.h"
++#include "adpcm_decoder.h"
+ 
+ SoundDecoder *SoundDecoder::CreateDecoder(MusicIO::FileInterface *reader)
+ {
+@@ -52,6 +53,13 @@ SoundDecoder *SoundDecoder::CreateDecoder(MusicIO::FileInterface *reader)
+ 		delete decoder;
+ 		decoder = NULL;
+ #endif
++		decoder = new ImaAdpcmDecoder;
++		if (decoder->open(reader))
++			return decoder;
++		reader->seek(pos, SEEK_SET);
++
++		delete decoder;
++		decoder = NULL;
+ #ifdef HAVE_MINIMP3
+ 		decoder = new MiniMP3Decoder;
+ 		if (decoder->open(reader))

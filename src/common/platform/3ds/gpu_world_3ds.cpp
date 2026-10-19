@@ -49,12 +49,19 @@
 #include "swrenderer/r_swcolormaps.h"
 #include "swrenderer/distance_fog_math.h"
 #include "gpu_3ds.h"
+#include "perf_3ds.h"
 #include "lod3ds_version.h"
 
 CVAR(Bool, lod3ds_gpu_world, true, 0)
 CVAR(String, lod3ds_gpu_world_stats, "", CVAR_NOSAVE)
 // Stereo 3D with the 3D slider (P3); off draws one image whatever the slider says.
 CVAR(Bool, lod3ds_stereo, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+#if LOD3DS_DEBUG_TOOLS
+// OPTIONS -> DEVELOPER -> FORCE 3D: both eyes drawn as with the slider all the way up, whatever it
+// says, so a 2DS (no 3D screen, it shows the left eye) measures what an Old 3DS pays in 3D.
+// Not saved: it is a test.
+CVAR(Bool, lod3ds_force_stereo, false, 0)
+#endif
 
 namespace
 {
@@ -243,6 +250,42 @@ bool Exterior(const sector_t *sector)
 	return LightContext.Map01Fog && Is3DSMap01ExteriorSector(sector);
 }
 
+// MAP01's caves: a BLACK floor under a sky ceiling. That sky points at the level's SkyViewpoint,
+// whose remote scene the port does not draw, so the swrenderer leaves them black ("BLACK-floor
+// caves remain opaque even with sky ceilings", r_swcolormaps.cpp); drawn as sky here, the cave
+// mouths showed the sky through them. Their ceiling, and the sky-hack gap above their mouths,
+// are drawn with the BLACK flat instead.
+FTextureID BlackFlat()
+{
+	static const FTextureID black = TexMan.CheckForTexture("BLACK", ETextureType::Flat,
+		FTextureManager::TEXMAN_TryAny);
+	return black;
+}
+
+bool BlackCave(const sector_t *sector)
+{
+	return sector != nullptr && LightContext.Map01Fog && BlackFlat().isValid() &&
+		sector->GetTexture(sector_t::ceiling) == skyflatnum &&
+		sector->GetTexture(sector_t::floor) == BlackFlat();
+}
+
+// Every MAP01 cave is roofed by a solid 3D floor at the cliff top. Most caves' ceiling is far
+// above that roof, in the open air, where black drew a square floating in the sky (#24): only a
+// ceiling that is the cave's roof goes black, the others stay sky like the sectors around.
+bool BlackCaveCeiling(const sector_t *sector)
+{
+	if (!BlackCave(sector)) return false;
+	const DVector2 centre = sector->centerspot;
+	const double ceiling = sector->ceilingplane.ZatPoint(centre);
+	for (const F3DFloor *ff : sector->e->XFloor.ffloors)
+	{
+		if ((ff->flags & (FF_EXISTS | FF_SOLID)) == (FF_EXISTS | FF_SOLID) &&
+			ff->top.plane->ZatPoint(centre) < ceiling - 1.0)
+			return false;
+	}
+	return true;
+}
+
 FGameTexture *PartTexture(const side_t *side, int part)
 {
 	const FTextureID id = side->GetTexture(part);
@@ -359,8 +402,9 @@ void AddFlat(const subsector_t *sub, const sector_t *sector, int which, const DV
 	// Only the side of the plane the eye sees.
 	const double planeZ = plane.ZatPoint(eye.XY());
 	if (which == sector_t::floor ? eye.Z <= planeZ : eye.Z >= planeZ) return;
-	AddPlane(sub, plane, sector->GetTexture(which), sector, which, sector->lightlevel,
-		Exterior(sector));
+	const FTextureID texture = which == sector_t::ceiling && BlackCaveCeiling(sector) ?
+		BlackFlat() : sector->GetTexture(which);
+	AddPlane(sub, plane, texture, sector, which, sector->lightlevel, Exterior(sector));
 }
 
 // The face a 3D floor part goes into: nullptr when it is opaque (the caller draws it in the
@@ -497,11 +541,24 @@ void AddSeg(const seg_t *seg, const DVector2 &eye)
 	const double backFloorB = back->floorplane.ZatPoint(seg->v2);
 	const double backCeilA = back->ceilingplane.ZatPoint(seg->v1);
 	const double backCeilB = back->ceilingplane.ZatPoint(seg->v2);
+	// A cave's own walls where the next sector's floor meets its ceiling: the walk counts them
+	// solid and clips everything behind, and the swrenderer paints the cave's sky (black) above
+	// them. Here they go on up in black to the next sector's ceiling, or the sky showed there.
+	if (BlackCave(front) && !BlackCave(back) && (backCeilA > frontCeilA || backCeilB > frontCeilB))
+	{
+		if (FGameTexture *black = TexMan.GetGameTexture(BlackFlat(), true))
+			AddWall(black, a, b, frontCeilA, frontCeilB, std::max(backCeilA, frontCeilA),
+				std::max(backCeilB, frontCeilB), frontCeilA, along, side, side_t::top, lightLevel,
+				exterior);
+	}
+	const bool caveMouth = BlackCave(back) && !BlackCave(front);
 	const bool bothSky = front->GetTexture(sector_t::ceiling) == skyflatnum &&
-		back->GetTexture(sector_t::ceiling) == skyflatnum;
+		back->GetTexture(sector_t::ceiling) == skyflatnum && !caveMouth;
 	if (!bothSky && (backCeilA < frontCeilA || backCeilB < frontCeilB))
 	{
-		if (FGameTexture *texture = PartTexture(side, side_t::top))
+		FGameTexture *texture = PartTexture(side, side_t::top);
+		if (texture == nullptr && caveMouth) texture = TexMan.GetGameTexture(BlackFlat(), true);
+		if (texture != nullptr)
 		{
 			const double height = texture->GetDisplayHeight() / side->GetTextureYScale(side_t::top);
 			const double ref = (line->flags & ML_DONTPEGTOP) ?
@@ -698,7 +755,10 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 	// image shifted back so that StereoConvergence sits on the screen; nearer pops out, farther
 	// goes in, up to StereoMaxPixels per eye at infinity with the slider up. The visible set is
 	// the centre eye's.
-	const float slider = lod3ds_stereo ? osGet3DSliderState() : 0.0f;
+	float slider = lod3ds_stereo ? osGet3DSliderState() : 0.0f;
+#if LOD3DS_DEBUG_TOOLS
+	if (lod3ds_force_stereo) slider = 1.0f;
+#endif
 	const double screenPixelsPerNdc = 200.0; // the top screen's half width
 	const double halfSeparation = slider * StereoMaxPixels / screenPixelsPerNdc *
 		StereoConvergence * focalTangent / ax;
@@ -737,6 +797,8 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		(uint32_t(Map01DistanceFogRed) << 24) | (uint32_t(Map01DistanceFogGreen) << 16) |
 		(uint32_t(Map01DistanceFogBlue) << 8) | 0xff);
 
+	const uint64_t sectionBegun = svcGetSystemTick();
+	I_3DSSectionAdd("capture: setup", sectionBegun - start);
 	BatchIndex.clear();
 	TextureCache.clear();
 	SpriteTextureCache.clear();
@@ -745,17 +807,46 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 	if (sky) AddSky(level, vp, viewport);
 	const DVector2 eye2(ex, ey);
 	const DVector3 eye3(ex, ey, ez);
-	for (uint32_t index : thread->OpaquePass->VisibleSubsectors())
+	auto addSubsector = [&](const subsector_t *sub)
 	{
-		if (index >= level->subsectors.Size()) continue;
-		const subsector_t *sub = &level->subsectors[index];
 		const sector_t *sector = sub->sector;
-		if (sector == nullptr) continue;
+		if (sector == nullptr) return;
 		for (uint32_t i = 0; i < sub->numlines; ++i) AddSeg(&sub->firstline[i], eye2);
 		AddFlat(sub, sector, sector_t::floor, eye3);
 		AddFlat(sub, sector, sector_t::ceiling, eye3);
 		AddFFloorPlanes(sub, sector, eye3);
+	};
+	// A black cave seen at all is drawn whole. MAP01's caves have a one-unit solid 3D floor at
+	// the cliff top (Sector_Set3DFloor), whose sides the walk counts as solid: from some spots it
+	// hides the cave's far half, which the swrenderer leaves black and the GPU world left empty,
+	// so the sky showed through (2026-10-18). Each cave is two or three subsectors.
+	static std::vector<uint32_t> seen;
+	static std::vector<const sector_t *> caves;
+	seen.clear();
+	caves.clear();
+	for (uint32_t index : thread->OpaquePass->VisibleSubsectors())
+	{
+		if (index >= level->subsectors.Size()) continue;
+		const subsector_t *sub = &level->subsectors[index];
+		addSubsector(sub);
+		if (BlackCave(sub->sector))
+		{
+			seen.push_back(index);
+			if (std::find(caves.begin(), caves.end(), sub->sector) == caves.end())
+				caves.push_back(sub->sector);
+		}
 	}
+	for (const sector_t *cave : caves)
+	{
+		for (int i = 0; i < cave->subsectorcount; ++i)
+		{
+			const subsector_t *sub = cave->subsectors[i];
+			const uint32_t index = uint32_t(sub - &level->subsectors[0]);
+			if (std::find(seen.begin(), seen.end(), index) == seen.end()) addSubsector(sub);
+		}
+	}
+	const uint64_t sectionGeometry = svcGetSystemTick();
+	I_3DSSectionAdd("capture: geometry", sectionGeometry - sectionBegun);
 	// The opaque sprites with the world; the see-through ones after every opaque batch, far
 	// to near (I_3DSGpuWorldQueueBlended draws them in that order).
 	for (const FSprite &sprite : Sprites)
@@ -793,6 +884,8 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 	std::sort(SeeThrough.begin(), SeeThrough.end(),
 		[](const FSeeThrough &a, const FSeeThrough &b) { return a.Depth > b.Depth; });
 
+	const uint64_t sectionSprites = svcGetSystemTick();
+	I_3DSSectionAdd("capture: sprites, sort", sectionSprites - sectionGeometry);
 	uint32_t vertices = 0;
 	for (size_t i = 0; i < BatchesUsed; ++i)
 	{
@@ -820,6 +913,7 @@ void I_3DSGpuWorldCapture(swrenderer::RenderThread *thread)
 		vertices += static_cast<uint32_t>(face.Vertices.size());
 	}
 
+	I_3DSSectionAdd("capture: queue", svcGetSystemTick() - sectionSprites);
 	StatTicks += svcGetSystemTick() - start;
 	StatFrames += 1;
 	StatVertices += vertices;
@@ -832,6 +926,11 @@ bool I_3DSGpuWorldActive()
 	return Active && (lod3ds_gpu_world || !LOD3DS_DEBUG_TOOLS);
 }
 
+bool I_3DSGpuWorldEnabled()
+{
+	return lod3ds_gpu_world || !LOD3DS_DEBUG_TOOLS;
+}
+
 #else
 
 void I_3DSGpuWorldBeginScene(swrenderer::RenderThread *) {}
@@ -840,5 +939,6 @@ void I_3DSGpuWorldAddSprite(FGameTexture *, double, double, double, double, doub
 	int, bool, const sector_t *, int, double, uint32_t) {}
 void I_3DSGpuWorldCapture(swrenderer::RenderThread *) {}
 bool I_3DSGpuWorldActive() { return false; }
+bool I_3DSGpuWorldEnabled() { return false; }
 
 #endif

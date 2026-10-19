@@ -266,6 +266,9 @@ void I_InitSound ()
 	/* Get command line options: */
 	nosound = !!Args->CheckParm ("-nosound");
 	nosfx = !!Args->CheckParm ("-nosfx");
+	#ifdef __3DS__
+	if (I_3DSNoAudioRequested()) nosound = true;
+	#endif
 
 	GSnd = NULL;
 	if (nosound)
@@ -305,6 +308,7 @@ void I_InitSound ()
 	snd_sfxvolume.Callback ();
 	#ifdef __3DS__
 	I_3DSSetAudioReady(GSnd != nullptr && !GSnd->IsNull());
+	if (GSnd != nullptr && !GSnd->IsNull()) I_3DSAudioCpuBudget();
 	#endif
 }
 

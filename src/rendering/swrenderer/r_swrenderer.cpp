@@ -60,6 +60,9 @@
 #include "imagehelpers.h"
 #include "texturemanager.h"
 #include "d_main.h"
+#ifdef __3DS__
+#include "common/platform/3ds/gpu_world_3ds.h"
+#endif
 
 // [BB] Use ZDoom's freelook limit for the software renderer.
 // Note: ZDoom's limit is chosen such that the sky is rendered properly.
@@ -97,6 +100,14 @@ void FSoftwareRenderer::PreparePrecache(FGameTexture *ttex, int cache)
 	{
 		FSoftwareTexture *tex = GetSoftwareTexture(ttex);
 
+#ifdef __3DS__
+		// The GPU copies (PolyHardwareTexture) of what the new level does not use: nothing else
+		// frees them, and after a few maps the 2DS's linear memory was down to 140 KB, so new
+		// sprites (the drawn bow, the arrow) found no room and frames fell back to the CPU
+		// (2026-10-18). What is drawn again (the 2D, the HUD) is rebuilt on first use.
+		if (cache == 0) ttex->CleanHardwareData();
+#endif
+
 		if (tex->CheckPixels())
 		{
 			if (cache == 0) tex->Unload();
@@ -111,6 +122,12 @@ void FSoftwareRenderer::PreparePrecache(FGameTexture *ttex, int cache)
 void FSoftwareRenderer::PrecacheTexture(FGameTexture *ttex, int cache)
 {
 	bool isbgra = V_IsTrueColor();
+#ifdef __3DS__
+	// With the GPU world the level's textures are built for the GPU from their images; true-colour
+	// software copies of all of them took 2.75 MB of the 2DS's heap at MAP01 (census, 2026-10-17).
+	// What the software renderer still draws loads on first use.
+	if (I_3DSGpuWorldEnabled()) return;
+#endif
 
 	if (ttex != nullptr && ttex->isValid() && !ttex->isSoftwareCanvas())
 	{

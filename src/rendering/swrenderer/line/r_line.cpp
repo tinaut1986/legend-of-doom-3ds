@@ -62,6 +62,7 @@
 #include "swrenderer/r_renderthread.h"
 #ifdef __3DS__
 #include "common/platform/3ds/gpu_world_3ds.h"
+#include "c_dispatch.h"
 #endif
 
 CVAR(Bool, r_fogboundary, true, 0)
@@ -73,6 +74,14 @@ namespace swrenderer
 	{
 		Thread = thread;
 	}
+
+#ifdef __3DS__
+	bool TraceSolid3DS;
+	CCMD(lod3ds_tracesolid)
+	{
+		TraceSolid3DS = true;
+	}
+#endif
 
 	void SWRenderLine::Render(seg_t *line, subsector_t *subsector, sector_t *sector, sector_t *fakebacksector, VisiblePlane *linefloorplane, VisiblePlane *lineceilingplane, Fake3DOpaque opaque3dfloor)
 	{
@@ -168,6 +177,16 @@ namespace swrenderer
 
 		rw_prepped = false;
 
+#ifdef __3DS__
+		// lod3ds_tracesolid (debug): one walk's solid lines, with their columns and heights.
+		if (TraceSolid3DS && Thread->MainThread && IsSolid())
+		{
+			Printf("solid L%d cols %d-%d front f%.0f c%.0f back %s f%.0f c%.0f\n",
+				line->linedef->Index(), WallC.sx1, WallC.sx2, mFrontFloorZ1, mFrontCeilingZ1,
+				mBackSector ? "" : "none", mBackSector ? mBackFloorZ1 : 0.0,
+				mBackSector ? mBackCeilingZ1 : 0.0);
+		}
+#endif
 		bool visible = Thread->ClipSegments->Clip(WallC.sx1, WallC.sx2, IsSolid(), this);
 
 		if (visible)

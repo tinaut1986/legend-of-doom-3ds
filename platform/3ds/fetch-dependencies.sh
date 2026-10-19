@@ -122,7 +122,8 @@ checkout_pinned \
   "${DEPS_ROOT}/ZMusic" \
   "${ROOT}/platform/3ds/patches/zmusic-3ds.patch" \
   "${ROOT}/platform/3ds/patches/zmusic-minimp3.patch" \
-  "${ROOT}/platform/3ds/patches/zmusic-optional-mpg123.patch"
+  "${ROOT}/platform/3ds/patches/zmusic-optional-mpg123.patch" \
+  "${ROOT}/platform/3ds/patches/zmusic-adpcm.patch"
 checkout_pinned \
   "${LOD3DS_MINIMP3_URL}" "${LOD3DS_MINIMP3_REV}" \
   "${DEPS_ROOT}/minimp3"

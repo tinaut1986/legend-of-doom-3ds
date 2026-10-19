@@ -45,6 +45,24 @@ bool I_3DSPerfStart();
 // Writes the CSV and frees the buffer. Returns the file number, or -1.
 int I_3DSPerfStop();
 
+// Named sections for finding where a part's time goes (lod3ds_sections [reset], debug builds):
+// total time and calls by name, printed as ms per presented frame. The name must be a string
+// literal; a section costs two timer reads.
+struct F3DSSection
+{
+	explicit F3DSSection(const char *name);
+	~F3DSSection();
+	F3DSSection(const F3DSSection &) = delete;
+	F3DSSection &operator=(const F3DSSection &) = delete;
+
+	int Slot;
+	uint64_t Start;
+};
+
+// The same for a stretch that does not fit a scope: ticks measured by the caller.
+void I_3DSSectionAdd(const char *name, uint64_t ticks);
+void I_3DSSectionsFrameDone();
+
 struct F3DSPerfScope
 {
 	explicit F3DSPerfScope(E3DSPerfPart part);

@@ -12,7 +12,7 @@ actions are centered between the fixed Update heading and Back button.
 
 Opening Update checks GitHub. The selected stable/beta channel persists
 under `sdmc:/3ds/Legend of Doom 3DS/update/channel.txt`. A selects, B returns or
-cancels a transfer, and the bottom screen supports touch. L/R pages through the changelog without leaving the update controls. **CHANGELOG** (the row above Back) picks what the top screen lists: NEW, what was published between the installed version and the newest one the channel sees (see "Release compatibility"), or ALL, every version the channel sees, newest first, each under its tag (`Update_ReleaseHistory`, from the same GitHub response). The start-up offer always shows NEW. Installation requires an explicit Yes; No is selected
+cancels a transfer, and the bottom screen supports touch. L/R pages through the changelog without leaving the update controls. **CHANGELOG** (the row above Back) picks what the top screen lists: NEW, what was published between the installed version and the newest one the channel sees (see "Release compatibility"), or ALL, every version up to the newest the channel offers (betas included on both channels), newest first, each under its tag (`Update_ReleaseHistory`, from the same GitHub response). The start-up offer always shows NEW. The screen shows notes every time it opens, not only when an update is offered: opening it starts a check; until (or without) an answer it shows the last notes saved on the SD card (`update-notes-new.txt` / `update-notes-all.txt`, written whenever an answer arrives), and failing that the installed version's `docs/release-notes` file, which `build.sh` puts in the romfs as `update-changelog.txt`. Installation requires an explicit Yes; No is selected
 by default. Installation restarts the game into the new version (unsaved progress is lost).
 
 **AUTO UPDATE** (first row of the Update menu, `lod3ds_auto_update`, on by default): a few
@@ -60,9 +60,8 @@ The handheld changelog shows the release body's `<!-- lod-notes -->` block (from
 `docs/release-notes/<tag>.md`), or the `## Changelog` commit list when it is
 missing. When more than one release the channel sees lies between the installed
 version and the offered one, it shows each one's block under its tag (`vX.Y.Z`, or
-`vX.Y.Z BETA`), newest first: every stable release, and the betas no stable release in
-that range already covers (a stable release's notes list everything since the previous
-stable one, betas included). The updater reads up to 100 releases, limits metadata to 2 MiB and CIA
+`vX.Y.Z BETA`), newest first: every stable release and every beta in that range, on
+either channel (a release's notes list only what is new since the previous tag). The updater reads up to 100 releases, limits metadata to 2 MiB and CIA
 files to 128 MiB.
 
 ## Local verification

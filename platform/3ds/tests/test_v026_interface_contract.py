@@ -2,6 +2,7 @@
 """Contracts for the v0.26 base through the v0.30 interface polish."""
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -49,7 +50,11 @@ class V026InterfaceContractTests(unittest.TestCase):
         diagnostics = (ROOT / "src/common/platform/3ds/diagnostics_3ds.cpp").read_text()
         self.assertIn("StatusBar->DrawMessagesOnly(HUD_None)", main)
         self.assertIn("void DBaseStatusBar::DrawMessagesOnly", status)
-        self.assertIn("CR_BLACK, textX + 1, line + 1", notify)
+        # Legible over any picture: each line on a black band (it replaced a one-pixel shadow).
+        self.assertIn("Dim(twod, 0, float(alpha * 0.85)", notify)
+        self.assertIn("lod3ds_messages_bottom", notify)
+        # One message a line (the translated and the rupee messages lost or lacked their newline).
+        self.assertIn("if (source.IsNotEmpty() && source.Back() != '\\n') source += '\\n';", notify)
         self.assertIn("trackedMapName.Compare(primaryLevel->MapName)", diagnostics)
 
     def test_unified_engine_menus_and_bottom_hud_polish(self):
@@ -58,7 +63,8 @@ class V026InterfaceContractTests(unittest.TestCase):
         self.assertNotIn("if (DrawNativePixelMenu(framebuffer))", diagnostics)
         self.assertIn('Font "NewSmallFont", "White"', patch)
         self.assertIn("DrawBottomRoundedRectOutline", diagnostics)
-        self.assertIn('NesText(framebuffer, RBoxX, TitleY, Tr("INVENTORY"), 1, Red)', diagnostics)
+        self.assertIn('NesText(framebuffer, LBoxX, TitleY, Tr("INVENTORY"), 1, Red)', diagnostics)
+        self.assertIn("constexpr int LBoxX = 12, RBoxX = 46,", diagnostics)  # L left, R right
         self.assertIn('Tr(BottomMapZoomedOut ? "ZOOM IN" : "ZOOM OUT")', diagnostics)
         self.assertNotIn("DrawBottomTabs", diagnostics)
         self.assertIn("A_OverlayOffset(OverlayID(), 51, 170)", patch)
@@ -78,6 +84,80 @@ class V026InterfaceContractTests(unittest.TestCase):
         self.assertIn('OPTIONMENU "LegendControlsMenu"', patch)
         self.assertIn("DrawBottomAutomap(mapPixels.data(), 0, 0, SourceWidth, SourceHeight, 64.0)", diagnostics)
 
+    def test_control_schemes(self):
+        # #22: CLASSIC and BUTTON CAMERA, each remappable, the default by model.
+        input_source = (ROOT / "src/common/platform/3ds/i_input_3ds.cpp").read_text()
+        game = (ROOT / "src/g_game.cpp").read_text()
+        engine_main = (ROOT / "src/d_main.cpp").read_text()
+        playsim = (ROOT / "src/playsim/p_map.cpp").read_text()
+        player = (ROOT / "src/playsim/p_user.cpp").read_text()
+        native = (ROOT / "src/common/platform/3ds/native_menu_3ds.inc").read_text()
+        patch = (ROOT / "platform/3ds/patches/legend-of-doom-3ds.patch").read_text()
+
+        # The menu's action list is the engine's, in the same order.
+        engine_actions = re.findall(r'\{ "\w+", "[^"]*", "([^"]+)" \}', input_source)
+        menu_block = patch[patch.index('+OPTIONVALUE "LegendButtonAction"'):]
+        menu_block = menu_block[:menu_block.index("+}")]
+        menu_actions = re.findall(r'\+\s+\d+, "([^"]+)"', menu_block)
+        self.assertEqual(engine_actions, menu_actions)
+        self.assertEqual(len(engine_actions), 16)
+
+        # Every remappable button has its cvar in the engine and its row in BUTTONS.
+        for cvar in ("a", "b", "x", "y", "l", "r", "zl", "zr", "up", "down", "left", "right"):
+            self.assertIn(f"LOD3DS_BUTTON_CVAR(lod3ds_button_{cvar}, ", input_source)
+            self.assertIn(f'"lod3ds_button_{cvar}", "LegendButtonAction"', patch)
+        self.assertIn('Command "DEFAULTS", "lod3ds_buttons_reset"', patch)
+        self.assertIn('Option "SCHEME", "lod3ds_control_scheme", "LegendControlScheme"', patch)
+        # One CONTROLS screen: the scheme, the fixed inputs and the remappable buttons together.
+        self.assertIn('Submenu "CONTROLS", "LegendButtonsMenu"', patch)
+        self.assertNotIn('Submenu "CONTROLS", "LegendControlsMenu"', patch)
+        self.assertIn('{ "CIRCLE PAD", "MOVE / STRAFE" }', native)
+        self.assertIn('menu == FName("LegendButtonsMenu")', native)
+        # The scheme is the first row of the buttons screen, drawn as their parent.
+        buttons_menu = patch[patch.index('+OPTIONMENU "LegendButtonsMenu"'):]
+        self.assertLess(buttons_menu.index('"lod3ds_control_scheme"'), buttons_menu.index('"lod3ds_button_a"'))
+        self.assertIn('strcmp(cvar->GetName(), "lod3ds_control_scheme") == 0', native)
+        # Sprint: OFF / BUTTON / AUTO, AUTO by default.
+        self.assertIn("CUSTOM_CVAR(Int, lod3ds_sprint_mode, 2,", input_source)
+        self.assertIn('Option "SPRINT AT FULL LIFE", "lod3ds_sprint_mode", "LegendSprintMode"', patch)
+        self.assertIn("if (sprintMode == 2) speedButton = true;", game)
+        # `action` is a ZScript keyword: a variable called so stops the game at start-up.
+        self.assertNotRegex(patch, r"\n\+\s+(int|let|String|bool) action\b")
+
+        # Defaults: (button, CLASSIC, BUTTON CAMERA), as the issue's tables.
+        for key, classic, camera in (
+                ("KEY_PAD_A", "ActUse", "ActRight"), ("KEY_PAD_B", "ActNone", "ActLookDown"),
+                ("KEY_PAD_X", "ActSpeed", "ActLookUp"), ("KEY_PAD_Y", "ActJump", "ActLeft"),
+                ("KEY_PAD_DPAD_UP", "ActMap", "ActUse"), ("KEY_PAD_DPAD_DOWN", "ActInvUse", "ActMap")):
+            self.assertRegex(input_source, rf"\{{ {key}, \"[^\"]+\", {classic}, {camera} \}}")
+        self.assertIn("lod3ds_control_scheme = isNew3DS ? 0 : 1;", input_source)
+        self.assertIn('CVAR(String, lod3ds_buttons_classic, ""', input_source)
+        self.assertIn('CVAR(String, lod3ds_buttons_camera, ""', input_source)
+        self.assertIn("I_3DSApplyControlScheme(); // the control scheme's buttons", engine_main)
+        self.assertLess(engine_main.index("GameConfig->DoKeySetup(gameinfo.ConfigName);"),
+                        engine_main.index("I_3DSApplyControlScheme();"))
+
+        # Button turning with a ramp and CAM SENSITIVITY; sprint at the pad's edge.
+        self.assertIn("I_3DSButtonLookStep(static_cast<int>(JoyYawUnitsPerTic)", game)
+        self.assertIn("* I_3DSCStickSensitivity()", input_source)
+        self.assertIn("if (push >= 0.85f * 0.85f) speedButton = true;", game)  # BUTTON in BUTTON CAMERA
+
+        # Walk into a door or a push block to use it, once per contact.
+        for script in ("UnlockAndOpenDoor", "RevealStairs", "RevealSecret", "RevealDoor",
+                       "RevealPowerBracelet", "ToggleShoreMusic"):
+            self.assertIn(f'"{script}"', playsim)
+        self.assertIn("P_3DSWalkIntoUse(line, side, mobj);", playsim)
+        # ...and the hint leaves those lines out: they need no button, some need an item first.
+        self.assertIn("if (P_3DSWalkIntoLine(line)) return false;", playsim)
+
+        # The first interaction hint names the button bound to +use.
+        self.assertIn('I_3DSButtonForCommand("+use")', player)
+        self.assertIn('I_3DSTranslate("TO INTERACT PRESS")', player)
+        self.assertIn("+TO INTERACT PRESS,LOD_TO_INTERACT_PRESS,,,", patch)
+        for label in engine_actions[1:] + ["SCHEME", "BUTTONS", "CLASSIC", "BUTTON CAMERA",
+                                           "DEFAULTS", "DPAD LEFT", "DPAD RIGHT"]:
+            self.assertRegex(patch, rf"\n\+{re.escape(label)},LOD_\w+,,,", label)
+
     def test_v030_controls_alignment_and_touch_inventory(self):
         diagnostics = (ROOT / "src/common/platform/3ds/diagnostics_3ds.cpp").read_text()
         patch = (ROOT / "platform/3ds/patches/legend-of-doom-3ds.patch").read_text()
@@ -91,7 +171,7 @@ class V026InterfaceContractTests(unittest.TestCase):
         self.assertIn("current.GetSplitLabelLeft()", option_items)
         self.assertIn("current.GetSplitValueRight() - width", option_items)
         self.assertIn("class LegendControlsReferenceMenu", patch)
-        self.assertIn("int rowHeight = 13 * CleanYfac_1", patch)
+        self.assertIn("int rowHeight = 11 * CleanYfac_1", patch)
         self.assertNotIn('Menu.OptionWidth("INPUT")', patch)
         self.assertNotIn('mFontColorHeader, "ACTION"', patch)
         self.assertIn('Font "NewSmallFont", "White"', patch)

@@ -67,6 +67,9 @@ FModule OpenALModule{"OpenAL"};
 #ifndef NO_OPENAL
 static constexpr ALfloat PlatformOutputGain = 1.0f;
 #ifdef __3DS__
+static constexpr int Old3DSSampleRate = 22050;
+#endif
+#ifdef __3DS__
 // The bundled mono MP3 tracks peak between roughly -16 and -12 dBFS. A 3x
 // music-only gain is a true +200% increase (+9.54 dB) and still leaves peak
 // headroom, while listener/SFX gain remains neutral.
@@ -197,6 +200,15 @@ static ALvoid AL_APIENTRY _wrap_ProcessUpdatesSOFT(void)
 	alcProcessContext(alcGetCurrentContext());
 }
 
+
+#ifdef __3DS__
+// Music stream health (#16), read by lod3ds_musicstats: how often the queue ran dry and how much
+// CPU the decoder took for how much audio.
+static std::atomic<uint32_t> MusicUnderruns{0};
+static std::atomic<uint64_t> MusicDecodeTicks{0};
+static std::atomic<uint64_t> MusicDecodedBytes{0};
+static std::atomic<uint32_t> MusicBytesPerSecond{0};
+#endif
 
 class OpenALSoundStream : public SoundStream
 {
@@ -433,7 +445,16 @@ public:
 			alSourceUnqueueBuffers(Source, 1, &bufid);
 			processed--;
 
+#ifdef __3DS__
+			const uint64_t decodeStart = svcGetSystemTick();
+			const bool filled = Callback(this, &Data[0], Data.Size(), UserData);
+			MusicDecodeTicks += svcGetSystemTick() - decodeStart;
+			MusicDecodedBytes += Data.Size();
+			MusicBytesPerSecond = uint32_t(SampleRate * FrameSize);
+			if(filled)
+#else
 			if(Callback(this, &Data[0], Data.Size(), UserData))
+#endif
 			{
 				alBufferData(bufid, Format, &Data[0], Data.Size(), SampleRate);
 				alSourceQueueBuffers(Source, 1, &bufid);
@@ -449,6 +470,9 @@ public:
 			alGetSourcei(Source, AL_BUFFERS_QUEUED, &queued);
 
 			ok = (getALError() == AL_NO_ERROR) && (queued > 0);
+#ifdef __3DS__
+			if(ok && state == AL_STOPPED) MusicUnderruns++;
+#endif
 			if(ok)
 			{
 				alSourcePlay(Source);
@@ -614,10 +638,19 @@ OpenALSoundRenderer::OpenALSoundRenderer()
 	DPrintf(DMSG_SPAMMY, "  ALC Extensions: " TEXTCOLOR_ORANGE"%s\n", alcGetString(Device, ALC_EXTENSIONS));
 
 	TArray<ALCint> attribs;
-	if(*snd_samplerate > 0)
+	int sampleRate = *snd_samplerate;
+	#ifdef __3DS__
+	// The Old 3DS / 2DS mix at 22050 Hz, the music's own rate: the mixer and the music's decoder
+	// share core 1, where the game gets 30%, and at 32000 Hz the mixer fell behind when many
+	// sounds played (fried sound, gaps). The decoder's share of the core went from 56% to 13%.
+	bool isNew3DS = false;
+	APT_CheckNew3DS(&isNew3DS);
+	if(!isNew3DS) sampleRate = Old3DSSampleRate;
+	#endif
+	if(sampleRate > 0)
 	{
 		attribs.Push(ALC_FREQUENCY);
-		attribs.Push(*snd_samplerate);
+		attribs.Push(sampleRate);
 	}
 	// Make sure one source is capable of stereo output with the rest doing
 	// mono, without running out of voices
@@ -957,6 +990,22 @@ void OpenALSoundRenderer::BackgroundProc()
 }
 
 #ifdef __3DS__
+// lod3ds_musicstats [reset]: underruns since the last reset, and the decoder's share of one core
+// (CPU time spent decoding / length of the audio it produced).
+CCMD(lod3ds_musicstats)
+{
+	const double seconds = MusicBytesPerSecond ? double(MusicDecodedBytes) / MusicBytesPerSecond : 0;
+	const double cpu = double(MusicDecodeTicks) / SYSCLOCK_ARM11;
+	Printf("music: %u underruns, %.1f s of audio decoded in %.2f s of CPU (%.1f%% of a core)\n",
+		unsigned(MusicUnderruns), seconds, cpu, seconds > 0 ? 100.0 * cpu / seconds : 0.0);
+	if (argv.argc() > 1)
+	{
+		MusicUnderruns = 0;
+		MusicDecodeTicks = 0;
+		MusicDecodedBytes = 0;
+	}
+}
+
 void OpenALSoundRenderer::BackgroundProc3DS(void *userdata)
 {
 	static_cast<OpenALSoundRenderer *>(userdata)->BackgroundProc();

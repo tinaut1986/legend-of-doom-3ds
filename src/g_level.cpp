@@ -97,6 +97,7 @@
 #ifdef __3DS__
 #include "m_alloc.h"
 #include "common/platform/3ds/memory_3ds.h"
+#include "common/platform/3ds/diagnostics_3ds.h"
 #endif
 
 void STAT_StartNewGame(const char *lev);
@@ -1079,6 +1080,11 @@ extern gamestate_t 	wipegamestate;
  
 void G_DoLoadLevel(const FString &nextmapname, int position, bool autosave, bool newGame)
 {
+#ifdef __3DS__
+	level_info_t *loadingInfo = FindLevelInfo(nextmapname.GetChars());
+	F3DSMapLoadOverlay loadingOverlay(nextmapname.GetChars(), loadingInfo != nullptr ?
+		loadingInfo->LookupLevelName().GetChars() : nextmapname.GetChars(), savegamerestore);
+#endif
 	gamestate_t oldgs = gamestate;
 
 	// Here the new level needs to be allocated.
@@ -1214,6 +1220,9 @@ void FLevelLocals::DoLoadLevel(const FString &nextmapname, int position, bool au
 
 	starttime = gametic;
 
+#ifdef __3DS__
+	if (savegamerestore) I_3DSStartupLog("map-restore"); // the map-change overlay's phases
+#endif
 	UnSnapshotLevel (!savegamerestore);	// [RH] Restore the state of the 
 	int pnumerr = FinishTravel ();
 
@@ -1265,6 +1274,7 @@ void FLevelLocals::DoLoadLevel(const FString &nextmapname, int position, bool au
 	M_3DSLogHeap(FStringf("level-loaded %s gc=%zu", MapName.GetChars(), GC::AllocBytes).GetChars());
 	GC::FullGC();
 	M_3DSLogHeap(FStringf("level-loaded-gc %s gc=%zu", MapName.GetChars(), GC::AllocBytes).GetChars());
+	I_3DSMemoryCensusIfRequested(FStringf("%s-loaded", MapName.GetChars()).GetChars());
 	M_3DSLogHeap(I_3DSReserveMapLoadMemory() ? "map-load-reserve-ready" : "map-load-reserve-unavailable");
 #endif
 	//      unsafe world load

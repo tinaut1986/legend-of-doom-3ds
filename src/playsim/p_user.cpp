@@ -1197,9 +1197,41 @@ DEFINE_ACTION_FUNCTION(APlayerPawn, CheckEnvironment)
 //
 //----------------------------------------------------------------------------
 
+#ifdef __3DS__
+#include "common/platform/3ds/diagnostics_3ds.h"
+#include "common/platform/3ds/i_input_3ds.h"
+
+bool P_3DSUseTargetInRange(AActor *usething);
+
+// The first interaction hint (#22): until the player has interacted once with the button, the first
+// time in each run of the game that something usable is in reach, a message names the button
+// that interacts in the active scheme.
+CVAR(Bool, lod3ds_use_hint, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+
+static void P_3DSUseHint(player_t *player, bool usePressed)
+{
+	static bool shownThisRun;
+	if (!lod3ds_use_hint || player != &players[consoleplayer] || player->mo == nullptr) return;
+	if (!usePressed && (shownThisRun || (player->mo->Level->maptime & 3) != 0)) return;
+	if (!P_3DSUseTargetInRange(player->mo)) return;
+	if (usePressed)
+	{
+		lod3ds_use_hint = false;
+		return;
+	}
+	const char *button = I_3DSButtonForCommand("+use");
+	if (button == nullptr) return;
+	shownThisRun = true;
+	Printf(PRINT_MEDIUM, "%s %s\n", I_3DSTranslate("TO INTERACT PRESS"), I_3DSTranslate(button));
+}
+#endif
+
 void P_CheckUse(player_t *player)
 {
 	// check for use
+#ifdef __3DS__
+	P_3DSUseHint(player, (player->cmd.ucmd.buttons & BT_USE) && !player->usedown);
+#endif
 	if (player->cmd.ucmd.buttons & BT_USE)
 	{
 		if (!player->usedown)

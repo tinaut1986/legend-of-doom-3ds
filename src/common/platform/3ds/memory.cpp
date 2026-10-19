@@ -1,9 +1,14 @@
 #include <3ds.h>
 #include <cstdlib>
 #include <cstdint>
+#include <malloc.h>
 #include <new>
+#include <typeinfo>
+
+#include <cstdio>
 
 #include "memory_3ds.h"
+#include "diagnostics_3ds.h"
 
 static size_t LastFailedNewRequest;
 static uintptr_t LastFailedNewCaller;
@@ -75,7 +80,14 @@ void *MapLoadReserve;
 
 bool I_3DSReserveMapLoadMemory()
 {
-	if (MapLoadReserve == nullptr) MapLoadReserve = std::malloc(MapLoadReserveBytes);
+	// The large-block arena (P4.6) keeps map loading's big blocks apart from the small ones;
+	// a held 5 MB block would only sit in it.
+	(void)MapLoadReserveBytes;
+	return true;
+}
+
+bool I_3DSMapLoadReserveHeld()
+{
 	return MapLoadReserve != nullptr;
 }
 
@@ -90,7 +102,22 @@ static void *AllocateWithNewHandler(size_t size, uintptr_t caller)
 	if (size == 0) size = 1;
 	for (;;)
 	{
-		if (void *block = std::malloc(size)) return block;
+		I_3DSAllocCaller = caller;
+		void *fresh = std::malloc(size);
+		I_3DSAllocCaller = 0;
+		if (fresh != nullptr) return fresh;
+		// The map-load reserve is there to be handed back when a large block finds no room; on the
+		// 2DS a new game read a 2 MB lump before P_SetupLevel releases it (largest free block
+		// 1.7 MB of 10.5 MB free, 2026-10-17).
+		if (MapLoadReserve != nullptr)
+		{
+			I_3DSReleaseMapLoadMemory();
+			char stage[80];
+			std::snprintf(stage, sizeof(stage), "map-load reserve released for %zu bytes caller 0x%08lx",
+				size, (unsigned long)caller);
+			I_3DSStartupLog(stage);
+			continue;
+		}
 		LastFailedNewRequest = size;
 		LastFailedNewCaller = caller;
 		auto handler = std::get_new_handler();
@@ -107,6 +134,32 @@ void *operator new(size_t size)
 void *operator new[](size_t size)
 {
 	return AllocateWithNewHandler(size, (uintptr_t)__builtin_return_address(0));
+}
+
+size_t I_3DSLargestFreeBlock()
+{
+	size_t low = 0, high = (size_t)mallinfo().fordblks;
+	while (high - low > 4096)
+	{
+		const size_t mid = low + (high - low) / 2;
+		void *block = std::malloc(mid);
+		// Without this GCC drops the malloc/free pair and folds the test to "succeeded".
+		__asm__ volatile("" : "+r"(block) : : "memory");
+		if (block != nullptr)
+		{
+			std::free(block);
+			low = mid;
+		}
+		else high = mid;
+	}
+	return low;
+}
+
+bool I_3DSIsOld3DS()
+{
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+	return !isNew3DS;
 }
 
 size_t I_3DSLastFailedNewRequest()
@@ -235,4 +288,32 @@ extern "C"
 		fake_heap_start = reinterpret_cast<char *>(__ctru_heap);
 		fake_heap_end = fake_heap_start + __ctru_heap_size;
 	}
+}
+
+// Linked with -Wl,--wrap=__cxa_throw: a std::bad_alloc that does not come through the new handler
+// (the 2DS ended with a bare "std::bad_alloc" in fatal.log, 2026-10-17) logs the code addresses on
+// its stack, for addr2line on the build's ELF.
+extern "C" [[noreturn]] void __real___cxa_throw(void *object, std::type_info *type,
+	void (*destructor)(void *));
+
+extern "C" [[noreturn]] void __wrap___cxa_throw(void *object, std::type_info *type,
+	void (*destructor)(void *))
+{
+	if (type != nullptr && *type == typeid(std::bad_alloc))
+	{
+		char stage[200];
+		int length = std::snprintf(stage, sizeof(stage), "bad_alloc thrown, stack:");
+		const uintptr_t *stack = static_cast<const uintptr_t *>(__builtin_frame_address(0));
+		int found = 0;
+		for (int i = 0; i < 512 && found < 14 && length < static_cast<int>(sizeof(stage)) - 12; ++i)
+		{
+			const uintptr_t word = stack[i];
+			if (word < 0x00100000u || word >= 0x00a00000u) continue;
+			length += std::snprintf(stage + length, sizeof(stage) - length, " %lx",
+				(unsigned long)word);
+			++found;
+		}
+		I_3DSStartupLog(stage);
+	}
+	__real___cxa_throw(object, type, destructor);
 }

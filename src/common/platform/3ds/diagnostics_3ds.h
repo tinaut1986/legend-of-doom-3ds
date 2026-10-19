@@ -10,9 +10,12 @@ struct F3DSDiagnosticButtonResult
 // intentionally independent from GZDoom's logfile so a crash or hang during
 // early engine/video initialization still leaves a precise last-known stage.
 void I_3DSStartupLog(const char *stage);
-// A message for the player, as a toast on the touch screen in the game's own style (English text:
-// it goes through Tr()). The engine's own messages print in its generic font over the top screen.
+// A message for the player, as a toast on the top screen in the game's own style (English text:
+// it goes through Tr()), where OPTIONS -> DISPLAY -> MESSAGES puts the game's messages.
 void I_3DSToast(const char *english);
+// What the game's own messages (c_notifybuffer.cpp) take of the top screen's height, 0..1, from
+// the edge they hang on; the toast stacks beside them.
+float C_3DSNotifyOccupied();
 // The same for the C side (ftp_server_3ds.c): `line` is logged as the stage. Main thread only.
 extern "C" void I_3DSStartupLogLine(const char *line);
 void I_3DSWriteFatalLog(const char *message);
@@ -21,10 +24,32 @@ void I_3DSWriteFatalLog(const char *message);
 // These functions draw a tiny framebuffer-only progress screen without
 // creating a GZDoom window or a NovaGL context. The final image remains on the
 // LCD until the first real GPU frame replaces it.
-// True when this is an Old 3DS / 2DS: a message was shown and the game must exit (main).
-bool I_3DSUnsupportedConsoleScreen();
+// True when the game cannot run here and a message was shown: the game must exit (main). A New
+// 3DS started in its 64 MB mode (#27).
+bool I_3DSStartupBlockingScreen();
+// Debug builds: a no-audio.txt in the data folder starts the game without audio (Old 3DS bring-up).
+bool I_3DSNoAudioRequested();
+// After the audio starts, on the Old 3DS / 2DS: logs core 1's time limit for the application (the
+// NDSP mixer and the music stream run there at 30%; #16 made the music cheaper instead).
+void I_3DSAudioCpuBudget();
 void I_3DSLoadingScreenStart();
 void I_3DSLoadingScreenFinish();
+// The map-change loading overlay (a level change or a saved game): the dimmed last picture with
+// the area's name, what is loading and a bar. Nested calls count; the phases follow
+// I_3DSStartupLog stages (map-load-begin, level-freed, map-nodes, ...). mapName is the lump
+// (MAP02), levelName what the box shows.
+void I_3DSMapLoadBegin(const char *mapName, const char *levelName, bool restoring);
+void I_3DSMapLoadEnd();
+// After every presented frame: logs map-first-frame for the first one after a map load.
+void I_3DSMapLoadFrameShown();
+struct F3DSMapLoadOverlay
+{
+	F3DSMapLoadOverlay(const char *mapName, const char *levelName, bool restoring)
+	{
+		I_3DSMapLoadBegin(mapName, levelName, restoring);
+	}
+	~F3DSMapLoadOverlay() { I_3DSMapLoadEnd(); }
+};
 
 // Duplicates the most recent upper LCD image into both scanout buffers before
 // launching the system software keyboard, so the applet preserves the game
@@ -143,3 +168,9 @@ void I_3DSServiceSettingsSave();
 // up in language.csv; missing keys return the English (Tr() in native_menu_3ds.inc). The game's
 // ACS messages go through it too.
 const char *I_3DSTranslate(const char *english);
+
+// weapprev / weapnext: the next owned weapon in the bottom screen's grid order (direction +1
+// right, -1 left), or null when the engine's order should be used.
+class AActor;
+struct player_t;
+AActor *I_3DSAdjacentWeapon(player_t &player, int direction);

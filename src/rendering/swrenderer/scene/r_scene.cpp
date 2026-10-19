@@ -60,6 +60,7 @@
 #ifdef __3DS__
 #include "common/platform/3ds/gpu_world_3ds.h"
 #include "common/platform/3ds/perf_3ds.h"
+#include <3ds.h>
 #endif
 #include "swrenderer/things/r_playersprite.h"
 #include <chrono>
@@ -97,11 +98,18 @@ namespace swrenderer
 
 	void RenderScene::RenderView(player_t *player, DCanvas *target, void *videobuffer, int bufferpitch)
 	{
+#ifdef __3DS__
+		F3DSSection sectionTotal("scene: RenderView total");
+		const uint64_t sectionStart = svcGetSystemTick();
+#endif
 		auto viewport = MainThread()->Viewport.get();
 		viewport->RenderTarget = target;
 		viewport->RenderingToCanvas = false;
 
 		R_ExecuteSetViewSize(MainThread()->Viewport->viewpoint, MainThread()->Viewport->viewwindow);
+#ifdef __3DS__
+		I_3DSSectionAdd("vp: set view size", svcGetSystemTick() - sectionStart);
+#endif
 
 		int width = SCREENWIDTH;
 		int height = SCREENHEIGHT;
@@ -138,6 +146,9 @@ namespace swrenderer
 			}
 		}
 
+#ifdef __3DS__
+		I_3DSSectionAdd("scene: viewport", svcGetSystemTick() - sectionStart);
+#endif
 		RenderActorView(player->mo, true, false);
 
 		if (videobuffer != target->GetPixels())
@@ -154,6 +165,9 @@ namespace swrenderer
 		WallCycles.Reset();
 		PlaneCycles.Reset();
 		MaskedCycles.Reset();
+#ifdef __3DS__
+		const uint64_t sectionStart = svcGetSystemTick();
+#endif
 		
 		R_SetupFrame(MainThread()->Viewport->viewpoint, MainThread()->Viewport->viewwindow, actor);
 
@@ -179,6 +193,9 @@ namespace swrenderer
 			MainThread()->Viewport->viewpoint.camera->renderflags |= RF_INVISIBLE;
 		}
 
+#ifdef __3DS__
+		I_3DSSectionAdd("view: setup", svcGetSystemTick() - sectionStart);
+#endif
 		RenderThreadSlices();
 
 		// Mirrors fail to restore the original viewpoint -- we need it for the HUD weapon to draw correctly.
@@ -189,7 +206,12 @@ namespace swrenderer
 		// With the GPU world too: the weapon then comes out as engine 2D (accelerated player
 		// sprites, RenderPlayerSprites::RenderRemaining), drawn by the GPU over the world.
 		if (renderPlayerSprites)
+		{
+#ifdef __3DS__
+			F3DSSection section("view: player sprites");
+#endif
 			RenderPSprites();
+		}
 
 		MainThread()->Viewport->viewpoint.camera->renderflags = savedflags;
 	}
@@ -263,6 +285,9 @@ namespace swrenderer
 
 	void RenderScene::RenderThreadSlice(RenderThread *thread)
 	{
+#ifdef __3DS__
+		const uint64_t sectionStart = svcGetSystemTick();
+#endif
 		thread->FrameMemory->Clear();
 		thread->Clip3D->Cleanup();
 		thread->Clip3D->ResetClip(); // reset clips (floor/ceiling)
@@ -294,6 +319,7 @@ namespace swrenderer
 		I_3DSGpuWorldBeginScene(thread);
 		#endif
 		#ifdef __3DS__
+		I_3DSSectionAdd("slice: before walk", svcGetSystemTick() - sectionStart);
 		{
 			F3DSPerfScope perfWalk(E3DSPerfPart::Walk);
 			thread->OpaquePass->RenderScene(thread->Viewport->Level());

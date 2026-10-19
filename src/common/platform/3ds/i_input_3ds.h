@@ -15,4 +15,19 @@ void I_3DSHandleTouchEvent(const SDL_Event &event, bool guiCapture);
 bool I_3DSCStickLookEnabled();
 bool I_3DSTouchLookEnabled();
 float I_3DSCStickSensitivity();
-bool I_3DSSprintWithXEnabled();
+// 0 off, 1 with a button (or the pad at its edge in BUTTON CAMERA), 2 automatic.
+int I_3DSSprintMode();
+
+// Control schemes (#22): 0 CLASSIC, 1 BUTTON CAMERA (lod3ds_control_scheme). Applies the active
+// scheme's buttons to the key bindings; called once the configuration's bindings are loaded, and
+// again whenever the scheme changes.
+void I_3DSApplyControlScheme();
+bool I_3DSButtonCameraScheme();
+// The name of the remappable button bound to `command` ("A", "DPAD UP"), or null.
+const char *I_3DSButtonForCommand(const char *command);
+// The remappable buttons and what each one does now, for the controls screen (English labels).
+int I_3DSRemappableButtonCount();
+const char *I_3DSRemappableButtonLabel(int slot);
+const char *I_3DSRemappableButtonAction(int slot);
+// A turn or look step for a button held `heldTics` tics, from `fullStep` at full speed.
+int I_3DSButtonLookStep(int fullStep, int heldTics);

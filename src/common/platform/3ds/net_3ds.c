@@ -18,8 +18,14 @@ bool Net3DS_Acquire(void) {
     // AC only tells whether Wi-Fi is up; the service works without it (WifiConnected then asks
     // the shared memory's signal strength).
     g_ac_ready = R_SUCCEEDED(acInit());
-    g_soc_buffer = memalign(0x1000, kSocBufferSize);
-    if (!g_soc_buffer || R_FAILED(socInit(g_soc_buffer, kSocBufferSize))) {
+    // 256 KB on the Old 3DS / 2DS: the buffer is never given back (see Net3DS_Release) and a
+    // megabyte of it was more than the 2DS's heap could spare (census, 2026-10-17); transfers
+    // are slower there.
+    bool isNew3DS = true;
+    APT_CheckNew3DS(&isNew3DS);
+    const u32 size = isNew3DS ? kSocBufferSize : kSocBufferSize / 4;
+    g_soc_buffer = memalign(0x1000, size);
+    if (!g_soc_buffer || R_FAILED(socInit(g_soc_buffer, size))) {
       free(g_soc_buffer);
       g_soc_buffer = NULL;
       if (g_ac_ready) acExit();

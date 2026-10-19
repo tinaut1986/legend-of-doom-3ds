@@ -38,6 +38,10 @@ namespace swrenderer
 		void Clear(short left, short right);
 		bool Clip(int x1, int x2, bool solid, VisibleSegmentRenderer *visitor);
 		bool Check(int first, int last);
+#ifdef __3DS__
+		// The solid ranges, "x1-x2 ..." (debug: lod3ds_tracesub).
+		void Describe3DS(char *out, size_t size) const;
+#endif
 		bool IsVisible(int x1, int x2);
 		
 	private:

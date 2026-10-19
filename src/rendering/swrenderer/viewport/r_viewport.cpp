@@ -19,6 +19,10 @@
 //
 //-----------------------------------------------------------------------------
 
+#ifdef __3DS__
+#include "common/platform/3ds/perf_3ds.h"
+#include <3ds.h>
+#endif
 #include <stdlib.h>
 #include <float.h>
 
@@ -127,6 +131,17 @@ namespace swrenderer
 	{
 		int virtheight, virtwidth, virtwidth2, virtheight2;
 
+#ifdef __3DS__
+		uint64_t sectionStart = svcGetSystemTick();
+		auto section = [&](const char *name)
+		{
+			const uint64_t now = svcGetSystemTick();
+			I_3DSSectionAdd(name, now - sectionStart);
+			sectionStart = now;
+		};
+#else
+		auto section = [](const char *) {};
+#endif
 		if (!RenderingToCanvas)
 		{ // Set r_viewsize cvar to reflect the current view size
 			UCVarValue value;
@@ -136,6 +151,7 @@ namespace swrenderer
 			value.String = temp;
 			r_viewsize.ForceSet(value, CVAR_String);
 		}
+		section("vp: r_viewsize");
 
 		fuzzviewheight = viewheight - 2;	// Maximum row the fuzzer can draw to
 
@@ -174,13 +190,17 @@ namespace swrenderer
 
 		// thing clipping
 		fillshort(screenheightarray, viewwidth, (short)viewheight);
+		section("vp: aspect");
 
 		InitTextureMapping();
+		section("vp: texture mapping");
 
 		// Reset r_*Visibility vars
 		thread->Light->SetVisibility(this, r_visibility, !!(Level->flags3 & LEVEL3_NOLIGHTFADE));
+		section("vp: visibility");
 
 		SetupBuffer();
+		section("vp: buffer");
 	}
 
 	void RenderViewport::SetupFreelook()

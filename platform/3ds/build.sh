@@ -457,8 +457,21 @@ THREEDSX="${DIST}/${ARTIFACT_STEM}.3dsx"
   "tinaut1986 / Esteban PDN / DeTwelve Games" \
   "${ROOT}/platform/3ds/assets/icon-48.png" "${SMDH}"
 python3 "${ROOT}/platform/3ds/tools/cia-memory.py" smdh "${SMDH}"
+# The notes the UPDATE screen shows before (or without) a network answer: the installed
+# version's docs/release-notes file, else the newest one there is, over the tracked fallback.
+bundle_update_changelog() {
+  local romfs_dir="$1" base="${VERSION%%-*}" notes=""
+  if [[ -f "${ROOT}/docs/release-notes/v${base}.md" ]]; then
+    notes="${ROOT}/docs/release-notes/v${base}.md"
+  else
+    notes="$(ls "${ROOT}"/docs/release-notes/v*.md 2>/dev/null | sort -V | tail -n 1)"
+  fi
+  [[ -n "${notes}" ]] || return 0
+  { printf '## %s\n' "$(basename "${notes}" .md)"; cat "${notes}"; } > "${romfs_dir}/update-changelog.txt"
+}
 mkdir -p "${PACKAGE_TMP}/update-romfs"
 cmake -E copy_directory "${ROOT}/platform/3ds/romfs" "${PACKAGE_TMP}/update-romfs"
+bundle_update_changelog "${PACKAGE_TMP}/update-romfs"
 "${THREEDSXTOOL}" "${GAME_BUILD}/gzdoom.elf" "${THREEDSX}" --smdh="${SMDH}" --romfs="${PACKAGE_TMP}/update-romfs"
 
 MOD_PK3="${BUILD_ROOT}/LegendOfDoom.pk3"
@@ -471,13 +484,37 @@ cmake -E copy "${ROOT}/platform/3ds/assets/menu-top.png" \
 cmake -E copy "${ROOT}/platform/3ds/assets/menu-story.png" \
   "${MOD_PACKAGE_SOURCE}/graphics/ZSTORY.png"
 python3 "${ROOT}/platform/3ds/tools/spanish-game.py" "${MOD_PACKAGE_SOURCE}"
+# The music as IMA ADPCM, 22 kHz mono (ZMusic's decoder, patches/zmusic-adpcm.patch): the Old 3DS
+# decodes it on core 1, where the game gets 30%, and minimp3 could not keep up there even at
+# 22 kHz (129% of the time it had, #16). ADPCM costs a few adds a sample; the files are read from
+# the pk3 as they play (stored), so only the package grows. LOD3DS_FULL_MUSIC=1 keeps the MP3s.
+if [[ "${LOD3DS_FULL_MUSIC:-0}" != "1" ]]; then
+  if ! command -v ffmpeg >/dev/null 2>&1; then
+    printf 'ffmpeg is needed to convert the music (or set LOD3DS_FULL_MUSIC=1)\n' >&2
+    exit 1
+  fi
+  for song in "${MOD_PACKAGE_SOURCE}"/music/*.mp3; do
+    ffmpeg -v error -nostdin -y -i "${song}" -ac 1 -ar 22050 -c:a adpcm_ima_wav \
+      -map_metadata -1 "${song%.mp3}.wav"
+    rm "${song}"
+  done
+fi
 "${HOST_GZDOOM_BUILD}/tools/zipdir/zipdir" -df "${MOD_PK3}" "${MOD_PACKAGE_SOURCE}"
-# Map WADs stored, so the engine reads them from the pk3 instead of inflating them whole.
+# Map WADs and music stored, so the engine reads them from the pk3 instead of inflating them whole.
 python3 "${ROOT}/platform/3ds/tools/store-map-wads.py" "${MOD_PK3}"
 if [[ -n "${LOD3DS_SCRIPT_VALIDATOR:-}" ]]; then
   python3 "${ROOT}/platform/3ds/tools/validate-game-scripts.py" \
     --engine "${LOD3DS_SCRIPT_VALIDATOR}" \
     --iwad "${FREEDOOM_SOURCE}/freedoom2.wad" --mod "${MOD_PK3}"
+fi
+# Freedoom without the textures, sprites and levels the game never uses (PLAN P4.9): every one
+# of them is an object in memory and a header read at startup. LOD3DS_FULL_IWAD=1 ships it whole.
+IWAD="${BUILD_ROOT}/freedoom2.wad"
+if [[ "${LOD3DS_FULL_IWAD:-0}" == "1" ]]; then
+  cmake -E copy "${FREEDOOM_SOURCE}/freedoom2.wad" "${IWAD}"
+else
+  python3 "${ROOT}/platform/3ds/tools/slim-iwad.py" "${FREEDOOM_SOURCE}/freedoom2.wad" "${IWAD}" \
+    --mod "${MOD_PK3}"
 fi
 
 
@@ -503,7 +540,7 @@ cmake -E copy "${NOVAGL_SOURCE}/README.md" "${SD_LICENSES}/NovaGL-README-MIT-NOT
 cmake -E copy "${GAME_BUILD}/gzdoom.pk3" "${SD_DATA}/gzdoom.pk3"
 cmake -E copy "${GAME_BUILD}/game_support.pk3" "${SD_DATA}/game_support.pk3"
 cmake -E copy "${MOD_PK3}" "${SD_DATA}/LegendOfDoom.pk3"
-cmake -E copy "${FREEDOOM_SOURCE}/freedoom2.wad" "${SD_DATA}/freedoom2.wad"
+cmake -E copy "${IWAD}" "${SD_DATA}/freedoom2.wad"
 cmake -E copy "${FREEDOOM_SOURCE}/COPYING.txt" "${SD_DATA}/FREEDOOM-COPYING.txt"
 cmake -E copy "${MOD_SOURCE}/CREDITS" "${SD_DATA}/LEGEND-OF-DOOM-CREDITS.txt"
 
@@ -535,7 +572,7 @@ ARM_SIZE="${DEVKITARM}/bin/arm-none-eabi-size"
 	printf 'gzdoom_pk3_sha256=%s\n' "$(sha256_file "${GAME_BUILD}/gzdoom.pk3")"
 	printf 'game_support_pk3_sha256=%s\n' "$(sha256_file "${GAME_BUILD}/game_support.pk3")"
 	printf 'legend_of_doom_pk3_sha256=%s\n' "$(sha256_file "${MOD_PK3}")"
-	printf 'freedoom2_wad_sha256=%s\n' "$(sha256_file "${FREEDOOM_SOURCE}/freedoom2.wad")"
+	printf 'freedoom2_wad_sha256=%s\n' "$(sha256_file "${IWAD}")"
   printf 'compiler=%s\n' "$("${DEVKITARM}/bin/arm-none-eabi-g++" --version | head -n 1)"
   printf 'cmake=%s\n' "$(cmake --version | head -n 1)"
 	printf 'runtime_renderer=%s\n' "$([[ "${HYBRID_PERFORMANCE}" == "ON" ]] && printf softpoly-core0-core2-pica200-presenter || ([[ "${SAFE_SOFTWARE}" == "ON" ]] && printf softpoly-sdl-linear-framebuffer || printf novagl-citro3d-pica200))"
@@ -710,11 +747,12 @@ if [[ "${LOD3DS_SKIP_CIA:-0}" != "1" && -n "${MAKEROM_PATH}" && -n "${BANNERTOOL
   CIA_ROMFS_DATA="${CIA_ROMFS}/data"
   mkdir -p "${CIA_ROMFS_DATA}"
   cmake -E copy_directory "${ROOT}/platform/3ds/romfs" "${CIA_ROMFS}"
+  bundle_update_changelog "${CIA_ROMFS}"
   # Embed matching game data for self-contained CIA installation.
   cmake -E copy "${GAME_BUILD}/gzdoom.pk3" "${CIA_ROMFS_DATA}/gzdoom.pk3"
   cmake -E copy "${GAME_BUILD}/game_support.pk3" "${CIA_ROMFS_DATA}/game_support.pk3"
   cmake -E copy "${MOD_PK3}" "${CIA_ROMFS_DATA}/LegendOfDoom.pk3"
-  cmake -E copy "${FREEDOOM_SOURCE}/freedoom2.wad" "${CIA_ROMFS_DATA}/freedoom2.wad"
+  cmake -E copy "${IWAD}" "${CIA_ROMFS_DATA}/freedoom2.wad"
   cmake -E copy "${BUILD_MANIFEST}" "${CIA_ROMFS}/BUILD-MANIFEST.txt"
   "${BANNERTOOL_PATH}" makebanner \
     -ci "${ROOT}/platform/3ds/assets/banner.cgfx" \

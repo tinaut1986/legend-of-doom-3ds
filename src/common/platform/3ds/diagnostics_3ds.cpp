@@ -6,6 +6,8 @@
 #include "ftp_server_3ds.h"
 #include "gpu_world_3ds.h"
 #include "gpu_3ds.h"
+#include "i_input_3ds.h"
+#include "memory_3ds.h"
 #include "lod3ds_version.h"
 
 #include <3ds.h>
@@ -65,6 +67,7 @@
 
 EXTERN_CVAR(Int, vid_maxfps)
 EXTERN_CVAR(Bool, vid_fps)
+EXTERN_CVAR(Bool, lod3ds_messages_bottom)
 EXTERN_CVAR(Float, lod3ds_render_scale)
 EXTERN_CVAR(Int, lod3ds_render_distance)
 EXTERN_CVAR(Bool, lod3ds_top_hud)
@@ -167,7 +170,7 @@ uint64_t OverlayLastDrawMilliseconds;
 uint64_t OverlayNotificationUntilMilliseconds;
 bool OverlayAudioReady;
 char OverlayNotification[48];
-// Changes whenever a toast appears or goes, so the static bottom presentations redraw for it.
+// Changes whenever a toast appears or goes, so the top screen redraws its image.
 uint32_t OverlayNotificationSerial;
 // A bar under the toast's text, in thousandths (an FTP install's progress), or -1 for none.
 int OverlayNotificationProgress = -1;
@@ -306,6 +309,46 @@ struct FScreenSnapshot
 constexpr size_t LoadingAnimationStackBytes = 24 * 1024;
 std::atomic<bool> LoadingAnimationStop{false};
 Thread LoadingAnimationThread;
+
+// What the loading screen shows under the triforce: the phase the startup is in (a message and
+// a bar) and the whole load (a second bar). A phase begins at the startup-log stage named in
+// the table and lasts until the next phase's stage; `Seconds` is what it took on the owner's 2DS
+// (2026-10-17, the slowest console), so the total is a weighted estimate, not a measure. Inside a
+// phase the bar creeps by time, scaled by how fast the finished phases ran against these numbers
+// (a New 3DS fills them quicker), and waits at 98% until the next stage arrives.
+struct FLoadingPhase
+{
+	const char *Stage;
+	const char *Message;
+	float Seconds;
+};
+
+constexpr FLoadingPhase LoadingPhases[] = {
+	{ "loading-animation-ready", "Starting up", 0.2f },
+	{ "game-main-enter", "Looking for game files", 1.7f },
+	{ "after filesystem init", "Checking game files", 5.8f },
+	{ "palette-enter", "Building the color palette", 9.2f },
+	{ "palette-ready", "Starting video and sound", 0.8f },
+	{ "after map definitions", "Loading textures", 31.9f },
+	{ "after console background", "Loading fonts", 4.3f },
+	{ "after Doom fonts", "Preparing translations", 3.9f },
+	{ "after translate definitions", "Compiling game scripts", 6.0f },
+	{ "actors: DECORATE parsed", "Building game objects", 2.0f },
+	{ "actors: functions built", "Starting the renderer", 2.8f },
+};
+constexpr int LoadingPhaseCount = sizeof(LoadingPhases) / sizeof(LoadingPhases[0]);
+
+// Written by the thread that logs the stages, read by the animation thread.
+std::atomic<int> LoadingPhaseIndex{0};
+std::atomic<uint32_t> LoadingPhaseStartMs{0};
+std::atomic<uint32_t> LoadingFinishedActualMs{0};
+std::atomic<uint32_t> LoadingFinishedExpectedMs{0};
+std::atomic<int> LoadingMessageSlot{0};
+char LoadingMessages[2][64];
+float LoadingInitialSpeed = 1.0f;
+
+void DrawLoadingProgressOverlay(unsigned char *framebuffer);
+void MapLoadProgressStage(const char *stage);
 
 bool EnsureDirectory(const char *path);
 
@@ -477,6 +520,23 @@ void TriforcePutPixel(unsigned char *framebuffer, int x, int y, uint16_t color)
 	framebuffer[offset + 3] = static_cast<unsigned char>(red5 * 255u / 31u);
 }
 
+void LoadingTopRect(unsigned char *framebuffer, int x, int y, int width, int height,
+	unsigned char red, unsigned char green, unsigned char blue)
+{
+	for (int px = std::max(0, x); px < std::min(400, x + width); ++px)
+	{
+		for (int py = std::max(0, y); py < std::min(240, y + height); ++py)
+		{
+			const size_t offset = 4u * (static_cast<size_t>(px) * 240u +
+				(239u - static_cast<unsigned>(py)));
+			framebuffer[offset + 0] = 255;
+			framebuffer[offset + 1] = blue;
+			framebuffer[offset + 2] = green;
+			framebuffer[offset + 3] = red;
+		}
+	}
+}
+
 bool DrawTriforceAnimationFrame(unsigned frame)
 {
 	u16 physicalWidth = 0;
@@ -507,42 +567,21 @@ bool DrawTriforceAnimationFrame(unsigned frame)
 				originY + static_cast<int>(y), color);
 		}
 	}
+	DrawLoadingProgressOverlay(framebuffer);
 	I_3DSCleanDataCache(framebuffer, 400u * 240u * 4u);
 	gfxScreenSwapBuffers(GFX_TOP, false);
 	return true;
 }
 
-// An Old 3DS / 2DS cannot run the game yet (it runs out of memory loading the first map): say so
-// on the top screen instead of closing with no word. One CIA serves both families (the SMDH has
-// no New 3DS-only flag), so the check is at run time. Returns true when the screen was shown
-// and the game should exit. Debug builds can show it on a New 3DS: a force-old3ds.txt in the
-// data folder.
-bool UnsupportedConsoleScreen()
-{
-	bool isNew3DS = true;
-	APT_CheckNew3DS(&isNew3DS);
-#if LOD3DS_DEBUG_TOOLS
-	if (isNew3DS)
-	{
-		FILE *forced = std::fopen(LOD3DS_APP_DIR "/force-old3ds.txt", "rb");
-		if (forced != nullptr)
-		{
-			std::fclose(forced);
-			isNew3DS = false;
-		}
-	}
-#endif
-	if (isNew3DS) return false;
-#if LOD3DS_DEBUG_TOOLS
-	// For working on the Old 3DS / 2DS port itself: an allow-old3ds.txt in the data folder lets a
-	// debug build try to run (it may still run out of memory; see fatal.log).
-	if (FILE *allowed = std::fopen(LOD3DS_APP_DIR "/allow-old3ds.txt", "rb"))
-	{
-		std::fclose(allowed);
-		return false;
-	}
-#endif
+// A message on the top screen before anything loads, until A, B or START: the game then exits.
+// Nine lines, the last the button prompt; the loading screen's font (no accents).
+// The application memory of the modes the RSF asks for: 124 MB on the New 3DS family
+// (SystemModeExt), 80 MB on the Old 3DS / 2DS (SystemMode).
+constexpr u32 New3DSApplicationMemory = 124u * 1024u * 1024u;
+constexpr u32 Old3DSApplicationMemory = 80u * 1024u * 1024u;
 
+bool BlockingMessageScreen(const char *const english[9], const char *const castellano[9], const char *stage)
+{
 	u16 physicalWidth = 0;
 	u16 physicalHeight = 0;
 	unsigned char *framebuffer = gfxGetFramebuffer(GFX_TOP, GFX_LEFT,
@@ -550,16 +589,6 @@ bool UnsupportedConsoleScreen()
 	if (framebuffer == nullptr || physicalWidth != 240 || physicalHeight != 400) return false;
 
 	const bool spanish = std::strcmp(I_3DSSystemLanguage(), "es") == 0;
-	const char *const english[] = {
-		"THIS CONSOLE IS NOT SUPPORTED YET", "",
-		"THE OLD 3DS / 2DS VERSION IS STILL", "IN DEVELOPMENT. WE ARE TRYING",
-		"TO MAKE IT WORK.", "",
-		"FOR NOW IT NEEDS A NEW 3DS.", "", "PRESS A OR START TO EXIT" };
-	const char *const castellano[] = {
-		"ESTA CONSOLA TODAVIA NO ES COMPATIBLE", "",
-		"LA VERSION PARA OLD 3DS / 2DS SIGUE", "EN DESARROLLO. ESTAMOS INTENTANDO",
-		"QUE FUNCIONE.", "",
-		"DE MOMENTO NECESITA UNA NEW 3DS.", "", "PULSA A O START PARA SALIR" };
 	const char *const *lines = spanish ? castellano : english;
 
 	auto put = [&](int x, int y, unsigned char red, unsigned char green, unsigned char blue)
@@ -599,7 +628,7 @@ bool UnsupportedConsoleScreen()
 	}
 	I_3DSCleanDataCache(framebuffer, 400u * 240u * 4u);
 	gfxScreenSwapBuffers(GFX_TOP, false);
-	I_3DSStartupLog("unsupported-console-screen");
+	I_3DSStartupLog(stage);
 
 	while (aptMainLoop())
 	{
@@ -608,6 +637,43 @@ bool UnsupportedConsoleScreen()
 		gspWaitForVBlank();
 	}
 	return true;
+}
+
+// A console sometimes starts the game in a smaller memory mode than the RSF asks for (#27: a New
+// 3DS in 64 MB instead of 124; reopening it from HOME keeps it, only powering the console off and
+// on restores it), and the game would die loading a map. So it does not start: it says so and
+// exits. Each model against its own mode: 124 MB on the New 3DS family, 80 MB on the Old 3DS / 2DS,
+// where the game runs in 80. Debug builds can show it: a force-low-memory.txt in the data folder.
+bool LowMemoryScreen()
+{
+	const u32 expected = I_3DSIsOld3DS() ? Old3DSApplicationMemory : New3DSApplicationMemory;
+	const u32 actual = osGetMemRegionSize(MEMREGION_APPLICATION);
+	bool lowMemory = actual < expected;
+#if LOD3DS_DEBUG_TOOLS
+	// One shot: the screen exits the game before its FTP server starts, so the file removes itself.
+	if (FILE *forced = std::fopen(LOD3DS_APP_DIR "/force-low-memory.txt", "rb"))
+	{
+		std::fclose(forced);
+		std::remove(LOD3DS_APP_DIR "/force-low-memory.txt");
+		lowMemory = true;
+	}
+#endif
+	if (!lowMemory) return false;
+	const unsigned actualMB = actual / (1024u * 1024u), expectedMB = expected / (1024u * 1024u);
+	char modeEnglish[48], modeSpanish[48];
+	std::snprintf(modeEnglish, sizeof(modeEnglish), "%u MB MODE INSTEAD OF %u MB: THE", actualMB, expectedMB);
+	std::snprintf(modeSpanish, sizeof(modeSpanish), "MODO DE %u MB EN VEZ DE %u MB: EL", actualMB, expectedMB);
+	const char *const english[] = {
+		"NOT ENOUGH MEMORY", "",
+		"THE CONSOLE STARTED THE GAME IN ITS", modeEnglish,
+		"GAME WOULD CLOSE LOADING A MAP.", "",
+		"TURN THE CONSOLE OFF AND ON, THEN", "OPEN THE GAME AGAIN.", "PRESS A OR START TO EXIT" };
+	const char *const castellano[] = {
+		"NO HAY MEMORIA SUFICIENTE", "",
+		"LA CONSOLA HA ABIERTO EL JUEGO EN SU", modeSpanish,
+		"JUEGO SE CERRARIA AL CARGAR UN MAPA.", "",
+		"APAGA Y ENCIENDE LA CONSOLA Y VUELVE", "A ABRIR EL JUEGO.", "PULSA A O START PARA SALIR" };
+	return BlockingMessageScreen(english, castellano, "low-memory-screen");
 }
 
 void TriforceAnimationMain(void *)
@@ -1380,6 +1446,9 @@ struct FBottomMapView
 	AActor *Camera = nullptr;
 };
 
+// Set when a level is loaded (I_3DSMapLoadBegin): BottomMapView forgets where it was centred.
+bool BottomMapViewReset = false;
+
 FBottomMapView BottomMapView()
 {
 	FBottomMapView view;
@@ -1390,16 +1459,54 @@ FBottomMapView BottomMapView()
 	static bool playerDetached;
 	static double centerX;
 	static double centerY;
-	if (trackedLevel != primaryLevel || trackedMapName.Compare(primaryLevel->MapName) != 0)
+	// The centres the map had before the player's last jumps (stairs teleport them far away): the
+	// way back from an underground area leads to one of them, not to the underground centre the
+	// map moved to when the area was within reach of the room's (#28).
+	constexpr int AnchorCount = 6;
+	static double anchorX[AnchorCount], anchorY[AnchorCount];
+	static int anchors;
+	static bool hasCameraPosition;
+	static double cameraX, cameraY;
+	if (trackedLevel != primaryLevel || trackedMapName.Compare(primaryLevel->MapName) != 0 ||
+		BottomMapViewReset)
 	{
+		// A new map, or a level (re)loaded: a game loaded in the same map starts afresh too.
+		BottomMapViewReset = false;
 		trackedLevel = primaryLevel;
 		trackedMapName = primaryLevel->MapName;
 		hasExteriorCenter = false;
 		playerDetached = false;
+		anchors = 0;
+		hasCameraPosition = false;
 	}
 	AActor *camera = players[consoleplayer].camera;
 	if (camera != nullptr)
 	{
+		constexpr double FollowRange = 3072.0;
+		constexpr double JumpDistance = 512.0;
+		if (hasCameraPosition && hasExteriorCenter)
+		{
+			const double jumpX = camera->X() - cameraX;
+			const double jumpY = camera->Y() - cameraY;
+			if (jumpX * jumpX + jumpY * jumpY > JumpDistance * JumpDistance)
+			{
+				// Remember the centre being left, the oldest forgotten.
+				if (anchors == AnchorCount)
+				{
+					for (int i = 1; i < AnchorCount; ++i)
+					{
+						anchorX[i - 1] = anchorX[i];
+						anchorY[i - 1] = anchorY[i];
+					}
+					--anchors;
+				}
+				anchorX[anchors] = centerX;
+				anchorY[anchors++] = centerY;
+			}
+		}
+		cameraX = camera->X();
+		cameraY = camera->Y();
+		hasCameraPosition = true;
 		if (!hasExteriorCenter)
 		{
 			centerX = camera->X();
@@ -1408,12 +1515,20 @@ FBottomMapView BottomMapView()
 		}
 		else
 		{
-			const double deltaX = camera->X() - centerX;
-			const double deltaY = camera->Y() - centerY;
-			const double distanceSquared = deltaX * deltaX + deltaY * deltaY;
+			auto within = [&](double x, double y)
+			{
+				const double dx = camera->X() - x, dy = camera->Y() - y;
+				return dx * dx + dy * dy <= FollowRange * FollowRange;
+			};
+			bool nearAnchor = false;
+			for (int i = 0; i < anchors && !nearAnchor; ++i)
+				nearAnchor = within(anchorX[i], anchorY[i]);
 			const bool outdoors = camera->Sector != nullptr &&
 				camera->Sector->GetTexture(sector_t::ceiling) == skyflatnum;
-			if (outdoors || distanceSquared <= 3072.0 * 3072.0)
+			// The dungeons (every map but MAP01, the overworld) are followed everywhere: their
+			// underground stairs lead to areas far from the room, and the map is that of the dungeon.
+			const bool dungeon = trackedMapName.Compare("MAP01") != 0;
+			if (dungeon || outdoors || nearAnchor || within(centerX, centerY))
 			{
 				centerX = camera->X();
 				centerY = camera->Y();
@@ -1642,10 +1757,148 @@ const std::vector<FMapLine> &MapLines()
 	return lines;
 }
 
+// lod3ds_mapprofile (debug): where QueueGpuMap's time goes, summed since the last reset.
+struct FMapProfile
+{
+	uint64_t Calls, CullTicks, SortTicks, EmitTicks, RestTicks, Subsectors, Shown, Triangles;
+};
+FMapProfile MapProfile;
+
+// The level's subsectors (or lines) by square cell of the map, so the view asks only the cells
+// it covers: MAP01 has 3818 subsectors, and testing them all took 2-3 ms a build on the 2DS for
+// the ~30 in view (2026-10-18). Compact: each cell's items are a range of one array.
+struct FMapGrid
+{
+	static constexpr float CellUnits = 512.0f;
+	float OriginX = 0.0f, OriginY = 0.0f;
+	int Columns = 0, Rows = 0;
+	std::vector<uint32_t> CellStart; // Columns * Rows + 1 offsets into Items
+	std::vector<uint32_t> Items;
+	std::vector<uint32_t> Seen;      // an item's last query, so one in several cells comes once
+	uint32_t Query = 0;
+
+	// box(index, left, right, bottom, top) gives each item's box; false leaves it out.
+	template<class FBox>
+	void Build(unsigned count, FBox &&box)
+	{
+		float left = 1e30f, right = -1e30f, bottom = 1e30f, top = -1e30f;
+		for (unsigned i = 0; i < count; ++i)
+		{
+			float l, r, b, t;
+			if (!box(i, l, r, b, t)) continue;
+			left = std::min(left, l); right = std::max(right, r);
+			bottom = std::min(bottom, b); top = std::max(top, t);
+		}
+		Items.clear();
+		Seen.assign(count, 0);
+		Query = 0;
+		if (left > right) { Columns = Rows = 0; CellStart.assign(1, 0); return; }
+		OriginX = left;
+		OriginY = bottom;
+		Columns = int((right - left) / CellUnits) + 1;
+		Rows = int((top - bottom) / CellUnits) + 1;
+		CellStart.assign(size_t(Columns) * Rows + 1, 0);
+		// Two passes: count each cell's items, then place them.
+		for (int pass = 0; pass < 2; ++pass)
+		{
+			std::vector<uint32_t> fill;
+			if (pass == 1)
+			{
+				for (size_t c = 1; c < CellStart.size(); ++c) CellStart[c] += CellStart[c - 1];
+				Items.resize(CellStart.back());
+				fill.assign(CellStart.begin(), CellStart.end() - 1);
+			}
+			for (unsigned i = 0; i < count; ++i)
+			{
+				float l, r, b, t;
+				if (!box(i, l, r, b, t)) continue;
+				const int c0 = CellX(l), c1 = CellX(r), r0 = CellY(b), r1 = CellY(t);
+				for (int row = r0; row <= r1; ++row)
+					for (int column = c0; column <= c1; ++column)
+					{
+						const size_t cell = size_t(row) * Columns + column;
+						if (pass == 0) CellStart[cell + 1]++;
+						else Items[fill[cell]++] = i;
+					}
+			}
+		}
+	}
+
+	int CellX(float x) const { return std::clamp(int((x - OriginX) / CellUnits), 0, Columns - 1); }
+	int CellY(float y) const { return std::clamp(int((y - OriginY) / CellUnits), 0, Rows - 1); }
+
+	// Calls visit(index) once for every item whose cells meet the rectangle.
+	template<class FVisit>
+	void ForEach(double minX, double maxX, double minY, double maxY, FVisit &&visit)
+	{
+		if (Columns == 0) return;
+		if (++Query == 0) { std::fill(Seen.begin(), Seen.end(), 0); Query = 1; }
+		const int c0 = CellX(float(minX)), c1 = CellX(float(maxX));
+		const int r0 = CellY(float(minY)), r1 = CellY(float(maxY));
+		for (int row = r0; row <= r1; ++row)
+			for (int column = c0; column <= c1; ++column)
+			{
+				const size_t cell = size_t(row) * Columns + column;
+				for (uint32_t k = CellStart[cell]; k < CellStart[cell + 1]; ++k)
+				{
+					const uint32_t index = Items[k];
+					if (Seen[index] == Query) continue;
+					Seen[index] = Query;
+					visit(index);
+				}
+			}
+	}
+};
+
+// The grids follow MapBounds() and MapLines(): built again when they are.
+FMapGrid &MapSubsectorGrid()
+{
+	static FMapGrid grid;
+	static FLevelLocals *builtLevel;
+	static FString builtMap;
+	const std::vector<FMapBounds> &bounds = MapBounds();
+	if (builtLevel != primaryLevel || builtMap.Compare(primaryLevel->MapName) != 0 ||
+		grid.Seen.size() != bounds.size())
+	{
+		builtLevel = primaryLevel;
+		builtMap = primaryLevel->MapName;
+		grid.Build(unsigned(bounds.size()), [&](unsigned i, float &l, float &r, float &b, float &t)
+		{
+			const FMapBounds &box = bounds[i];
+			l = box.Left; r = box.Right; b = box.Bottom; t = box.Top;
+			return box.Left <= box.Right;
+		});
+	}
+	return grid;
+}
+
+FMapGrid &MapLineGrid()
+{
+	static FMapGrid grid;
+	static FLevelLocals *builtLevel;
+	static FString builtMap;
+	const std::vector<FMapLine> &lines = MapLines();
+	if (builtLevel != primaryLevel || builtMap.Compare(primaryLevel->MapName) != 0 ||
+		grid.Seen.size() != lines.size())
+	{
+		builtLevel = primaryLevel;
+		builtMap = primaryLevel->MapName;
+		grid.Build(unsigned(lines.size()), [&](unsigned i, float &l, float &r, float &b, float &t)
+		{
+			const FMapLine &end = lines[i];
+			l = std::min(end.X0, end.X1); r = std::max(end.X0, end.X1);
+			b = std::min(end.Y0, end.Y1); t = std::max(end.Y0, end.Y1);
+			return !(end.X0 == 1.0f && end.Y0 == 1.0f && end.X1 == -1.0f && end.Y1 == -1.0f);
+		});
+	}
+	return grid;
+}
+
 // clipBottom: the first row the GPU must leave alone (the CPU draws something over the map there).
 void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int mapHeight,
 	double worldUnitsPerPixel, int clipBottom = 1 << 30)
 {
+	const uint64_t profileStart = svcGetSystemTick();
 	const FBottomMapView view = BottomMapView();
 	if (!view.Valid) return;
 	const int scissor[4] = { mapX, mapY, mapX + mapWidth, std::min(mapY + mapHeight, clipBottom) };
@@ -1682,17 +1935,12 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 	static std::vector<FFloor> floors;
 	floors.clear();
 	const std::vector<FMapBounds> &bounds = MapBounds();
-	for (unsigned index = 0; index < bounds.size(); ++index)
+	MapSubsectorGrid().ForEach(minX, maxX, minY, maxY, [&](unsigned index)
 	{
 		const FMapBounds &box = bounds[index];
-		// An empty box (Left > Right) is a subsector the map never draws.
-		if (box.Right < minX || box.Left > maxX || box.Top < minY || box.Bottom > maxY ||
-			box.Left > box.Right)
-		{
-			continue;
-		}
+		if (box.Right < minX || box.Left > maxX || box.Top < minY || box.Bottom > maxY) return;
 		const subsector_t &subsector = primaryLevel->subsectors[index];
-		if (!BottomSubsectorShown(&subsector)) continue;
+		if (!BottomSubsectorShown(&subsector)) return;
 
 		const FTextureID floorTexture = subsector.render_sector->GetTexture(sector_t::floor);
 		const int textureIndex = floorTexture.isValid() ? floorTexture.GetIndex() : -1;
@@ -1707,9 +1955,13 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 			found = floors.end() - 1;
 		}
 		polygons.push_back(FPolygon{ found->Texture, found->GameTexture, &subsector });
-	}
+	});
+	const uint64_t profileCulled = svcGetSystemTick();
 	std::sort(polygons.begin(), polygons.end(),
 		[](const FPolygon &a, const FPolygon &b) { return a.Texture < b.Texture; });
+	const uint64_t profileSorted = svcGetSystemTick();
+	MapProfile.Subsectors += bounds.size();
+	MapProfile.Shown += polygons.size();
 
 	for (size_t first = 0; first < polygons.size();)
 	{
@@ -1721,6 +1973,7 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 			++last;
 		}
 		F3DSGpuTexture *texture = polygons[first].Texture;
+		MapProfile.Triangles += count / 3;
 		F3DSGpuVertex *out = I_3DSGpuQueueTriangles(screen, texture, count, scissor);
 		if (out == nullptr) break;
 		for (size_t index = first; index < last; ++index)
@@ -1768,27 +2021,37 @@ void QueueGpuMap(E3DSGpuScreen screen, int mapX, int mapY, int mapWidth, int map
 		first = last;
 	}
 
+	const uint64_t profileEmitted = svcGetSystemTick();
+	MapProfile.Calls++;
+	MapProfile.CullTicks += profileCulled - profileStart;
+	MapProfile.SortTicks += profileSorted - profileCulled;
+	MapProfile.EmitTicks += profileEmitted - profileSorted;
+	struct FRestTimer
+	{
+		uint64_t Start;
+		~FRestTimer() { MapProfile.RestTicks += svcGetSystemTick() - Start; }
+	} restTimer{ profileEmitted };
 	if (lod3ds_map_collisions)
 	{
 		static std::vector<unsigned> shown;
 		shown.clear();
 		const std::vector<FMapLine> &lines = MapLines();
-		for (unsigned index = 0; index < lines.size(); ++index)
+		MapLineGrid().ForEach(minX, maxX, minY, maxY, [&](unsigned index)
 		{
 			const FMapLine &end = lines[index];
 			if (std::max(end.X0, end.X1) < minX || std::min(end.X0, end.X1) > maxX ||
 				std::max(end.Y0, end.Y1) < minY || std::min(end.Y0, end.Y1) > maxY)
 			{
-				continue;
+				return;
 			}
 			const line_t &line = primaryLevel->lines[index];
 			if (line.v1 == nullptr || line.v2 == nullptr || (line.flags & ML_DONTDRAW) != 0 ||
 				(line.flags & (ML_MAPPED | ML_REVEALED)) == 0)
 			{
-				continue;
+				return;
 			}
 			shown.push_back(index);
-		}
+		});
 		F3DSGpuVertex *out = shown.empty() ? nullptr :
 			I_3DSGpuQueueTriangles(screen, nullptr, static_cast<int>(shown.size()) * 6, scissor);
 		if (out != nullptr)
@@ -1921,6 +2184,10 @@ bool BottomSelectItem(unsigned index)
 	AActor *owner = player.mo;
 	if (owner == nullptr) return false;
 	const FBottomItem &item = items[index];
+	// Only what the grid shows can be picked: the potion's weapon (ZeldaPotion) stays in the
+	// inventory with no potion, letter or refill left, and its empty cell equipped it (#17).
+	if (!BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3))
+		return false;
 	AActor *weapon = BottomFindInventory(owner, item.Ready1, item.Ready2, item.Ready3);
 	if (weapon != nullptr)
 	{
@@ -1932,6 +2199,33 @@ bool BottomSelectItem(unsigned index)
 	if (inventory == nullptr) return false;
 	owner->PointerVar<AActor>(NAME_InvSel) = inventory;
 	return true;
+}
+
+// The weapon L / R-style cycling (weapprev / weapnext) selects next: the owned weapons of the
+// grid's first row in the order the grid shows them, left to right, wrapping; the engine's own
+// order is its slot order. Null when the current weapon is not in the grid (the engine's order
+// then applies).
+AActor *AdjacentWeapon(player_t &player, int direction)
+{
+	constexpr unsigned WeaponCells = 8;	// BottomLayout::Columns: the equippable row
+	AActor *owner = player.mo;
+	if (owner == nullptr) return nullptr;
+	AActor *current = player.PendingWeapon != nullptr && player.PendingWeapon != WP_NOCHANGE ?
+		player.PendingWeapon : player.ReadyWeapon;
+	const auto &items = BottomItems();
+	AActor *cells[WeaponCells] = {};
+	int count = 0, found = -1;
+	for (unsigned index = 0; index < WeaponCells && index < items.size(); ++index)
+	{
+		const FBottomItem &item = items[index];
+		if (!BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3)) continue;
+		AActor *weapon = BottomFindInventory(owner, item.Ready1, item.Ready2, item.Ready3);
+		if (weapon == nullptr) continue;
+		if (weapon == current) found = count;
+		cells[count++] = weapon;
+	}
+	if (found < 0 || count < 2) return nullptr;
+	return cells[(found + direction + count) % count];
 }
 
 // The gameplay bottom screen, laid out like the NES Zelda's pause screen (owner, 2026-10-13):
@@ -1958,7 +2252,8 @@ constexpr FOverlayColor Green{ 0, 168, 0 };
 constexpr FOverlayColor Idle{ 20, 20, 20 };
 
 constexpr int TitleY = 6;
-constexpr int RBoxX = 12, LBoxX = 46, ButtonBoxY = 20, ButtonBoxWidth = 32, ButtonBoxHeight = 40;
+// L on the left and R on the right, as the shoulder buttons are (owner, 2026-10-19).
+constexpr int LBoxX = 12, RBoxX = 46, ButtonBoxY = 20, ButtonBoxWidth = 32, ButtonBoxHeight = 40;
 constexpr int GridX = 86, GridY = 20, CellWidth = 28, CellHeight = 36, Columns = 8;
 // The second row (the boomerang, which L throws, and the carried items) is apart, in grey, and
 // cannot be selected: only the first row's weapons are equipped (owner, 2026-10-14).
@@ -1970,7 +2265,9 @@ constexpr int ZoomX = 12, ZoomY = 218, ZoomWidth = 180, ZoomHeight = 16;
 constexpr int SideX = 204, SideWidth = 108;
 constexpr int CounterY = 112, CounterStep = 18;
 constexpr int LifeY = 172, HeartsY = 186, HeartWidth = 11, HeartHeight = 12, HeartStep = 13;
-constexpr int GodX = 232, AllX = 274, CheatY = 2, CheatWidth = 38, CheatHeight = 13;
+// GOD and ALL (debug builds) sit under the hearts, which leaves the title row to the clock,
+// the Wi-Fi bars and the battery.
+constexpr int GodX = 204, AllX = 250, CheatY = 222, CheatWidth = 42, CheatHeight = 13;
 constexpr double MapUnitsNear = 12.0, MapUnitsFar = 32.0;
 
 bool Inside(float x, float y, int left, int top, int width, int height)
@@ -2059,11 +2356,100 @@ void DrawBottomCheatButton(unsigned char *framebuffer, int x, const char *label,
 		on ? White : Gray);
 }
 
+// The console's clock, Wi-Fi bars and battery, drawn on the gameplay bottom screen like the other
+// ports' tab bars (../mzm, ../sm-3ds, ../zelda-tmc-3ds): HH:MM, three rising bars, a battery
+// gauge with a nub. The battery comes from ptm:u (an IPC call: polled every 2 s); the gauge is
+// green while charging, red at one bar or less, amber at two.
+struct FSystemStatus
+{
+	int Minute;      // minutes of the day, -1 when the clock cannot be read
+	int Hour;
+	int Wifi;        // 0..3
+	int Battery;     // 0..5, -1 when ptm:u is not available
+	bool Charging;
+};
+
+FSystemStatus ReadSystemStatus()
+{
+	static bool ptmReady = false, ptmTried = false;
+	static uint64_t batteryReadAt = 0;
+	static int battery = -1;
+	static bool charging = false;
+	const uint64_t now = osGetTime();
+	if (!ptmTried)
+	{
+		ptmTried = true;
+		ptmReady = R_SUCCEEDED(ptmuInit());
+	}
+	if (ptmReady && (batteryReadAt == 0 || now - batteryReadAt >= 2000))
+	{
+		batteryReadAt = now;
+		u8 level = 0, charge = 0;
+		if (R_SUCCEEDED(PTMU_GetBatteryLevel(&level))) battery = level > 5 ? 5 : level;
+		if (R_SUCCEEDED(PTMU_GetBatteryChargeState(&charge))) charging = charge != 0;
+	}
+	FSystemStatus status{ -1, 0, static_cast<int>(osGetWifiStrength()), battery, charging };
+	const time_t seconds = time(nullptr);
+	const struct tm *clock = seconds > 0 ? gmtime(&seconds) : nullptr; // the RTC holds local time
+	if (clock != nullptr)
+	{
+		status.Hour = clock->tm_hour;
+		status.Minute = clock->tm_hour * 60 + clock->tm_min;
+	}
+	return status;
+}
+
+// The widget ends at rightX; the clock, the bars and the battery run left to right, 8 pixels high
+// from y.
+void DrawBottomSystemStatus(unsigned char *framebuffer, int rightX, int y)
+{
+	using namespace BottomLayout;
+	const FSystemStatus status = ReadSystemStatus();
+	constexpr FOverlayColor Amber{ 252, 152, 56 };
+	constexpr FOverlayColor Dim{ 60, 60, 60 };
+	// Battery: 15x8 shell and a 2x4 nub at the right edge.
+	const int batteryX = rightX - 17;
+	OverlayFrame(framebuffer, batteryX, y, 15, 8, 1, White);
+	OverlayRect(framebuffer, batteryX + 15, y + 2, 2, 4, White);
+	if (status.Battery >= 0)
+	{
+		const FOverlayColor fill = status.Charging ? Green : status.Battery <= 1 ? Red :
+			status.Battery == 2 ? Amber : White;
+		const int width = status.Battery * 11 / 5;
+		if (width > 0) OverlayRect(framebuffer, batteryX + 2, y + 2, width, 4, fill);
+	}
+	else
+	{
+		OverlayRect(framebuffer, batteryX + 5, y + 3, 4, 2, Dim);
+	}
+	// Wi-Fi: three rising bars on the battery's baseline.
+	const int wifiX = batteryX - 16;
+	for (int bar = 0; bar < 3; ++bar)
+	{
+		const int height = 3 + bar * 2;
+		OverlayRect(framebuffer, wifiX + bar * 4, y + 8 - height, 2, height,
+			bar < status.Wifi ? White : Dim);
+	}
+	// The clock, to the left of the bars.
+	char text[8] = "--:--";
+	if (status.Minute >= 0) snprintf(text, sizeof(text), "%02d:%02d", status.Hour, status.Minute % 60);
+	NesText(framebuffer, wifiX - 6 - NesTextWidth(text, 1), y, text, 1, White);
+}
+
+// What the widget shows, for the redraw signature: the minute, the bars and the battery.
+uint64_t SystemStatusSignature()
+{
+	const FSystemStatus status = ReadSystemStatus();
+	return static_cast<uint64_t>(status.Minute + 1) | (static_cast<uint64_t>(status.Wifi) << 12) |
+		(static_cast<uint64_t>(status.Battery + 1) << 16) |
+		(static_cast<uint64_t>(status.Charging) << 20);
+}
+
 void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *readyWeapon)
 {
 	using namespace BottomLayout;
 	const auto &items = BottomItems();
-	NesText(framebuffer, RBoxX, TitleY, Tr("INVENTORY"), 1, Red);
+	NesText(framebuffer, LBoxX, TitleY, Tr("INVENTORY"), 1, Red);
 
 	// The buttons' boxes: R uses the equipped weapon, L throws the boomerang.
 	DrawBottomButtonBox(framebuffer, RBoxX, "R", BottomReadyItem(readyWeapon));
@@ -2101,6 +2487,7 @@ void DrawBottomInventory(unsigned char *framebuffer, AActor *owner, AActor *read
 	DrawBottomCheatButton(framebuffer, GodX, Tr("GOD"), BottomGodMode());
 	DrawBottomCheatButton(framebuffer, AllX, Tr("ALL"), false);
 #endif
+	DrawBottomSystemStatus(framebuffer, BottomScreenWidth - 8, TitleY);
 }
 
 // -LIFE-: up to sixteen hearts, eight a row, each full, three quarters, half, a quarter or
@@ -2341,8 +2728,8 @@ void ExpireOverlayNotification(uint64_t now)
 	}
 }
 
-// The toast: a bar near the bottom of the touch screen, drawn last over whatever
-// presentation is there (gameplay, menus, title, developer overlay).
+// The toast, a message for the player: shown on the top screen (ComposeTopToast), with the
+// game's own messages, where OPTIONS -> DISPLAY -> MESSAGES says.
 // The NES font and the interface's language, from native_menu_3ds.inc further down.
 void LoadNesFont();
 const char *Tr(const char *english);
@@ -2402,49 +2789,16 @@ void DrawInstallBar(unsigned char *framebuffer)
 		InstallBarY + 7, "X", 1, OverlayIvory);
 }
 
-// The toast's top row, above the install bar when it is there; the screen's height when there
-// is none. The GPU map stops above it (I_3DSOverlayFrame), or it would draw over the toast.
+// The lower edge the GPU map keeps to. Toasts are on the top screen (ComposeTopToast); the
+// install bar (DrawInstallBar) is the only thing left down here over the map.
 int BottomToastTop()
 {
-	if (OverlayNotification[0] == '\0') return static_cast<int>(BottomScreenHeight);
-	const int height = OverlayNotificationProgress >= 0 ? 33 : 21;
-	return (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+	return static_cast<int>(BottomScreenHeight);
 }
 
 void DrawBottomToast(unsigned char *framebuffer)
 {
 	DrawInstallBar(framebuffer);
-	if (OverlayNotification[0] == '\0') return;
-	LoadNesFont();
-	const char *text = Tr(OverlayNotification);
-	const bool bar = OverlayNotificationProgress >= 0;
-	const int width = std::min(304, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
-	const int height = bar ? 33 : 21;
-	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
-	const int y = BottomToastTop();
-	OverlayRect(framebuffer, x, y, width, height, OverlayInk);
-	OverlayFrame(framebuffer, x, y, width, height, 1, OverlayBlue);
-	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
-	if (bar)
-	{
-		// The percentage sits beside the bar, not in the text above it: the text, in Spanish
-		// especially, has the whole width of the toast.
-		char percent[8] = {};
-		int percentWidth = 0;
-		if (OverlayNotificationPercent)
-		{
-			std::snprintf(percent, sizeof(percent), "%d%%",
-				std::min(OverlayNotificationProgress, 1000) / 10);
-			percentWidth = NesTextWidth("100%", 1) + 6;
-		}
-		const int barWidth = width - 24 - percentWidth;
-		OverlayRect(framebuffer, x + 12, y + 20, barWidth, 6, FOverlayColor{ 60, 60, 60 });
-		OverlayRect(framebuffer, x + 12, y + 20,
-			barWidth * std::min(OverlayNotificationProgress, 1000) / 1000, 6, OverlayRed);
-		if (percentWidth > 0)
-			NesText(framebuffer, x + width - 12 - NesTextWidth(percent, 1), y + 19, percent, 1,
-				OverlayIvory);
-	}
 }
 
 // The STATUS box's FTP button (debug builds), in bottom-screen pixels.
@@ -2480,9 +2834,32 @@ void DrawDeveloperOverlay(unsigned char *framebuffer)
 	std::snprintf(frameText, sizeof(frameText), "FRAME %.1fMS", frameMilliseconds);
 	OverlayFrame(framebuffer, 8, 38, 104, 89, 2, OverlayBlue);
 	OverlayText(framebuffer, 15, 44, "PERFORMANCE", 1, OverlayIvory);
-	OverlayCenteredText(framebuffer, 8, 104, 62, fpsText, 3, OverlayIvory);
-	OverlayCenteredText(framebuffer, 8, 104, 88, "FPS", 1, OverlayIvory);
-	OverlayCenteredText(framebuffer, 8, 104, 105, frameText, 1, OverlayIvory);
+	OverlayCenteredText(framebuffer, 8, 104, 58, fpsText, 3, OverlayIvory);
+	OverlayCenteredText(framebuffer, 8, 104, 84, "FPS", 1, OverlayIvory);
+	OverlayCenteredText(framebuffer, 8, 104, 96, frameText, 1, OverlayIvory);
+	// Frames of the last whole second by who drew them: the world (GPU world or the CPU's canvas)
+	// and the 2D (recorded for the GPU or rasterised by SoftPoly).
+	static F3DSGpuStats previousGpu{}, shownGpu{};
+	static uint64_t gpuSampledAt = 0;
+	const uint64_t gpuNow = osGetTime();
+	if (gpuNow - gpuSampledAt >= 1000)
+	{
+		const F3DSGpuStats gpu = I_3DSGpuGetStats();
+		shownGpu.WorldFrames = gpu.WorldFrames - previousGpu.WorldFrames;
+		shownGpu.CanvasFrames = gpu.CanvasFrames - previousGpu.CanvasFrames;
+		shownGpu.Recorded2D = gpu.Recorded2D - previousGpu.Recorded2D;
+		shownGpu.Software2D = gpu.Software2D - previousGpu.Software2D;
+		previousGpu = gpu;
+		gpuSampledAt = gpuNow;
+	}
+	char worldText[24] = {};
+	char twodText[24] = {};
+	std::snprintf(worldText, sizeof(worldText), "3D GPU %u CPU %u",
+		static_cast<unsigned>(shownGpu.WorldFrames), static_cast<unsigned>(shownGpu.CanvasFrames));
+	std::snprintf(twodText, sizeof(twodText), "2D GPU %u CPU %u",
+		static_cast<unsigned>(shownGpu.Recorded2D), static_cast<unsigned>(shownGpu.Software2D));
+	OverlayCenteredText(framebuffer, 8, 104, 107, worldText, 1, OverlayIvory);
+	OverlayCenteredText(framebuffer, 8, 104, 117, twodText, 1, OverlayIvory);
 
 	OverlayFrame(framebuffer, 119, 38, 193, 89, 2, OverlayBlue);
 	OverlayText(framebuffer, 126, 44, "MEMORY", 1, OverlayIvory);
@@ -2813,6 +3190,219 @@ bool DrawNativeSaveLoadBottomFrame(unsigned char *framebuffer,
 
 #include "update/menu_view.inc"
 #include "native_menu_3ds.inc"
+
+void DrawLoadingProgressOverlay(unsigned char *framebuffer)
+{
+	int phase = LoadingPhaseIndex.load(std::memory_order_acquire);
+	phase = std::clamp(phase, 0, LoadingPhaseCount - 1);
+	const double elapsed = static_cast<double>(static_cast<uint32_t>(osGetTime()) -
+		LoadingPhaseStartMs.load(std::memory_order_acquire)) / 1000.0;
+	const double finishedExpected = LoadingFinishedExpectedMs.load(std::memory_order_acquire);
+	const double speed = finishedExpected >= 1500.0 ? std::clamp(
+		LoadingFinishedActualMs.load(std::memory_order_acquire) / finishedExpected, 0.15, 4.0) :
+		static_cast<double>(LoadingInitialSpeed);
+	const double phaseSeconds = static_cast<double>(LoadingPhases[phase].Seconds);
+	const double phaseFraction = std::clamp(elapsed / std::max(phaseSeconds * speed, 0.1),
+		0.0, 0.98);
+
+	double before = 0.0, total = 0.0;
+	for (int i = 0; i < LoadingPhaseCount; ++i)
+	{
+		if (i < phase) before += static_cast<double>(LoadingPhases[i].Seconds);
+		total += static_cast<double>(LoadingPhases[i].Seconds);
+	}
+	const double overall = std::clamp((before + phaseFraction * phaseSeconds) / total, 0.0, 1.0);
+
+	constexpr int BarX = 80, BarWidth = 240;
+	auto paint = [&](int x, int y, int size, unsigned char red, unsigned char green,
+		unsigned char blue)
+	{
+		LoadingTopRect(framebuffer, x, y, size, size, red, green, blue);
+	};
+	auto text = [&](int x, int y, const char *line, unsigned char red, unsigned char green,
+		unsigned char blue)
+	{
+		NesDraw(x, y, line, 1, [&](int px, int py, int size) { paint(px, py, size, red, green, blue); });
+	};
+	auto bar = [&](int y, int height, double fraction, unsigned char red, unsigned char green,
+		unsigned char blue)
+	{
+		LoadingTopRect(framebuffer, BarX - 2, y - 2, BarWidth + 4, height + 4, 225, 230, 235);
+		LoadingTopRect(framebuffer, BarX, y, BarWidth, height, 13, 22, 39);
+		LoadingTopRect(framebuffer, BarX, y, static_cast<int>(BarWidth * fraction), height,
+			red, green, blue);
+	};
+
+	const char *message = LoadingMessages[LoadingMessageSlot.load(std::memory_order_acquire)];
+	if (message[0] == '\0') message = LoadingPhases[phase].Message;
+	text((400 - NesTextWidth(message, 1)) / 2, 172, message, 242, 236, 213);
+	bar(192, 10, overall, 217, 74, 25);
+	bar(210, 6, phaseFraction, 46, 119, 201);
+	char percent[8];
+	std::snprintf(percent, sizeof(percent), "%d%%", static_cast<int>(overall * 100.0));
+	text(BarX + BarWidth + 10, 193, percent, 245, 151, 49);
+}
+
+// The map-change loading overlay: while the main thread loads a level (a door, stairs, a
+// warp, a saved game), a thread keeps the last picture on the top screen, dimmed, with a box in
+// the game's style: the area's name, what the load is doing and a bar. The phases begin at the
+// startup-log stages named here (logged with their times, so the numbers can be redone). The
+// seconds are what each phase took on the owner's 2DS (2026-10-18): fixed, plus a part per MB
+// of the map's WAD, since reading and building the map grow with it (MAP01, 2.3 MB: 7.7 s to
+// read; MAP02, 0.3 MB: 1.0 s). The bar creeps through a phase by time, scaled by how fast the
+// finished ones ran, and waits at 98% until the next stage.
+struct FMapLoadPhase
+{
+	const char *Stage;
+	const char *Message;
+	float Seconds;
+	float SecondsPerMB;
+};
+
+constexpr FMapLoadPhase MapLoadPhases[] = {
+	{ "map-load-begin", "Leaving the area", 0.5f, 0.0f },
+	{ "level-freed", "Reading the map", 0.3f, 3.2f },
+	{ "map-nodes", "Building the map", 0.05f, 0.4f },
+	{ "map-things", "Placing enemies and objects", 0.1f, 0.0f },
+	{ "map-render-info", "Preparing the graphics", 0.1f, 0.4f },
+	{ "level-built", "Starting the area", 2.0f, 0.0f },
+	{ "map-restore", "Restoring the saved game", 1.8f, 0.0f },
+};
+constexpr int MapLoadPhaseCount = sizeof(MapLoadPhases) / sizeof(MapLoadPhases[0]);
+// The last phase only happens when a saved game is loaded.
+constexpr int MapLoadRestorePhase = MapLoadPhaseCount - 1;
+
+float MapLoadSeconds[sizeof(MapLoadPhases) / sizeof(MapLoadPhases[0])];
+bool MapLoadAwaitFirstFrame;
+std::atomic<bool> MapLoadStop{false};
+Thread MapLoadThread;
+int MapLoadDepth;
+bool MapLoadRestoring;
+std::atomic<int> MapLoadPhaseIndex{0};
+std::atomic<uint32_t> MapLoadPhaseStartMs{0};
+std::atomic<uint32_t> MapLoadFinishedActualMs{0};
+std::atomic<uint32_t> MapLoadFinishedExpectedMs{0};
+char MapLoadTitle[48];
+char MapLoadMessages[MapLoadPhaseCount][48];
+
+// Halves the colour of every pixel: the picture stays, but reads as paused.
+void DimTopFramebuffer(unsigned char *framebuffer)
+{
+	auto *pixels = reinterpret_cast<uint32_t *>(framebuffer);
+	for (size_t i = 0; i < 400u * 240u; ++i)
+		pixels[i] = ((pixels[i] >> 1) & 0x7F7F7F00u) | (pixels[i] & 0xFFu);
+}
+
+void DrawMapLoadBox(unsigned char *framebuffer)
+{
+	int phase = std::clamp(MapLoadPhaseIndex.load(std::memory_order_acquire), 0,
+		MapLoadPhaseCount - 1);
+	const double elapsed = static_cast<double>(static_cast<uint32_t>(osGetTime()) -
+		MapLoadPhaseStartMs.load(std::memory_order_acquire)) / 1000.0;
+	const double finishedExpected = MapLoadFinishedExpectedMs.load(std::memory_order_acquire);
+	const double speed = finishedExpected >= 500.0 ? std::clamp(
+		MapLoadFinishedActualMs.load(std::memory_order_acquire) / finishedExpected, 0.15, 4.0) :
+		static_cast<double>(LoadingInitialSpeed);
+	const double phaseSeconds = static_cast<double>(MapLoadSeconds[phase]);
+	const double phaseFraction = std::clamp(elapsed / std::max(phaseSeconds * speed, 0.1),
+		0.0, 0.98);
+	double before = 0.0, total = 0.0;
+	for (int i = 0; i < MapLoadPhaseCount; ++i)
+	{
+		if (i == MapLoadRestorePhase && !MapLoadRestoring) continue;
+		if (i < phase) before += static_cast<double>(MapLoadSeconds[i]);
+		total += static_cast<double>(MapLoadSeconds[i]);
+	}
+	const double overall = std::clamp((before + phaseFraction * phaseSeconds) / total, 0.0, 1.0);
+
+	// A black box with a white frame, as the NES game draws its text.
+	constexpr int BoxX = 56, BoxY = 160, BoxWidth = 288, BoxHeight = 64;
+	LoadingTopRect(framebuffer, BoxX - 3, BoxY - 3, BoxWidth + 6, BoxHeight + 6, 0, 0, 0);
+	LoadingTopRect(framebuffer, BoxX - 1, BoxY - 1, BoxWidth + 2, BoxHeight + 2, 252, 252, 252);
+	LoadingTopRect(framebuffer, BoxX, BoxY, BoxWidth, BoxHeight, 0, 0, 0);
+	auto text = [&](int y, const char *line, unsigned char red, unsigned char green,
+		unsigned char blue)
+	{
+		NesDraw((400 - NesTextWidth(line, 1)) / 2, y, line, 1, [&](int px, int py, int size)
+		{
+			LoadingTopRect(framebuffer, px, py, size, size, red, green, blue);
+		});
+	};
+	text(BoxY + 9, MapLoadTitle, 252, 152, 56);
+	text(BoxY + 25, MapLoadMessages[phase], 252, 252, 252);
+
+	constexpr int BarX = BoxX + 24, BarY = BoxY + 43, BarWidth = BoxWidth - 80, BarHeight = 8;
+	LoadingTopRect(framebuffer, BarX - 1, BarY - 1, BarWidth + 2, BarHeight + 2, 252, 252, 252);
+	LoadingTopRect(framebuffer, BarX, BarY, BarWidth, BarHeight, 0, 0, 0);
+	LoadingTopRect(framebuffer, BarX, BarY, static_cast<int>(BarWidth * overall), BarHeight,
+		216, 40, 0);
+	char percent[8];
+	std::snprintf(percent, sizeof(percent), "%d%%", static_cast<int>(overall * 100.0));
+	NesDraw(BarX + BarWidth + 8, BarY, percent, 1, [&](int px, int py, int size)
+	{
+		LoadingTopRect(framebuffer, px, py, size, size, 252, 252, 252);
+	});
+}
+
+// Copies the picture the LCD shows into the back buffer of each eye, dimmed the first time,
+// draws the box on it and shows it. False when the screen is not in the expected format.
+bool DrawMapLoadFrame(bool first)
+{
+	GSPGPU_CaptureInfo capture{};
+	if (R_FAILED(GSPGPU_ImportDisplayCaptureInfo(&capture))) return false;
+	const auto &top = capture.screencapture[0];
+	if (top.framebuf0_vaddr == nullptr || (top.format & 7u) != GSP_RGBA8_OES ||
+		top.framebuf_widthbytesize != 240u * 4u) return false;
+	constexpr size_t Bytes = 400u * 240u * 4u;
+	const bool stereo = gfxIs3D();
+	for (int eye = 0; eye < (stereo ? 2 : 1); ++eye)
+	{
+		auto *shown = reinterpret_cast<unsigned char *>(eye == 0 ? top.framebuf0_vaddr : top.framebuf1_vaddr);
+		u16 width = 0, height = 0;
+		auto *back = gfxGetFramebuffer(GFX_TOP, eye == 0 ? GFX_LEFT : GFX_RIGHT, &width, &height);
+		if (shown == nullptr || back == nullptr || width != 240 || height != 400) return false;
+		GSPGPU_InvalidateDataCache(shown, Bytes);
+		if (back != shown) std::memcpy(back, shown, Bytes);
+		if (first) DimTopFramebuffer(back);
+		DrawMapLoadBox(back);
+		I_3DSCleanDataCache(back, Bytes);
+	}
+	gfxScreenSwapBuffers(GFX_TOP, stereo);
+	return true;
+}
+
+void MapLoadOverlayMain(void *)
+{
+	while (!MapLoadStop.load(std::memory_order_acquire))
+	{
+		svcSleepThread(150ULL * 1000ULL * 1000ULL);
+		if (MapLoadStop.load(std::memory_order_acquire)) break;
+		gspWaitForVBlank();
+		DrawMapLoadFrame(false);
+	}
+}
+
+// Moves the map-load overlay to the phase that starts at this log stage, if there is one.
+void MapLoadProgressStage(const char *stage)
+{
+	if (MapLoadDepth == 0) return;
+	const int current = MapLoadPhaseIndex.load(std::memory_order_acquire);
+	for (int i = current + 1; i < MapLoadPhaseCount; ++i)
+	{
+		const size_t length = std::strlen(MapLoadPhases[i].Stage);
+		if (std::strncmp(stage, MapLoadPhases[i].Stage, length) != 0 ||
+			(stage[length] != '\0' && stage[length] != ' ')) continue;
+		const uint32_t now = static_cast<uint32_t>(osGetTime());
+		uint32_t expectedMs = 0;
+		for (int done = current; done < i; ++done)
+			expectedMs += static_cast<uint32_t>(MapLoadSeconds[done] * 1000.0f);
+		MapLoadFinishedActualMs.fetch_add(now - MapLoadPhaseStartMs.load(), std::memory_order_acq_rel);
+		MapLoadFinishedExpectedMs.fetch_add(expectedMs, std::memory_order_acq_rel);
+		MapLoadPhaseStartMs.store(now, std::memory_order_release);
+		MapLoadPhaseIndex.store(i, std::memory_order_release);
+		return;
+	}
+}
 
 void DrawNativeMenuBottomFrame(unsigned char *framebuffer,
 	const unsigned char *menuPixels, const unsigned char *basePixels,
@@ -3527,6 +4117,94 @@ void ComposeNativeMenuFps(unsigned char *pixels, int pitchBytes, int width, int 
 	NativeTopText(pixels, pitchBytes, width, height, x + 4, 7, label, OverlayIvory);
 }
 
+// The toast on the top screen, in the NES font on an ink box with a blue frame. It sits where
+// OPTIONS -> DISPLAY -> MESSAGES puts the game's messages (the top edge or the bottom one) and
+// stacks beside them, never over them (C_3DSNotifyOccupied). In LCD pixels (400x240) it is an
+// image queued on the GPU; the CPU presenters draw the same box into the canvas.
+template<class FFill>
+void PaintToast(FFill &&fill, int toastWidth, int toastHeight, const char *text, bool bar)
+{
+	fill(0, 0, toastWidth, toastHeight, OverlayInk, 255u);
+	fill(0, 0, toastWidth, 1, OverlayBlue, 255u);
+	fill(0, toastHeight - 1, toastWidth, 1, OverlayBlue, 255u);
+	fill(0, 0, 1, toastHeight, OverlayBlue, 255u);
+	fill(toastWidth - 1, 0, 1, toastHeight, OverlayBlue, 255u);
+	NesDraw((toastWidth - NesTextWidth(text, 1)) / 2, 7, text, 1, [&](int px, int py, int size)
+	{
+		fill(px, py, size, size, OverlayIvory, 255u);
+	});
+	if (!bar) return;
+	// The percentage sits beside the bar, not in the text above it: the text, in Spanish
+	// especially, has the whole width of the toast.
+	char percent[8] = {};
+	int percentWidth = 0;
+	if (OverlayNotificationPercent)
+	{
+		std::snprintf(percent, sizeof(percent), "%d%%",
+			std::min(OverlayNotificationProgress, 1000) / 10);
+		percentWidth = NesTextWidth("100%", 1) + 6;
+	}
+	const int barWidth = toastWidth - 24 - percentWidth;
+	fill(12, 20, barWidth, 6, FOverlayColor{ 60, 60, 60 }, 255u);
+	fill(12, 20, barWidth * std::min(OverlayNotificationProgress, 1000) / 1000, 6, OverlayRed, 255u);
+	if (percentWidth > 0)
+		NesDraw(toastWidth - 12 - NesTextWidth(percent, 1), 19, percent, 1,
+			[&](int px, int py, int size) { fill(px, py, size, size, OverlayIvory, 255u); });
+}
+
+void ComposeTopToast(unsigned char *pixels, int pitchBytes, int width, int height,
+	bool gpuOverlays)
+{
+	ExpireOverlayNotification(osGetTime());
+	if (OverlayNotification[0] == '\0') return;
+	LoadNesFont();
+	if (!NesFont.Valid) return;
+	const char *text = Tr(OverlayNotification);
+	const bool bar = OverlayNotificationProgress >= 0;
+	constexpr int MaxWidth = 304, MaxHeight = 33;
+	const int toastWidth = std::min(MaxWidth, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
+	const int toastHeight = bar ? MaxHeight : 21;
+	// What the game's own messages take of the screen's height, from the edge they hang on.
+	const int stack = gamestate == GS_LEVEL ?
+		static_cast<int>(C_3DSNotifyOccupied() * 240.0f + 0.5f) : 0;
+	const int x = (400 - toastWidth) / 2;
+	const int y = lod3ds_messages_bottom ? 236 - stack - toastHeight : (stack > 0 ? stack + 2 : 4);
+	if (gpuOverlays)
+	{
+		static F3DSGpuImage *image;
+		static uint32_t drawnSerial, drawnProgress = ~0u;
+		static uint32_t rgba[MaxWidth * MaxHeight];
+		if (image == nullptr) image = I_3DSGpuImageCreate(MaxWidth, MaxHeight);
+		if (image == nullptr) return;
+		const uint32_t progress = static_cast<uint32_t>(OverlayNotificationProgress / 10 + 1);
+		if (drawnSerial != OverlayNotificationSerial || drawnProgress != progress)
+		{
+			drawnSerial = OverlayNotificationSerial;
+			drawnProgress = progress;
+			std::memset(rgba, 0, sizeof(rgba));
+			PaintToast([&](int fx, int fy, int fw, int fh, FOverlayColor color, unsigned alpha)
+			{
+				for (int py = std::max(0, fy); py < std::min(MaxHeight, fy + fh); ++py)
+					for (int px = std::max(0, fx); px < std::min(MaxWidth, fx + fw); ++px)
+						rgba[py * MaxWidth + px] = GpuOverlayPixel(color, alpha);
+			}, toastWidth, toastHeight, text, bar);
+			I_3DSGpuImageUpload(image, rgba, MaxWidth);
+		}
+		I_3DSGpuOverlayImage(image, static_cast<float>(x), static_cast<float>(y),
+			MaxWidth, MaxHeight);
+		return;
+	}
+	if (pixels == nullptr) return;
+	// The canvas may be smaller than the LCD (the render scale); the box keeps its place by
+	// proportion and its text its pixel size.
+	const int canvasX = x * width / 400, canvasY = y * height / 240;
+	PaintToast([&](int fx, int fy, int fw, int fh, FOverlayColor color, unsigned alpha)
+	{
+		NativeTopRect(pixels, pitchBytes, width, height, canvasX + fx, canvasY + fy, fw, fh,
+			color, alpha);
+	}, toastWidth, toastHeight, text, bar);
+}
+
 #include "update/changelog_view.inc"
 
 void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int height,
@@ -3553,6 +4231,7 @@ void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int 
 	}
 	if (gpuOverlays) QueueGpuFpsOverlay();
 	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+	ComposeTopToast(pixels, pitchBytes, width, height, gpuOverlays);
 }
 
 // Outside a level the developer overlay covers the menus too: it is how its STATUS box (the
@@ -3619,6 +4298,7 @@ uint64_t BottomGameplaySignature()
 	AActor *owner = players[consoleplayer].mo;
 	mix(static_cast<uint64_t>(BottomMapZoomedOut));
 	mix(static_cast<uint64_t>(BottomGodMode()));
+	mix(SystemStatusSignature());
 	mix(primaryLevel != nullptr ? primaryLevel->lines.Size() : 0u);
 	mix(reinterpret_cast<uintptr_t>(owner));
 	if (owner == nullptr) return hash;
@@ -3640,12 +4320,6 @@ void DrawBottomOverlay(bool force)
 {
 	const uint64_t now = osGetTime();
 	ExpireOverlayNotification(now);
-	static uint32_t drawnToast = 0;
-	if (drawnToast != OverlayNotificationSerial)
-	{
-		drawnToast = OverlayNotificationSerial;
-		force = true;
-	}
 	static uint64_t drawnInstallBar = 0;
 	const uint64_t installBar = InstallBarSignature();
 	if (drawnInstallBar != installBar)
@@ -5277,9 +5951,9 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		const unsigned brightness = NativeMenuCurrentBrightness();
 		if (brightness != 255u)
 			I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 255u - brightness);	// 0xRRGGBBAA: black
-		if (NativeSaveLoadMenuVisible())
+		if (NativeSaveLoadMenuVisible() || (CurrentMenu != nullptr && CurrentMenu->IsKindOf("LegendUpdateMenu")))
 		{
-			// The selected save's picture and text, drawn on a transparent layer and shown over
+			// The selected save's picture (or the update menu's changelog) and text, drawn on a transparent layer and shown over
 			// the dimmed world; uploaded to the GPU only when it changes.
 			static std::vector<unsigned char> layer;
 			static std::vector<uint32_t> rgba;
@@ -5367,6 +6041,7 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 	if (!keepsWorld) DrawNativeMenuTop(pixels, pitchBytes, width, height);
 	if (gpuOverlays) QueueGpuFpsOverlay();
 	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+	ComposeTopToast(pixels, pitchBytes, width, height, gpuOverlays);
 }
 
 bool I_3DSNativeMenuVisible()
@@ -5454,6 +6129,7 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 		// at 64 units a pixel stretched to the LCD is 51.2 units a pixel.
 		I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 0x000000ffu);
 		QueueGpuMap(E3DSGpuScreen::Top, 0, 0, 400, 240, 51.2);
+		ComposeTopToast(pixels, pitchBytes, width, height, true);
 		return;
 	}
 	if (automapactive)
@@ -5479,6 +6155,7 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 					mapPixels[sourceOffset + 1] });
 			}
 		}
+		ComposeTopToast(pixels, pitchBytes, width, height, false);
 		return;
 	}
 
@@ -5517,6 +6194,8 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 				}
 		}
 	}
+
+	ComposeTopToast(pixels, pitchBytes, width, height, gpuOverlays);
 
 	AActor *camera = players[consoleplayer].camera;
 	if (!crosshairon || camera == nullptr || camera->health <= 0 ||
@@ -5603,11 +6282,41 @@ void I_3DSRecordDrawDistanceFog(unsigned int filledPixels)
 	DrawDistanceFogPixels.fetch_add(filledPixels, std::memory_order_relaxed);
 }
 
+// Moves the loading screen to the phase that starts at this log stage, if there is one.
+void LoadingProgressStage(const char *stage)
+{
+	if (!LoadingScreenActive || LoadingScreenFinished) return;
+	const int current = LoadingPhaseIndex.load(std::memory_order_acquire);
+	for (int i = current + 1; i < LoadingPhaseCount; ++i)
+	{
+		const size_t length = std::strlen(LoadingPhases[i].Stage);
+		if (std::strncmp(stage, LoadingPhases[i].Stage, length) != 0 ||
+			(stage[length] != '\0' && stage[length] != ' ')) continue;
+
+		const uint32_t now = static_cast<uint32_t>(osGetTime());
+		uint32_t expectedMs = 0;
+		for (int done = current; done < i; ++done)
+			expectedMs += static_cast<uint32_t>(LoadingPhases[done].Seconds * 1000.0f);
+		LoadingFinishedActualMs.fetch_add(now - LoadingPhaseStartMs.load(), std::memory_order_acq_rel);
+		LoadingFinishedExpectedMs.fetch_add(expectedMs, std::memory_order_acq_rel);
+
+		const int slot = 1 - LoadingMessageSlot.load(std::memory_order_acquire);
+		std::snprintf(LoadingMessages[slot], sizeof(LoadingMessages[slot]), "%s",
+			Tr(LoadingPhases[i].Message));
+		LoadingMessageSlot.store(slot, std::memory_order_release);
+		LoadingPhaseStartMs.store(now, std::memory_order_release);
+		LoadingPhaseIndex.store(i, std::memory_order_release);
+		return;
+	}
+}
+
 void I_3DSStartupLog(const char *stage)
 {
 	static bool firstCheckpoint = true;
 	static bool linearPoolInitialized = false;
 	if (stage == nullptr) stage = "(null)";
+	LoadingProgressStage(stage);
+	MapLoadProgressStage(stage);
 
 	// libctru initializes the linear allocator lazily. Until its first
 	// allocation linearSpaceFree() reports zero even when the reserved arena is
@@ -5663,6 +6372,15 @@ void I_3DSLoadingScreenStart()
 	if (LoadingAnimationThread != nullptr) return;
 	LoadingScreenActive = true;
 	LoadingScreenFinished = false;
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+	LoadingInitialSpeed = isNew3DS ? 0.4f : 1.0f;
+	LoadingPhaseIndex.store(0, std::memory_order_release);
+	LoadingPhaseStartMs.store(static_cast<uint32_t>(osGetTime()), std::memory_order_release);
+	LoadingFinishedActualMs.store(0, std::memory_order_release);
+	LoadingFinishedExpectedMs.store(0, std::memory_order_release);
+	std::snprintf(LoadingMessages[0], sizeof(LoadingMessages[0]), "%s", Tr(LoadingPhases[0].Message));
+	LoadingMessageSlot.store(0, std::memory_order_release);
 	LoadingAnimationStop.store(false, std::memory_order_release);
 	// Put the first frame on the LCD synchronously so opening the title never
 	// resembles a dead black screen while the worker is being scheduled.
@@ -5687,6 +6405,86 @@ void I_3DSLoadingScreenFinish()
 		LoadingAnimationThread = nullptr;
 	}
 	I_3DSStartupLog("loading-animation-finished");
+}
+
+void I_3DSMapLoadBegin(const char *mapName, const char *levelName, bool restoring)
+{
+	BottomMapViewReset = true;
+	if (MapLoadDepth++ > 0)
+	{
+		MapLoadRestoring |= restoring;
+		return;
+	}
+	MapLoadRestoring = restoring;
+	if (LoadingScreenActive) return; // the startup screen is still up
+	const int lump = fileSystem.CheckNumForFullName(FStringf("maps/%s.wad", mapName).GetChars());
+	const float megabytes = lump >= 0 ? fileSystem.FileLength(lump) / (1024.0f * 1024.0f) : 1.0f;
+	for (int i = 0; i < MapLoadPhaseCount; ++i)
+		MapLoadSeconds[i] = MapLoadPhases[i].Seconds + MapLoadPhases[i].SecondsPerMB * megabytes;
+	std::snprintf(MapLoadTitle, sizeof(MapLoadTitle), "%s", levelName != nullptr ? levelName : "");
+	for (int i = 0; i < MapLoadPhaseCount; ++i)
+		std::snprintf(MapLoadMessages[i], sizeof(MapLoadMessages[i]), "%s", Tr(MapLoadPhases[i].Message));
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+	LoadingInitialSpeed = isNew3DS ? 0.4f : 1.0f;
+	MapLoadPhaseIndex.store(0, std::memory_order_release);
+	MapLoadPhaseStartMs.store(static_cast<uint32_t>(osGetTime()), std::memory_order_release);
+	MapLoadFinishedActualMs.store(0, std::memory_order_release);
+	MapLoadFinishedExpectedMs.store(0, std::memory_order_release);
+	MapLoadStop.store(false, std::memory_order_release);
+	I_3DSStartupLog("map-load-begin");
+	// The last frame the game drew must be on the LCD before it is copied.
+	I_PolyWaitForPresent3DS();
+	gspWaitForVBlank();
+	if (!DrawMapLoadFrame(true)) return;
+	MapLoadThread = threadCreate(MapLoadOverlayMain, nullptr, 16 * 1024, 0x30, -1, false);
+}
+
+void I_3DSMapLoadEnd()
+{
+	if (MapLoadDepth == 0 || --MapLoadDepth > 0) return;
+	MapLoadStop.store(true, std::memory_order_release);
+	if (MapLoadThread != nullptr)
+	{
+		threadJoin(MapLoadThread, U64_MAX);
+		threadFree(MapLoadThread);
+		MapLoadThread = nullptr;
+	}
+	MapLoadAwaitFirstFrame = true;
+	I_3DSStartupLog("map-load-end");
+}
+
+#if LOD3DS_DEBUG_TOOLS
+// lod3ds_mapprofile [reset]: the touch screen map's build, a call on average.
+CCMD(lod3ds_mapprofile)
+{
+	const FMapProfile &p = MapProfile;
+	const double calls = p.Calls > 0 ? double(p.Calls) : 1.0;
+	auto ms = [&](uint64_t ticks) { return double(ticks) * 1000.0 / SYSCLOCK_ARM11 / calls; };
+	Printf("map build: %llu calls; cull %.2f ms, sort %.2f ms, emit %.2f ms, rest %.2f ms; "
+		"%.0f subsectors, %.0f shown, %.0f triangles a call\n", (unsigned long long)p.Calls,
+		ms(p.CullTicks), ms(p.SortTicks), ms(p.EmitTicks), ms(p.RestTicks),
+		p.Subsectors / calls, p.Shown / calls, p.Triangles / calls);
+	if (argv.argc() > 1) MapProfile = {};
+}
+
+// lod3ds_maploadshot: shows the map-load box for two seconds (no map is loaded) and saves both
+// screens to debug/shot-top.bmp and debug/shot-bottom.bmp, for checking how it looks.
+CCMD(lod3ds_maploadshot)
+{
+	I_3DSMapLoadBegin("MAP01", "HYRULE", false);
+	svcSleepThread(2000ULL * 1000ULL * 1000ULL);
+	I_3DSSaveScreenShots(LOD3DS_APP_DIR "/debug/shot-top.bmp",
+		LOD3DS_APP_DIR "/debug/shot-bottom.bmp");
+	I_3DSMapLoadEnd();
+}
+#endif
+
+void I_3DSMapLoadFrameShown()
+{
+	if (!MapLoadAwaitFirstFrame) return;
+	MapLoadAwaitFirstFrame = false;
+	I_3DSStartupLog("map-first-frame");
 }
 
 void I_3DSPrepareNativeKeyboardTop()
@@ -6120,14 +6918,35 @@ void I_3DSServiceDiagnosticDump()
 
 void I_3DSOverlayFrame()
 {
-	// Once a tic (I_StartFrame): this tic's bottom GPU draws replace the last tic's.
-	I_3DSGpuBottomNewTic();
+	// Once a tic (I_StartFrame): the touch screen's interface, and the map's GPU draws, which
+	// replace the last ones and stay on screen until then. Building them walks every subsector
+	// of the map: on the 2DS 4-5 ms a tic in MAP01 (6 ms of a 37 ms frame, 2026-10-18). It is
+	// built every third tic (12 a second) on every model, so both play the same, and at once when
+	// it was not on screen, the level changed, the zoom changed or the toast moved its lower edge.
 	DrawBottomOverlay(false);
-	if (I_3DSGpuBottomBuffer() != nullptr && BottomPresentation == EBottomPresentation::Gameplay)
+	const bool mapShown = I_3DSGpuBottomBuffer() != nullptr &&
+		BottomPresentation == EBottomPresentation::Gameplay;
+	static bool builtShown = false;
+	static bool builtZoom = false;
+	static int builtToastTop = 0;
+	static int builtTime = 0;
+	static int ticsSinceBuilt = 0;
+	const int toastTop = BottomToastTop();
+	const int levelTime = primaryLevel != nullptr ? primaryLevel->maptime : 0;
+	const bool stale = mapShown && builtShown && builtZoom == BottomMapZoomedOut &&
+		builtToastTop == toastTop && levelTime >= builtTime && ++ticsSinceBuilt < 3;
+	if (stale) return;
+	I_3DSGpuBottomNewTic();
+	ticsSinceBuilt = 0;
+	builtShown = mapShown;
+	builtZoom = BottomMapZoomedOut;
+	builtToastTop = toastTop;
+	builtTime = levelTime;
+	if (mapShown)
 	{
 		using namespace BottomLayout;
 		QueueGpuMap(E3DSGpuScreen::Bottom, MapX, MapY, MapWidth, MapHeight,
-			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear, BottomToastTop());
+			BottomMapZoomedOut ? MapUnitsFar : MapUnitsNear, toastTop);
 	}
 }
 
@@ -6141,6 +6960,11 @@ void I_3DSSetAudioReady(bool ready)
 void I_3DSSetMenuStoryPage(bool story)
 {
 	MenuStoryPage = story;
+}
+
+AActor *I_3DSAdjacentWeapon(player_t &player, int direction)
+{
+	return AdjacentWeapon(player, direction);
 }
 
 namespace { bool QuitWithoutSaving = false; }
@@ -6280,7 +7104,7 @@ void I_3DSServiceConsoleLink()
 		relaunchAt = osGetTime() + RelaunchDelayMilliseconds;
 		ConsoleLinkLog("new build installed: relaunching in 10 s");
 	}
-	// While an installer arrives, installs or waits to relaunch, a toast on the touch screen
+	// While an installer arrives, installs or waits to relaunch, a toast on the top screen
 	// says so, with a bar: the bytes received (of the size build_3ds.py announces with ALLO),
 	// then written to the system, then the countdown. An install over the running game never
 	// happens without a warning.
@@ -6388,7 +7212,59 @@ void I_3DSToast(const char *english)
 	SetOverlayNotification(english);
 }
 
-bool I_3DSUnsupportedConsoleScreen()
+bool I_3DSNoAudioRequested()
 {
-	return UnsupportedConsoleScreen();
+#if LOD3DS_DEBUG_TOOLS
+	if (FILE *flag = std::fopen(LOD3DS_APP_DIR "/no-audio.txt", "rb"))
+	{
+		std::fclose(flag);
+		return true;
+	}
+#endif
+	return false;
+}
+
+void I_3DSAudioCpuBudget()
+{
+	bool isNew3DS = true;
+	APT_CheckNew3DS(&isNew3DS);
+	if (isNew3DS) return;
+	// The 2DS played the music a few seconds on, a few seconds off: the MP3 decoder and OpenAL's
+	// mixer share core 1, where the application gets 30% by default (2026-10-18). 80% fixed the
+	// music but starved the system's own work on that core: the game ran slower, ftpd crawled
+	// and closing the game froze the 2DS. So the limit stays, and the music is made cheaper to
+	// decode instead (22 kHz, build.sh). Only logged, for the reports; lod3ds_audiocpu tries others.
+	u32 current = 0;
+	const Result result = APT_GetAppCpuTimeLimit(&current);
+	char stage[64];
+	std::snprintf(stage, sizeof(stage), "audio cpu limit %lu (0x%08lx)", (unsigned long)current,
+		(unsigned long)result);
+	I_3DSStartupLog(stage);
+}
+
+#if LOD3DS_DEBUG_TOOLS
+// lod3ds_audiocpu [PERCENT]: reads core 1's time limit for the application, or sets it (#16).
+CCMD(lod3ds_audiocpu)
+{
+	u32 current = 0;
+	const Result get = APT_GetAppCpuTimeLimit(&current);
+	if (argv.argc() < 2)
+	{
+		Printf("audio cpu limit %lu (0x%08lx)\n", (unsigned long)current, (unsigned long)get);
+		return;
+	}
+	const u32 wanted = (u32)atoi(argv[1]);
+	const Result set = APT_SetAppCpuTimeLimit(wanted);
+	u32 now = 0;
+	APT_GetAppCpuTimeLimit(&now);
+	Printf("audio cpu limit %lu -> %lu: 0x%08lx, now %lu\n", (unsigned long)current,
+		(unsigned long)wanted, (unsigned long)set, (unsigned long)now);
+}
+#endif
+
+bool I_3DSStartupBlockingScreen()
+{
+	// The Old 3DS / 2DS run the game since release/v0.2.5 (PLAN P4); only the New 3DS's 64 MB
+	// start is stopped.
+	return LowMemoryScreen();
 }

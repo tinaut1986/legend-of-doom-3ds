@@ -93,20 +93,20 @@ int main(int argc,char **argv) {
    snprintf(body,sizeof(body),"QR\n<!-- lod-notes -->\n## What's new\n\n- notes of %s\n<!-- /lod-notes -->\n## Changelog\n- commits",tags[i]);
    json_object_set_new(o,"body",json_string(body));json_array_append_new(r,o);}
   char *raw=json_dumps(r,JSON_COMPACT);
-  // Stable channel from the 0.1.0 beta: the stables 0.3.0 and 0.2.0 (each covers its betas).
+  // Stable channel from the 0.1.0 beta: the stables 0.3.0 and 0.2.0 and the betas between them.
   assert(Update_ParseRelease(raw,strlen(raw),false,false,"0.1.0-beta",&out)==1&&!strcmp(out.version,"v0.3.0"));
   assert(strstr(out.notes,"## v0.3.0\n")&&strstr(out.notes,"notes of v0.3.0")&&strstr(out.notes,"notes of v0.2.0"));
   assert(strstr(out.notes,"notes of v0.3.0")<strstr(out.notes,"notes of v0.2.0"));
-  assert(!strstr(out.notes,"v0.2.1")&&!strstr(out.notes,"v0.1.0")&&!strstr(out.notes,"commits"));
+  assert(strstr(out.notes,"## v0.2.2 BETA")&&strstr(out.notes,"## v0.2.1 BETA")&&!strstr(out.notes,"v0.1.0")&&!strstr(out.notes,"v0.3.1")&&!strstr(out.notes,"commits"));
   count=Update_FormatNotes(out.notes,lines,384);
   assert(!strcmp(lines[0],"v0.3.0")&&!strcmp(lines[1],"- notes of v0.3.0"));
-  // Beta channel from 0.2.0: the 0.3.1 beta, then 0.3.0, which covers 0.2.1 and 0.2.2.
+  // Beta channel from 0.2.0: the 0.3.1 beta, then 0.3.0 and the betas before it.
   assert(Update_ParseRelease(raw,strlen(raw),true,false,"0.2.0",&out)==1&&!strcmp(out.version,"v0.3.1"));
-  assert(strstr(out.notes,"## v0.3.1 BETA\n")&&strstr(out.notes,"notes of v0.3.0")&&!strstr(out.notes,"v0.2.2"));
+  assert(strstr(out.notes,"## v0.3.1 BETA\n")&&strstr(out.notes,"notes of v0.3.0")&&strstr(out.notes,"## v0.2.2 BETA")&&strstr(out.notes,"## v0.2.1 BETA")&&!strstr(out.notes,"v0.1.0"));
   // The whole changelog: every release the channel sees, newest first.
   static char history[UPDATE_HISTORY_MAX];
-  assert(Update_ReleaseHistory(raw,strlen(raw),false,history,sizeof(history))==2);
-  assert(strstr(history,"## v0.3.0\n")<strstr(history,"## v0.2.0\n")&&!strstr(history,"BETA"));
+  assert(Update_ReleaseHistory(raw,strlen(raw),false,history,sizeof(history))==5);
+  assert(strstr(history,"## v0.3.0\n")<strstr(history,"## v0.2.2 BETA")&&strstr(history,"## v0.2.0\n")&&strstr(history,"## v0.1.0 BETA")&&!strstr(history,"v0.3.1"));
   assert(Update_ReleaseHistory(raw,strlen(raw),true,history,sizeof(history))==6);
   assert(strstr(history,"## v0.3.1 BETA")<strstr(history,"## v0.3.0\n")&&strstr(history,"## v0.3.0\n")<strstr(history,"## v0.2.2 BETA"));
   assert(strstr(history,"## v0.1.0 BETA")&&strstr(history,"notes of v0.1.0")&&!strstr(history,"commits"));

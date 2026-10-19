@@ -233,8 +233,14 @@ int main (int argc, char **argv)
 	// dump 00000101, where a pre-SDL CPU write targeted protected VRAM.
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) >= 0)
 	{
-		// An Old 3DS / 2DS gets a message instead of the memory failure that follows.
-		if (I_3DSUnsupportedConsoleScreen()) return 0;
+		// A New 3DS in its 64 MB mode gets a message instead of the memory failure that follows.
+		if (I_3DSStartupBlockingScreen())
+		{
+			// As the normal exit does: leaving with SDL's video (gfx) still up froze the console
+			// when A closed the message (2026-10-19).
+			SDL_Quit();
+			return 0;
+		}
 		I_3DSLoadingScreenStart();
 	}
 	I_3DSStartupLog("sdl-core-ready");

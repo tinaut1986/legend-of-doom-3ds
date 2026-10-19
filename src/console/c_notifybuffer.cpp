@@ -41,6 +41,8 @@
 #include "v_video.h"
 #include "i_time.h"
 #include "c_notifybufferbase.h"
+#include "v_font.h"
+#include "v_draw.h"
 
 struct FNotifyBuffer : public FNotifyBufferBase
 {
@@ -48,7 +50,15 @@ public:
 	void AddString(int printlevel, FString source) override;
 	void Clear() override;
 	void Draw() override;
-
+#ifdef __3DS__
+	int ShownLines() const
+	{
+		int shown = 0;
+		for (const FNotifyText &notify : Text)
+			if (notify.TimeOut != 0 && notify.TimeOut > notify.Ticker) ++shown;
+		return shown;
+	}
+#endif
 };
 
 static FNotifyBuffer NotifyStrings;
@@ -83,6 +93,23 @@ void FNotifyBuffer::Clear()
 
 }
 
+#ifdef __3DS__
+// OPTIONS -> DISPLAY -> MESSAGES: the game's messages along the top of the picture (TOP) or along
+// its bottom (BOTTOM, the newest lowest).
+CVAR(Bool, lod3ds_messages_bottom, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+#include "common/platform/3ds/diagnostics_3ds.h"
+#endif
+
+// The notify lines' font. On the 3DS, the game's own small font (SMALLFNT, the NES letters, at
+// their size) instead of the engine's generic one.
+static FFont *NotifyFont()
+{
+#ifdef __3DS__
+	if (SmallFont != nullptr) return SmallFont;
+#endif
+	return generic_ui ? NewSmallFont : AlternativeSmallFont;
+}
+
 void FNotifyBuffer::AddString(int printlevel, FString source)
 {
 	if (!show_messages ||
@@ -105,8 +132,25 @@ void FNotifyBuffer::AddString(int printlevel, FString source)
 		}
 	}
 
+#ifdef __3DS__
+	// Most of the game's pickup messages are written in English in its actors, not as string
+	// table keys. They have Spanish rows in language.csv under the port's key (Tr(), as the
+	// game's ACS messages); text without a row is shown as it is.
+	{
+		FString line = source;
+		line.StripRight();
+		const char *translated = I_3DSTranslate(line.GetChars());
+		if (translated != line.GetChars()) source = translated;
+		// Every message on its own line: text without a final newline (the rupees' pickup
+		// messages) was appended to the previous message. con_notifylines then drops the oldest.
+		if (source.IsNotEmpty() && source.Back() != '\n') source += '\n';
+	}
+#endif
 	int width = DisplayWidth / active_con_scaletext(twod, generic_ui);
-	FFont *font = generic_ui ? NewSmallFont : AlternativeSmallFont;
+#ifdef __3DS__
+	width -= 16; // room for the band's margins
+#endif
+	FFont *font = NotifyFont();
 	FNotifyBufferBase::AddString(printlevel & PRINT_TYPES, font, source, width, con_notifytime, con_notifylines);
 }
 
@@ -116,12 +160,27 @@ void FNotifyBuffer::Draw()
 	int line, lineadv, color, j;
 	bool canskip;
 	
-	FFont* font = generic_ui ? NewSmallFont : AlternativeSmallFont;
+	FFont* font = NotifyFont();
 
 	line = Top + font->GetDisplacement();
 	canskip = true;
 
 	lineadv = font->GetHeight ();
+#ifdef __3DS__
+	// In the game's style: centred, white, each line on a black band, as the NES game writes its
+	// text; along the top of the picture or along its bottom.
+	center = true;
+	line += 4;
+	lineadv += 4;
+	if (lod3ds_messages_bottom)
+	{
+		int shown = 0;
+		for (const FNotifyText &notify : Text)
+			if (notify.TimeOut != 0 && notify.TimeOut > notify.Ticker) ++shown;
+		const int scale = active_con_scaletext(twod, generic_ui);
+		line = twod->GetHeight() / scale - 6 - shown * lineadv + 4 + font->GetDisplacement();
+	}
+#endif
 
 	for (unsigned i = 0; i < Text.Size(); ++ i)
 	{
@@ -148,13 +207,10 @@ void FNotifyBuffer::Draw()
 			const int textX = center ? (twod->GetWidth() -
 				font->StringWidth(notify.Text) * scale) / 2 / scale : 0;
 			#ifdef __3DS__
-			// A one-pixel black shadow keeps pickup notices legible over bright
-			// skies, waterfalls and dungeon floors without changing their color.
-			DrawText(twod, font, CR_BLACK, textX + 1, line + 1, notify.Text,
-				DTA_VirtualWidth, twod->GetWidth() / scale,
-				DTA_VirtualHeight, twod->GetHeight() / scale,
-				DTA_KeepRatio, true,
-				DTA_Alpha, alpha, TAG_DONE);
+			color = CR_UNTRANSLATED;
+			const int textWidth = font->StringWidth(notify.Text);
+			Dim(twod, 0, float(alpha * 0.85), (textX - 6) * scale, (line - 3) * scale,
+				(textWidth + 12) * scale, (font->GetHeight() + 5) * scale);
 			#endif
 			DrawText(twod, font, color, textX, line, notify.Text,
 					DTA_VirtualWidth, twod->GetWidth() / scale,
@@ -174,6 +230,20 @@ void FNotifyBuffer::Draw()
 		Top = TopGoal;
 	}
 }
+
+#ifdef __3DS__
+// What the messages on screen take of the height, from the edge they hang on (the toasts of
+// diagnostics_3ds.cpp stack beside them).
+float C_3DSNotifyOccupied()
+{
+	const int shown = NotifyStrings.ShownLines();
+	if (shown == 0 || twod == nullptr || twod->GetHeight() <= 0) return 0.f;
+	const int scale = active_con_scaletext(twod, generic_ui);
+	const int lineadv = NotifyFont()->GetHeight() + 4;
+	return std::min(1.f, float((shown * lineadv + (lod3ds_messages_bottom ? 6 : 4)) * scale) /
+		twod->GetHeight());
+}
+#endif
 
 void SetConsoleNotifyBuffer()
 {

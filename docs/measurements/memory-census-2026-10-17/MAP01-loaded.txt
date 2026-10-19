@@ -1,0 +1,64 @@
+Memory census 'MAP01-loaded', build 3faa2353b0c0 (0.0.0-dev+291d5ea)
+
+heap arena                     54849536  (52.31 MB)
+heap in use                    45743464  (43.62 MB)
+heap free                       9106072  (8.68 MB)
+gc objects (AllocBytes)        17448640  (16.64 MB)
+gc objects (class sizes)         838379  (0.80 MB)
+cached lumps                     699619  (0.67 MB)
+TArray pool in use              9953248  (9.49 MB)
+TArray pool high                9986720  (9.52 MB)
+map-load reserve                   free
+linear free                     3686400  (3.52 MB)
+vram free                       4154368  (3.96 MB)
+app region free                       0  (0.00 MB)
+
+Heap chunks
+base 0x08080000 top 0x0b4cdc60 top chunk 5024
+up to        free n   free bytes   used n   used bytes
+256           50934      1976648   147229      9980424
+1K                7         4680     5564      3263696
+4K                3         8440     1501      1878728
+16K              24       206712      158      1156592
+64K              83      2067712      165      4353384
+256K             56      4041496       59      6910880
+1M                1       799416       12      5350624
+4M                0            0        2      2359312
+more              0            0        1     10485768
+largest free (not counting the top chunk): 799416@+11946K 164840@+11622K 131208@+47057K 102936@+50425K 101672@+52168K 81128@+34486K 80856@+32221K 80840@+41285K
+map, 836 KB a cell, '#' full ... ' ' free:
+[#############+.++++##++++++#+++#+#++#----+-+-++++------++##++#+#]
+
+GC objects: 1731, by class (bytes from the class size, top 30):
+ZeldaBushGreen                       144     168192
+ZeldaSpawner                         119     147560
+TeleportDest2                         88     102784
+PointLight                            66      78672
+ZeldaFire                             44      51392
+SecretRevealer                        22      26136
+ZeldaBushBrown                        22      25696
+OptionMenuItemOption                 354      25488
+ZeldaTree                             18      21024
+ZeldaOldMan                           15      17520
+ZeldaManualSpawner                    12      14880
+TornadoSpot                            9      10548
+SecretBush                             8       9504
+OptionMenuItemStaticText             153       9180
+OptionMenuItemSlider                  79       8216
+ZeldaGhostSpawner                      6       7464
+OptionMenuDescriptor                  87       7308
+SecretBushInvisible                    6       7128
+ZeldaHeartContainerPickup              5       6120
+ZeldaTree2                             5       5840
+ZeldaUniquePotion                      4       4896
+OptionMenuItemControl                 75       4875
+OptionMenuItemSubmenu                 80       4800
+ZeldaMerchant                          4       4672
+MoneySpot                              3       3504
+OptionMenuItemSliderReverbEditOption      28       3136
+OptionMenuItemColorPicker             48       2880
+HexenArmor                             2       2592
+BasicArmor                             2       2504
+ZeldaMeat100                           2       2464
+
+Cached lumps: 1

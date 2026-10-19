@@ -19,57 +19,63 @@ change (what goes where: the table in `CLAUDE.md`).
   (2026-10-12): almost everything runs on the CPU, it is not known to reach 60 fps
   even on the New 3DS, there is no stereo 3D, and the Old 3DS does not run it.
 
-## Status (2026-10-15)
+## Status (2026-10-19)
 
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.2.4` (on origin; renamed from `release/v0.2.3` right after its tag).
-Published: **`v0.2.3`** beta (2026-10-15, its release is on GitHub), **`v0.2.2`** beta, **`v0.2.1`** stable (2026-10-15),
-**`v0.2.0`** stable (2026-10-14, the first), `v0.1.0` beta. `main` holds the last stable merge.
+**Release line:** `release/v0.3.1` (renamed from `release/v0.3.0` right after its tag).
+Published: **`v0.3.0`** beta (2026-10-19, the tag workflow; the first with the Old 3DS / 2DS, control
+schemes, the 2DS memory / music / speed work; its release body was edited afterwards: the sprint line
+without `( ) ;`, the downloads line "every Nintendo 3DS / 2DS model"), **`v0.2.4`** stable (`main`),
+`v0.2.3` and `v0.2.2` betas, **`v0.2.1`** and **`v0.2.0`** stables, `v0.1.0` beta.
+
+**In the line since v0.3.0:** the NES font draws `( ) ; + * # [ ] _` (checked on the New 3DS); the
+release texts (workflow template, README) say the Old 3DS / 2DS run it; U6-U9 and #28 written down.
 
 **Branches:**
 
 | Branch | What | State |
 |---|---|---|
-| `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: it does not remove the pop of the tall mountains (see #14); harmless, unchecked as a smoother horizon |
+| `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
-**Waiting for the owner's check** (done by Claude only, or not seen yet):
-- The v0.2.3 beta: that the console's updater (Beta channel) offers it from the v0.2.2 beta and
-  shows its 6 notes.
-- #6 (toasts over the map), fixed in the v0.2.2 beta: to look.
-- The Old 3DS screen can only be seen on an Old 3DS / 2DS.
-- `gpu-light-sky` is checked (owner, 2026-10-15): the hit flash, Ghini and a Wizzrobe translucent,
-  Ganon invisible, the sky, the fog, a dark cave. What is left of it is #14, low priority.
+The worktree branches of the 2026-10-18/19 side sessions (`fix/cave-sky-square`,
+`fix/new3ds-64mb-warning`, `claude/*`) are merged or spent; their worktrees can be cleaned up.
 
-**Priority** (2026-10-15, owner): the 2DS (P4.1), then #5, #7 and #14 last. P2.3's parity is closed bar the owner's check
-(see the decisions log, 2026-10-15).
+**Waiting for the owner's check:**
+- The `v0.3.0` beta through the updater (Beta channel), and the `v0.2.4` stable (Release channel).
+- #27's trigger: why a New 3DS sometimes starts in 64 MB (the screen now stops it; reboot fixes it).
+
+**Priority** (2026-10-19, owner): the HOME menu's black screens (#7) is "the only important thing
+left"; the owner's wishes U6-U9 and #28 come after, written down only (2026-10-19: "documéntalas").
+Claude recommends checking the 2DS saves (#21 / #23) before a stable; the owner has not chosen yet.
 
 **Start here:**
-0. **The 2DS (P4.1).** Create `allow-old3ds.txt` (merged 2026-10-15, debug builds only; without it
-   the 2DS shows only the "not supported yet" message) in `sdmc:/3ds/Legend of Doom 3DS/` on it, install a debug build over
-   `release/v0.2.4` and read `fatal.log` and the `pool=` figures in `startup.log`. What is known: on
-   the New 3DS MAP01 loads with the heap at 53 MB of 94; the 2DS heap is ~56 MB, so there is ~3 MB
-   of room, the 10 MB pool is full at MAP01 (`pool full` x10) and the 5 MB map-load reserve is on
-   top of it. Next steps: size the pool to its real use, drop or merge the reserve, then what
-   MAP01's 21.6 MB of engine objects (`gc`) hold. The decisions log of 2026-10-15 has the rest.
-1. **#12** is done (16-bit textures, merged); no further work planned.
-2. **P2.3 parity:** nothing left that this game uses; the owner checks 3D floors (`feat/gpu-3d-floors`)
-   on the console, then it merges.
-3. Nothing is half done or uncommitted.
+1. #7: the game's two screens are black behind the HOME menu (framebuffer format / swap state; check
+   the title, the menus and a level, New 3DS and 2DS).
+2. Ask the owner about a 2DS save test: play long, then save by hand and at caves. #21 (the save's JSON
+   could not grow) is probably fixed by #25 (the GC runs again); #23 (an object freed while saved) is
+   not explained, and the GC now runs every ~1 MB, which could make a dangling pointer show sooner.
+3. U8: the start-up progress bars on the touch screen.
+4. (Done 2026-10-19, owner-checked: U5, U6, U7, U9, #28, and weapprev / weapnext following the bottom grid's order.)
+5. Back to the 2DS's speed: the heavy MAP01 spot's remaining frame (logic ~9 ms a tic, the walk's walls
+   ~2.5 ms, the GPU capture's geometry ~3 ms; `lod3ds_sections`), P4.2 with 3D, P4.10's rest, P4.11,
+   the census leftovers (`docs/measurements/memory-census-2026-10-17.md`).
+6. Later: #18 (the GPU fade like the old wipe), the New 3DS's 55 fps in stereo at some open-map spots,
+   #14.
+A stable `v0.3.x` needs the owner's word; the notes then list everything since `v0.2.4`.
 
-**On the owner's consoles now (2026-10-15):**
-- **New 3DS**, `192.168.1.141` (the 2DS has used the same address; `.3ds_ftp_ip` holds it): a
-  debug build `0.2.4-dev.56.1+b4d6b62`: this line plus the parked `fix/horizon-fog-fade` (the sky
-  fade, the only difference from the release), FTP server on, the install-only marker
-  `dev-ftp.txt`, saves `save0` ("test", MAP01, the spot Claude loads), `test2` (the 48-50 fps spot
-  of #12) and three autosaves. DISTANCE is HIGH (the owner's setting); FRAMES was last left at
-  NO SKIP by Claude; `sv_cheats` is 0 again (Claude set it to warp). The player stands near
-  MAP01 (8030, -92) after Claude's warps.
-- **2DS**: the last build tried is a debug build of `0.0.0-dev+52193bd` plus the memory work
-  (2026-10-15, early morning): it stopped at the title with `operator new failure`. Nothing
-  newer has been installed there; it will show the "not supported yet" message until
-  `allow-old3ds.txt` exists.
+**On the owner's consoles now (2026-10-19):**
+- **New 3DS**, `192.168.1.133`: `f21ade3fa72f` (debug, `0.3.1-dev.173.1+ce69597`: the line + the NES
+  font fix, now merged), by SITE INSTALL; 124 MB since a reboot on 2026-10-19. FTP on, the
+  install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01), `test2`, autosaves; the owner was
+  in MAP02. DISTANCE HIGH. Scheme CLASSIC.
+- **2DS**, `192.168.1.139`: `c4e30fc42a1b` (debug, `fix/old3ds-unblock` before its merge: the line at
+  `f1f68bd`), by SITE INSTALL. `allow-old3ds.txt` removed (no longer needed); `census-on-load.txt`,
+  the census reports and the owner's saves (save0..2, auto0..3; first dungeon done). Its ini has
+  `snd_samplerate 22050` (set live on 2026-10-19; the code now forces it on the Old 3DS). Scheme
+  BUTTON CAMERA. Luma's `crash_dump_00000000` and `00000019` are from the Minish Cap port. Installing
+  over the running game near its memory limit can close it: then upload over ftpd.
 
 Tasks ticked [x] have been checked on the console by the owner; do not re-propose them.
 
@@ -252,7 +258,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* the owner finds it integrated on the console, the map zooms only with its
   button, and GOD / ALL work in a debug build and are absent from a stable one.
 
-- [ ] **U5** The game's own text in Spanish too (U3 left it out).
+- [x] **U5** The game's own text in Spanish too (U3 left it out).
   *Spec:* owner 2026-10-15: the whole game, not only the menus. The NPCs' dialogue (compiled
   ACS, through `Tr()` in the engine), pickup messages, obituaries, level names, the story and
   ending pages (Spanish variants drawn at build time), and the Spanish letters in the game's
@@ -260,6 +266,62 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* in Spanish the owner meets no English in a playthrough's text (dialogue,
   pickups, story, ending), the accents read well in the dialogue box and the pickup line,
   the texts fit on screen, and English is unchanged.
+  *State (2026-10-19 audit, branch `feat/u5-game-text-spanish`):* the work is already in the line
+  (commit 68e8a99: ACS text through `Tr()`, `$LOD_` keys, `spanish-game.py` fonts and story / ending
+  pages). Audit of the fetched pk3: every string of the three ACS libraries that is printed (the
+  second-quest `dialog2` table; the first-quest `dialog` table is never used) has a row; the actors'
+  pickup messages, obituaries and level names are keys. What is left in English is debug output
+  (spawner logs, `Secret %i`), the `TAG_*SWORD` keys (engine table) and ZMAPINFO's `ZELDA DOOM`.
+  Ticked 2026-10-19: the owner checked it on the console and called it done.
+  and the pickup line, texts that fit, English unchanged).
+
+- [x] **U6** After dying, the menu opens by itself.
+  *Spec:* owner 2026-10-19: when Link dies, the game offers what to do next without a button
+  press: continue from the last save, load another, start a new game (the pause menu's choices
+  that make sense there), in the native menus' style. Today the game waits on the death screen.
+  *Done when:* dying opens that menu after the death animation, each choice works, and B or
+  "continue" does what the owner chooses as the default.
+  *Built and checked by the owner on the console (2026-10-19), merged:* `G_Ticker` opens `LegendDeathMenu`
+  (GAME OVER: CONTINUE, LOAD GAME, NEW GAME, QUIT GAME; MENUDEF in the game patch) 2 s after the player
+  dies (`DeathMenuDelayTics`, tune it after seeing the fall). CONTINUE does what USE does (`LegendContinue`
+  in `M_SetSpecialMenu`: the last save, else the level again). **Open question for the owner:** B closes
+  the menu back to the death screen (USE still continues, START opens the pause menu); say if B should
+  continue instead.
+
+- [x] **U7** Every message for the player in one place: the top screen, where MESSAGES says.
+  *Spec:* owner 2026-10-19: the toasts (AUTOSAVED, GAME SAVED, install and FTP notices...,
+  `SetOverlayNotification` / `I_3DSToast` in `diagnostics_3ds.cpp`, today on the touch screen)
+  go to the top screen with the game's own messages, in the place OPTIONS -> DISPLAY ->
+  MESSAGES sets (TOP / BOTTOM of the top screen), in the same NES-font band. Update CLAUDE.md's
+  "messages for the player are bottom-screen toasts" in the same change.
+  *Done when:* no message appears on the touch screen during play, the toasts follow MESSAGES,
+  and they do not hide the game's own messages.
+  *Built and checked by the owner on the console (2026-10-19), merged:* `ComposeTopToast` draws the toast
+  (same box, with the install / restart bar) on the top screen in menus and in a level, as a GPU image on the
+  hybrid presenters; it sits on the edge MESSAGES says and stacks beside the game's lines
+  (`C_3DSNotifyOccupied`). Not shown on the bare title screen (no menu, no level: no top composer there).
+  The install bar (FTP INSTALL ONLY) stays on the touch screen: it is a state bar, not a message.
+
+- [ ] **U8** The start-up progress bars on the touch screen.
+  *Spec:* owner 2026-10-19: while the game starts, the touch screen is nearly empty and the bars
+  are on the top screen; see whether the loading screen's bars (`I_3DSLoadingScreenStart`,
+  `DrawLoadingProgressOverlay`) can be drawn on the bottom screen instead, the top keeping the
+  Triforce animation. Mind the start-up order (the bottom framebuffer must be set up by then).
+  *Done when:* the bars show on the touch screen from the first frame to the title, the top
+  screen keeps its animation, and start-up is no slower.
+
+- [x] **U9** UPDATE always shows the changelog on the top screen.
+  *Spec:* owner 2026-10-19: today the notes appear only when an update is offered, so after
+  updating the player cannot read what changed. The UPDATE screen shows them on the top screen
+  every time (`DrawUpdateChangelogTop`, `src/common/platform/3ds/update/changelog_view.inc`), as
+  its CHANGELOG setting says: NEW = the installed version's notes (plus newer ones when an update
+  is there), ALL = every version. With no network, the last notes fetched, or a short message.
+  *Built and checked by the owner on the console (2026-10-19), merged:* the menu already checked on
+  opening, but without an answer it showed a fixed "Initial release". Now it shows the last notes saved
+  on the SD (`update-notes-new|all.txt`, written on every answer), else the installed version's
+  `docs/release-notes` file that `build.sh` bundles in the romfs.
+  *Done when:* opening UPDATE with nothing to install shows the installed version's notes, the
+  CHANGELOG setting switches between them, and the offer screen is unchanged.
 
 ## Phase 2: GPU world renderer, 60 fps on New 3DS
 
@@ -317,8 +379,93 @@ third of the CPU, so neither is reachable with SoftPoly on the CPU.
   made conditional; one CIA for both models.
   *Done when:* it boots to the title and plays the first screens on the owner's 2DS,
   memory headroom recorded.
+  *Progress (2026-10-18):* with `test/2ds-play` the 2DS boots, plays MAP01 and the first dungeon to
+  the end, now with audio (music still stutters, #16). It runs near the memory limit; P4.9-P4.11 are
+  the way on.
+- [ ] **P4.5** Memory census on the 2DS.
+  *Spec:* a debug report (a `lod-link.py` command and a `startup.log` line) of what holds the heap at
+  the title and after MAP01: engine objects by class (count, bytes), the compiled ZScript (classes,
+  functions, strings, VM code), textures (software and GPU), cached lumps, sound and music, the
+  TArray pool and the reserves; and the free list's shape (largest blocks, free chunks by size).
+  *Done when:* a table in `docs/measurements/` for both points on the 2DS, and P4.6-P4.8's targets
+  picked from it.
+  *Result (2026-10-17, Claude):* `docs/measurements/memory-census-2026-10-17.md`; the tool is in
+  `perf/memory-census` (`lod3ds_memcensus`, `census-on-load.txt`). Not checked by the owner yet.
+- [ ] **P4.6** Keep small allocations away from the big blocks.
+  *Spec:* after MAP01 loads, 8.3 MB is free on the 2DS but no block is larger than 255 KB: every
+  multi-hundred-KB request (a PNG decode, renderer memory, a lump) fails. Either a size-class
+  allocator for small requests (the bulk of the engine objects and the compiler's nodes), or one
+  arena for large transient blocks with first-fit and coalescing (`m_alloc.cpp`'s TArray pool,
+  generalised); P4.5's free-list shape decides. It should replace the 5 MB map-load reserve, the
+  2 MB renderer reserve and perhaps the 10 MB pool. The census (P4.5) points to the arena for
+  large transient blocks first: the free memory sits in 160-200 holes of 16 KB-1 MB that such
+  blocks leave between long-lived ones; the small-block arena second (1.2 MB of chunk overhead,
+  2 MB of unusable crumbs).
+  *Done when:* after MAP01 loads on the 2DS the largest free block is 2 MB or more, and a new game
+  plays the first screens.
+  *Result (2026-10-17, Claude):* `perf/large-block-arena`. Blocks of 32 KB or more are carved down from
+  the top of the heap region while newlib grows up (`large_arena_3ds.cpp`, `-Wl,--wrap=malloc`...);
+  the pool and the map-load reserve are off. A new game plays MAP01 on the 2DS. The owner's longer play
+  ran out of memory for real (2.6 MB free), so P4.7 / P4.8 decide how long it lasts. Not checked on the
+  New 3DS.
+- [ ] **P4.7** Lower the startup peak.
+  *Spec:* about 131,000 blocks of 256 B or less (8.9 MB) are live at the title, from startup:
+  find them by allocation site and cut them (census, P4.5). The ZScript compile adds 11.6 MB at its peak and gives back 4 MB;
+  `after filesystem init` -> `cpu-detection-enter` adds 7.5 MB (not identified yet); the reserves
+  take 7 MB at boot. Free the compiler's trees and tables once the code is built, find and cut the
+  7.5 MB, and drop the reserves P4.6 makes unnecessary.
+  *Done when:* the heap in use at the title on the 2DS is 5 MB or more below 37.9 MB
+  (`softpoly-canvas-ready`, 2026-10-17).
+- [ ] **P4.8** Lower MAP01's resident memory.
+  *Spec:* `gc=` (17 MB after MAP01) is everything allocated through `M_Malloc`, not the actors:
+  all engine objects together are 0.8 MB (census, P4.5). The level's arrays fill the 10 MB TArray
+  pool (9.5 MB in MAP01). Candidates: smaller line / side / sector structures (fields this game
+  never uses), what else lands in the pool, shared or 8-bit textures.
+  *Done when:* MAP01 loaded on the 2DS leaves 15 MB or more of free heap (8.9 MB on 2026-10-17).
+- [ ] **P4.9** A slim IWAD.
+  *Spec:* the game loads all of `freedoom2.wad`. The engine makes an object for every texture,
+  sprite and sound it defines (thousands, with names and a 0.5 MB lump directory), and the 2DS spends
+  32 s in "Loading textures". Count what Legend of Doom really uses: textures, flats, sprites, sounds,
+  the lumps the engine needs to start. Then build a minimal WAD from Freedoom at build time
+  (`platform/3ds/build.sh`; never committed, like the other game data) and load it instead.
+  *Done when:* the census shows the saving at the title and in MAP01 on the 2DS, the load time is
+  measured before and after, and the first dungeon plays the same on both consoles.
+  *Result (2026-10-18, Claude):* `perf/slim-iwad`, `platform/3ds/tools/slim-iwad.py` at build time:
+  3610 -> 707 lumps, 28.7 -> 4.9 MB; the CIA 53.7 -> 29.6 MB (the FTP install 5:48 -> 3:02 on the 2DS).
+  On the 2DS, same code with the full and the slim WAD: boot to the title 82 s -> 49 s ("texture
+  manager" 43.6 s -> 11.7 s); title census 24.1 -> 21.8 MB in use (heap 12.62 -> 11.46, large arena
+  11.51 -> 10.33), free gap 16.4 -> 19.2 MB. MAP01 from save0 and MAP02 look right; the only warning
+  was Doom's armour icon (`ARM1A0`, gameinfo), kept since. Not played through by the owner yet.
+- [ ] **P4.10** No CPU world-drawing buffers under the GPU world.
+  *Spec:* with the GPU drawing the world, the software renderer only needs its BSP walk (what is
+  visible). It still allocates canvases, SoftPoly's thread data, frame memory and wall/plane drawing
+  buffers: 4-6 MB in the census. Allocate them only when the CPU draws the world. That happens when the
+  GPU world is off: a debug cvar, or a fallback. Keep the fallback working, or decide in the decisions
+  log to drop it on the Old 3DS.
+  *Done when:* those buffers are gone from the MAP01 census on the 2DS, and the fallback still works
+  where it is kept.
+  *Progress (2026-10-18, Claude):* with SoftPoly in true colour the software renderer draws straight
+  into the frame's canvas: there is no separate scene canvas, and the 1.8 MB of canvases in the census
+  are SoftPoly's 2D textures (HUD, fonts), not world buffers. The world-side cut found so far is
+  `perf/maxwidth-3ds`: `MAXWIDTH` 12000 -> 1024 and `MAXHEIGHT` 5000 -> 1024 on the 3DS, which sized
+  every per-column array (445 KB in SoftPoly's thread data alone): -0.72 MB in the arena at the title
+  and in MAP01, plus 88 KB of BSS; the save picture (drawn by the CPU) still comes out right. Left:
+  the swrenderer's `RenderMemory` / drawers, created per thread whether the GPU draws or not.
+  *Later (2026-10-18):* the walk itself got cheaper under the GPU world: no visible planes are made
+  (-0.35 ms a frame at the heavy spot), the seen sprites go into a reusable set, and far or behind
+  sprites are rejected before their frame is found (sprites 2.5 -> 1.2 ms).
+- [ ] **P4.11** Thinner compiled ZScript.
+  *Spec:* about 130,000 small blocks (~9 MB) are live at the title, mostly compiled ZScript: classes,
+  functions, symbols, strings. Many are for things this game never uses (GZDoom's option menus: 354
+  option items; Doom classes the mod does not touch). Trim `gzdoom.pk3` further (the 2026-10-15 trim
+  left Doom's base) and free the compiler's structures after the build (the +11.6 MB compile peak).
+  *Done when:* the title census on the 2DS has 5 MB or more less in the small heap than on 2026-10-18,
+  and nothing the game uses is missing (the compiler's messages in `fatal.log`).
 - [ ] **P4.2** 30 fps minimum on the Old 3DS.
   *Done when:* the P0.3 spots never drop under 30 fps (1% low) on the 2DS, steady pacing.
+  *Progress (2026-10-18):* the owner's heavy MAP01 spot (around 1251, 3609) went from 27-28 fps to
+  ~44.7 on the 2DS in one day of cuts (decisions log); with FORCE 3D it was 34.3 before the walk
+  cuts. The P0.3 spots are not measured yet.
 - [ ] **P4.3** 60 fps on the Old 3DS (aim).
   *Done when:* the P0.3 spots hold 60 fps on the 2DS, or the decisions log says what
   stops it and the best steady rate reached.
@@ -542,3 +689,142 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   binary, 8888 otherwise (`BuildTexture`, cvar `lod3ds_gpu_texture16`, debug builds): stereo
   48.2 -> 61.4 fps, mono 76.7 -> 86.0, and half the memory of those textures (good for P4). Textures are
   kept across map loads, so the cvar only shows on a fresh boot. Sprites and 2D stay 8888.
+- **2026-10-17** P4.1 on the 2DS (owner at the console, Claude reading logs over FTP and, at the
+  end, installing with `--install` and starting the new game itself with `lod-link.py`). Found, in
+  order:
+  - The audio mixer thread crashes at startup (#16). `no-audio.txt` (debug builds) skips the audio
+    init.
+  - Then a new game failed on a 2 MB request. The "largest free block" probe and an in-handler
+    retry said there was room. **Both were wrong**: GCC drops a `malloc` immediately followed by
+    `free` and folds the test to "succeeded". Honest figures need a compiler barrier on the
+    pointer (`memory.cpp`, `d_main.cpp`).
+  - With the barrier the picture is fragmentation: 10.5 MB free, the largest block 1.7 MB. Four
+    fixes, in `fix/2ds-memory`, each moved the failure one step further:
+    - `operator new` hands back the 5 MB map-load reserve when a block finds no room.
+    - MAP01's TEXTMAP is read from the map WAD instead of cached whole (a `FResourceLump` reader
+      locks the whole lump).
+    - The Old 3DS skips the map backup copies (`loadsides` / `loadlines` / `loadsectors`). Its
+      saves store those fields whole, so **a save written on the New 3DS will not load correctly
+      on the 2DS** with this.
+    - `RenderMemory` blocks are 256 KB on the 3DS instead of 1 MB.
+  - MAP01 now loads (8.9 MB free). The first frame fails on a 512 KB PNG decode with the largest
+    free block at 255 KB.
+  - Each further one-off fix would only meet the next large request. The owner chose to plan the
+    memory work properly (P4.5-P4.8) before going on.
+  - A `std::bad_alloc` that bypasses the new handler (`FStringData::Alloc`,
+    `RenderMemory::MemoryBlock` throw it directly) is located by the `__cxa_throw` wrap, which logs
+    the code addresses on the stack.
+- **2026-10-17** P4.5's census on the 2DS (`docs/measurements/memory-census-2026-10-17.md`).
+  Findings:
+  - `gc=` counts everything allocated through `M_Malloc`, not the actors: the engine objects are
+    0.8 MB in MAP01. Light decorations would save little.
+  - About 150,000 small blocks are live, most of them from startup.
+  - The 8.7 MB free in MAP01 lies in holes of 16 KB-1 MB plus 2 MB of crumbs.
+  - So P4.6 starts with an arena for large transient blocks. P4.8 turns to the level's arrays
+    (the 10 MB pool) instead of the actors.
+  - Side finding: `version.sh` gives `0.0.0-dev` on a topic branch once its release branch has
+    moved on, and the console's updater then offers the published release.
+- **2026-10-17** P4.6: a large-block arena carved down from the top of the heap region (newlib keeps
+  the bottom) took the 2DS from "fails at MAP01's first frame" to "plays MAP01". Census by caller
+  (`docs/measurements/memory-census-2026-10-17.md`): the arena holds 27 MB in MAP01. The biggest
+  cuttable items are the true-colour software textures (2.75 MB), the string table with every language
+  (2.15 MB), the Unicode hex font (2 MB), the canvases (1.8 MB) and the debug network buffer (1 MB).
+  Two lessons:
+  - GCC drops a plain store to a global just before `malloc`, since it assumes malloc reads no
+    program memory, so the caller hint has to be `volatile`.
+  - `version.sh` needs `release/v0.2.5` merged into stacked branches (`0.0.0` otherwise).
+- **2026-10-17** First P4.7 / P4.8 cuts (`perf/memory-cuts`): only English / Spanish string tables, a
+  Latin-only hex font, no software precache under the GPU world, a 256 KB socket buffer and one raster
+  worker on the Old 3DS. MAP01 on the 2DS: 44.6 -> 31.9 MB in use, 20.6 MB free. Another system
+  language now falls back to the default (English) strings on the 3DS.
+- **2026-10-18** The 2DS plays through the first dungeon (`test/2ds-play`). Findings on the way:
+  - **Map backups.** Skipping them on the Old 3DS was not safe: `SerializeArgs` and the colormap
+    serializer compare against the default directly, and hub snapshots crashed. They are made again
+    (~3.8 MB).
+  - **GPU textures.** Their copies were never freed, map after map; linear memory reached 140 KB in
+    the dungeon and frames fell back to the CPU (#19).
+  - **R held.** `PlayerPawn.FireWeapon` sends a noise alert every tic, and the flood through MAP01's
+    open sectors cost ~18 ms (#20).
+  - **Small heap.** After long play it ends in crumbs: small requests now fall back to the large
+    arena.
+  - **Audio.** With the memory freed it no longer crashes the 2DS, but the music stutters (#16,
+    core 1 at 30%).
+  - **Next step.** The owner wants noticeable engine changes and accepts equivalent effects that
+    cost less, hence P4.9 (slim IWAD), P4.10 (CPU drawing buffers) and P4.11 (compiled ZScript).
+- **2026-10-18** Merged the whole 2DS stack after the owner's New 3DS check: fps hold (lowest seen
+  55 in stereo at some open-map spots), music, dungeons, R held. The GPU fade (#18) is not quite the old
+  wipe; the owner wants it matched later, on the GPU.
+- **2026-10-18** Music on the Old 3DS (#16). Raising core 1's limit needed the RSF's `MaxCpu` (0x9E
+  capped it at 30%; now 0xD0), and 80% stopped the gaps but starved the system: slower game, ftpd
+  crawling, the 2DS froze on closing. minimp3 needed 129% of its time even at 22 kHz
+  (`lod3ds_musicstats`), so the music became IMA ADPCM (a ZMusic decoder, bit-exact with ffmpeg) at
+  22 kHz mono: no underruns at 30%, CIA +2.3 MB, no RAM.
+- **2026-10-18** Interface choices of the owner: a map-change loading box (dimmed last picture, the
+  area's name, the phase, a bar timed on the 2DS and scaled by the map's size); the game's messages
+  in its own small NES font on a black band, the place an option (TOP / BOTTOM of the top screen,
+  BOTTOM by default; they meant the top screen's bottom, not the touch screen).
+- **2026-10-18** 2DS speed at the owner's 27 fps MAP01 spot, measured with the perf recorder and
+  `lod3ds_sections`. What paid off: the touch screen map every third tic and through a 512-unit grid
+  (6.2 -> 0.8 ms a frame), settled static actors out of ClearInterpolation and the light/effect pass
+  (-0.9 ms a tic), the particle textures built once instead of every frame (2.15 ms a frame, the
+  biggest single find), the walk's std::set of seen actors replaced and far / behind sprites rejected
+  early (2.5 -> 1.2 ms), no visible planes under the GPU world (1.0 -> 0.7 ms). Render scale did not
+  matter: the walk costs per subsector, not per column. The New 3DS builds the map every third tic
+  too, so both play alike (owner).
+- **2026-10-18** Not to do on the 2DS: `lod3ds_gpu_world 0` in MAP01 (the CPU path's software textures
+  ran it out of memory in seconds), and console saves after a long play (#21, #23). To reach a spot
+  again, `warp X Y` and steer the camera with `lod-link.py stick CSTICK`.
+- **2026-10-18** MAP01's caves are a BLACK floor under a sky ceiling, with a one-unit solid 3D floor at
+  the cliff top; their sky is the SkyViewpoint the port does not draw, so the swrenderer leaves them
+  black. The GPU world now draws their ceiling, the gap above the mouth and the walls above the cliff
+  top in black, and a visible cave whole (the 3D floor's sides made the walk hide its far half).
+- **2026-10-18** #22, control schemes: each scheme stores one action per remappable button as a list
+  of tokens (`lod3ds_buttons_classic` / `_camera`, empty = its defaults, so a later change of a default
+  reaches players who never edited it), applied over the engine's bindings after `DoKeySetup`; the
+  BUTTONS screen edits the active one through non-archived `lod3ds_button_*` cvars, so it is an
+  ordinary option menu the native drawer already handles. `lod3ds_control_scheme` starts at -1 and is
+  fixed by the model on the first start. Walking into a use line activates it only when its script is
+  one of the six of the issue (by name, not every ACS use line: shops and old men stay on interact).
+  The interaction hint shows once per run of the game until the player interacts with the button once
+  (`lod3ds_use_hint`), not per save: a flag in the save would need the game's own state. It leaves the
+  walk-into lines out (some need a key or the bracelet first): the maps have no other front-use line,
+  so today the hint never shows; it stays for anything the game adds.
+- **2026-10-18** #25: GZDoom's `GC::AllocBytes` counts every `M_Malloc` block, so on the 2DS it is ~24 MB
+  after a map load and the stock next-cycle threshold (150%) was beyond the heap: the collector never ran
+  again and the `Sheeld` the shield spawns every Ready tic piled up (7391, 8.6 MB). The 3DS caps the
+  threshold at the estimate + 1 MB. Diagnosed live with `lod3ds_memcensus` and by peeking `GC::Threshold`
+  / `Estimate` (`nm` on the ELF; `lod-link.py peek` takes the address); `gc full` freed 10 MB at once.
+- **2026-10-19** #26: on the Old 3DS the NDSP mixer and the music decoder share core 1 (30% for the app);
+  at 32000 Hz the mixer fell behind when many sounds played. 22050 Hz (the music's rate) cut the
+  decoder's share of the core from 56% to 13%, and the owner heard it better; the New 3DS keeps
+  `snd_samplerate`. Left as is: the music's fixed 3x gain (picks at -3 to -7 dB with it), a candidate
+  if some clipping remains.
+- **2026-10-19** Version: the owner chose a minor bump for the beta, `v0.3.0` (not `v0.2.5`): the first
+  release where the Old 3DS / 2DS run the game, plus the control schemes. Every build turned the Old
+  3DS / 2DS away at start-up unless a debug build found `allow-old3ds.txt` (how the owner played): the
+  screen is gone ("the Old 3DS must never show it again, it works now").
+- **2026-10-19** #27 (a console in a smaller memory mode than its RSF asks for): a title-menu notice
+  could be accepted and the game then died loading a map, so it became a blocking top-screen message
+  before anything loads, A / START exits. Each model against its own mode: 124 MB New 3DS family, 80 MB
+  Old 3DS / 2DS (which runs in exactly 80: `osGetMemRegionSize` = 83886080). A New 3DS in 80 MB is
+  stopped too: part of the memory savings only switch on for the Old 3DS. Exiting `main` before
+  `SDL_Quit()` froze the console (the old unsupported-console screen did it too). A debug
+  `force-low-memory.txt` shows it once and removes itself: the screen comes before the game's FTP
+  server. A SITE INSTALL relaunch came back at 124 MB once, so the relaunch alone is not the trigger.
+- **2026-10-19** Messages: GZDoom appends a message without a final newline to the previous one, and
+  the port's translation dropped the newline, so in Spanish nearly every pickup message (the rupees')
+  piled onto one line; each message now ends its line, and `con_notifylines` (4) drops the oldest.
+- **2026-10-19** Controls after the owner's play: one CONTROLS screen (the scheme as a parent panel, the
+  fixed inputs, the remappable buttons) instead of SCHEME AND BUTTONS beside a separate reference;
+  SPRINT AT FULL LIFE is OFF / BUTTON / AUTO, AUTO by default; the bottom screen's L box on the left.
+  The walk-into lines (the six scripts) are every front-use line the maps have, so the interaction hint
+  never shows with today's maps; a ZScript variable called `action` (a keyword) stopped the game at
+  start-up (a test guards it).
+- **2026-10-19** The NES font (SMALLFNT) has a dot for `# $ ( ) * + ; @ [ \ ] ^ _` and other symbols for
+  `< > %`; `NesExtraAscii` draws `( ) ; + * # [ ] _ : / < > %`.
+- **2026-10-19** #28's cause: `BottomMapView` detached the map from the player past 3072 units from its
+  centre indoors (an overworld rule), so every dungeon's underground stairs lost it, and the centre was
+  kept across loaded games of the same map. Now every map but MAP01 follows the player everywhere, and
+  the view is forgotten when a level loads (`I_3DSMapLoadBegin`). Weapon cycling (`weapprev` /
+  `weapnext`) follows the bottom grid's weapon row, left to right (owner: the B items are not selectable
+  and do nothing; the weapons are what cycles).

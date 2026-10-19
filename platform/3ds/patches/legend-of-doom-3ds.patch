@@ -229,7 +229,7 @@ diff --git a/MENUDEF b/MENUDEF
 index c7c6d33..dffcba4 100644
 --- a/MENUDEF
 +++ b/MENUDEF
-@@ -1,50 +1,133 @@
+@@ -1,50 +1,211 @@
  DEFAULTLISTMENU
  {
  	// Font "ZeldFNT", "Untranslated"
@@ -290,11 +290,50 @@ index c7c6d33..dffcba4 100644
 +    TextItem "QUIT GAME", "q", "QuitMenu", 0
 +}
 +
++// Opens by itself when Link has died (G_Ticker); "LegendContinue" is M_SetSpecialMenu's.
++LISTMENU "LegendDeathMenu"
++{
++    Position 125, 60
++    Font "NewSmallFont", "White"
++    Linespacing 16
++
++    TextItem "CONTINUE", "c", "LegendContinue"
++    TextItem "LOAD GAME", "l", "LoadGameMenu", 0
++    TextItem "NEW GAME", "n", "PlayerclassMenu"
++    TextItem "QUIT GAME", "q", "QuitMenu", 0
++}
++
 +OPTIONVALUE "LegendCameraInput"
 +{
 +    0, "C-STICK"
 +    1, "TOUCH"
 +    2, "BOTH"
++}
++OPTIONVALUE "LegendControlScheme"
++{
++    0, "CLASSIC"
++    1, "BUTTON CAMERA"
++}
++
++// One per remappable button: the order is ButtonActions' in i_input_3ds.cpp (append only).
++OPTIONVALUE "LegendButtonAction"
++{
++    0, "NONE"
++    1, "INTERACT"
++    2, "ATTACK"
++    3, "ALT ATTACK"
++    4, "SPRINT"
++    5, "JUMP"
++    6, "TURN LEFT"
++    7, "TURN RIGHT"
++    8, "LOOK UP"
++    9, "LOOK DOWN"
++    10, "PREVIOUS WEAPON"
++    11, "NEXT WEAPON"
++    12, "MAP"
++    13, "USE ITEM"
++    14, "PREVIOUS ITEM"
++    15, "NEXT ITEM"
 +}
 +
 +OPTIONMENU "LegendOptionsMenu"
@@ -330,6 +369,12 @@ index c7c6d33..dffcba4 100644
 +    "es", "ESPAÑOL"
 +}
 +
++OPTIONVALUE "LegendMessagePlace"
++{
++    0, "TOP"
++    1, "BOTTOM"
++}
++
 +OPTIONMENU "LegendDisplayOptions"
 +{
 +    Class "LegendSplitOptionMenu"
@@ -337,6 +382,7 @@ index c7c6d33..dffcba4 100644
 +    Option "LANGUAGE", "language", "LegendLanguage"
 +    RenderDistanceSlider "DISTANCE", "lod3ds_render_distance", 0, 2, 1, -1
 +    Option "TOP HUD", "lod3ds_top_hud", "OnOff"
++    Option "MESSAGES", "lod3ds_messages_bottom", "LegendMessagePlace"
 +    Option "AIM CROSS", "crosshairon", "OnOff"
 +    Option "MAP COLLISIONS", "lod3ds_map_collisions", "OnOff"
 +    Option "SHOW FPS", "vid_fps", "OnOff"
@@ -347,10 +393,41 @@ index c7c6d33..dffcba4 100644
 +{
 +    Class "LegendSplitOptionMenu"
 +    Title "CONTROLLER"
++    Submenu "CONTROLS", "LegendButtonsMenu"
 +    Slider "CAM SENSITIVITY", "lod3ds_cstick_sensitivity", 0.25, 2.0, 0.05, -1
 +    Option "CAMERA INPUT", "lod3ds_camera_mode", "LegendCameraInput"
-+    Option "SPRINT WITH X", "lod3ds_sprint_x", "OnOff"
-+    Submenu "CONTROLS", "LegendControlsMenu"
++    Option "SPRINT AT FULL LIFE", "lod3ds_sprint_mode", "LegendSprintMode"
++}
++
++OPTIONVALUE "LegendSprintMode"
++{
++    0, "OFF"
++    1, "BUTTON"
++    2, "AUTO"
++}
++
++// CONTROLS: the scheme, then what every input does in it (#22). Each button row's cvar is that
++// button's action in the scheme chosen above, so changing the scheme shows its buttons at once.
++// The touch screen draws SCHEME as the parent of the rows below it, and the inputs that cannot be
++// remapped (Circle Pad, C-Stick, START, SELECT) as fixed rows (native_menu_3ds.inc).
++OPTIONMENU "LegendButtonsMenu"
++{
++    Class "LegendSplitOptionMenu"
++    Title "CONTROLS"
++    Option "SCHEME", "lod3ds_control_scheme", "LegendControlScheme"
++    Option "A", "lod3ds_button_a", "LegendButtonAction"
++    Option "B", "lod3ds_button_b", "LegendButtonAction"
++    Option "X", "lod3ds_button_x", "LegendButtonAction"
++    Option "Y", "lod3ds_button_y", "LegendButtonAction"
++    Option "L", "lod3ds_button_l", "LegendButtonAction"
++    Option "R", "lod3ds_button_r", "LegendButtonAction"
++    Option "ZL", "lod3ds_button_zl", "LegendButtonAction"
++    Option "ZR", "lod3ds_button_zr", "LegendButtonAction"
++    Option "DPAD UP", "lod3ds_button_up", "LegendButtonAction"
++    Option "DPAD DOWN", "lod3ds_button_down", "LegendButtonAction"
++    Option "DPAD LEFT", "lod3ds_button_left", "LegendButtonAction"
++    Option "DPAD RIGHT", "lod3ds_button_right", "LegendButtonAction"
++    Command "DEFAULTS", "lod3ds_buttons_reset"
 +}
 +
 +OPTIONMENU "LegendControlsMenu"
@@ -367,6 +444,7 @@ index c7c6d33..dffcba4 100644
 +    Command "FULL DUMP", "lod3ds_fulldump"
 +    Option "OVERLAY WITH SELECT", "lod3ds_select_overlay", "OnOff"
 +    Option "FTP SERVER", "lod3ds_ftp_server", "OnOff"
++    Option "FORCE 3D", "lod3ds_force_stereo", "OnOff"
  }
  
  ListMenu "SkillMenu"
@@ -601,7 +679,7 @@ new file mode 100644
 index 0000000..5b11284
 --- /dev/null
 +++ b/actors/LegendPauseMenu.zs
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,230 @@
 +class ListMenuItemResume : ListMenuItemTextItem
 +{
 +    override bool Activate()
@@ -694,33 +772,62 @@ index 0000000..5b11284
 +
 +class LegendControlsReferenceMenu : LegendSplitOptionMenu
 +{
++    // The active scheme and its buttons (#22), as DrawNativeControlsMenu shows them on the
++    // touch screen: the button cvars hold each one's action (LegendButtonAction's order).
 +    override void Drawer()
 +    {
-+        int y = 8 * CleanYfac_1;
-+        int rowHeight = 13 * CleanYfac_1;
-+        int inputRight = screen.GetWidth() / 2 - 8 * CleanXfac_1;
-+        int actionLeft = screen.GetWidth() / 2 + 8 * CleanXfac_1;
-+        static const String inputs[] = {
-+            "CIRCLE PAD", "C-STICK / TOUCH", "A", "R", "L", "X", "Y",
-+            "DPAD LEFT / RIGHT", "ZL / ZR", "DPAD DOWN", "DPAD UP",
-+            "START", "SELECT"
++        static const String buttons[] = {
++            "A", "B", "X", "Y", "L", "R", "ZL", "ZR",
++            "DPAD UP", "DPAD DOWN", "DPAD LEFT", "DPAD RIGHT"
++        };
++        static const String buttonCVars[] = {
++            "lod3ds_button_a", "lod3ds_button_b", "lod3ds_button_x", "lod3ds_button_y",
++            "lod3ds_button_l", "lod3ds_button_r", "lod3ds_button_zl", "lod3ds_button_zr",
++            "lod3ds_button_up", "lod3ds_button_down", "lod3ds_button_left", "lod3ds_button_right"
 +        };
 +        static const String actions[] = {
-+            "MOVE / STRAFE", "LOOK", "USE / INTERACT", "ATTACK",
-+            "ALT ATTACK", "SPRINT AT FULL LIFE", "JUMP", "CHANGE WEAPON",
-+            "CHANGE ITEM", "USE ITEM", "MAP", "PAUSE", "MENU / OVERLAY"
++            "NONE", "INTERACT", "ATTACK", "ALT ATTACK", "SPRINT", "JUMP", "TURN LEFT",
++            "TURN RIGHT", "LOOK UP", "LOOK DOWN", "PREVIOUS WEAPON", "NEXT WEAPON", "MAP",
++            "USE ITEM", "PREVIOUS ITEM", "NEXT ITEM"
 +        };
++        let scheme = CVar.FindCVar('lod3ds_control_scheme');
++        bool camera = scheme != null && scheme.GetInt() == 1;
 +
-+        for (int row = 0; row < 13; row++)
++        Array<String> inputs;
++        Array<String> uses;
++        inputs.Push("CIRCLE PAD");
++        uses.Push(camera ? "MOVE / SPRINT" : "MOVE / STRAFE");
++        inputs.Push("C-STICK / TOUCH");
++        uses.Push("LOOK");
++        for (int i = 0; i < 12; i++)
++        {
++            let button = CVar.FindCVar(buttonCVars[i]);
++            int chosen = button != null ? clamp(button.GetInt(), 0, 15) : 0;
++            if (chosen == 0) continue;
++            inputs.Push(buttons[i]);
++            uses.Push(actions[chosen]);
++        }
++        inputs.Push("START");
++        uses.Push("PAUSE");
++        inputs.Push("SELECT");
++        uses.Push("MENU / OVERLAY");
++
++        int y = 8 * CleanYfac_1;
++        int rowHeight = 11 * CleanYfac_1;
++        int inputRight = screen.GetWidth() / 2 - 8 * CleanXfac_1;
++        int actionLeft = screen.GetWidth() / 2 + 8 * CleanXfac_1;
++        String title = camera ? "BUTTON CAMERA" : "CLASSIC";
++        Menu.DrawOptionText(actionLeft, y, OptionMenuSettings.mFontColorValue, title);
++        y += rowHeight;
++        for (int row = 0; row < inputs.Size(); row++)
 +        {
 +            int inputX = inputRight - Menu.OptionWidth(inputs[row]) * CleanXfac_1;
 +            Menu.DrawOptionText(inputX, y, OptionMenuSettings.mFontColor, inputs[row]);
-+            Menu.DrawOptionText(actionLeft, y, OptionMenuSettings.mFontColorValue, actions[row]);
++            Menu.DrawOptionText(actionLeft, y, OptionMenuSettings.mFontColorValue, uses[row]);
 +            y += rowHeight;
 +        }
 +    }
 +}
-+
 +class LegendUpdateMenu : LegendSplitOptionMenu
 +{
 +    int NativeUpdateConfirm;
@@ -846,12 +953,13 @@ new file mode 100644
 index 0000000..cadb9e7
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,332 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
 +3DSX LAUNCH PATH UNKNOWN,LOD_3DSX_LAUNCH_PATH_UNKNOWN,,,RUTA DEL 3DSX DESCONOCIDA
 +A CHOOSE   B BACK,LOD_A_CHOOSE_B_BACK,,,A ELEGIR   B VOLVER
++A OK,LOD_A_OK,,,A ACEPTAR
 +A SAVE   B BACK,LOD_A_SAVE_B_BACK,,,A GUARDAR   B VOLVER
 +A SELECT   B BACK,LOD_A_SELECT_B_BACK,,,A ELEGIR   B VOLVER
 +A SELECT   B RESUME,LOD_A_SELECT_B_RESUME,,,A ELEGIR   B CONTINUAR
@@ -872,6 +980,8 @@ index 0000000..cadb9e7
 +B CANCEL,LOD_B_CANCEL,,,B CANCELAR
 +BACK,LOD_BACK,,,VOLVER
 +BOTH,LOD_BOTH,,,AMBOS
++BUILDING GAME OBJECTS,LOD_BUILDING_GAME_OBJECTS,,,CREANDO OBJETOS DEL JUEGO
++BUILDING THE COLOR PALETTE,LOD_BUILDING_THE_COLOR_PALETTE,,,CREANDO LA PALETA DE COLORES
 +C-STICK,LOD_C_STICK,,,C-STICK
 +C-STICK / TOUCH,LOD_C_STICK_TOUCH,,,C-STICK / TÁCTIL
 +CA CERTIFICATE FILE ERROR,LOD_CA_CERTIFICATE_FILE_ERROR,,,ERROR DE CERTIFICADOS
@@ -892,12 +1002,14 @@ index 0000000..cadb9e7
 +CHECK FOR A NEW VERSION,LOD_CHECK_FOR_A_NEW_VERSION,,,BUSCA UNA VERSIÓN NUEVA
 +CHECK FOR UPDATES,LOD_CHECK_FOR_UPDATES,,,BUSCAR ACTUALIZACIONES
 +CHECKING FOR UPDATES,LOD_CHECKING_FOR_UPDATES,,,BUSCANDO ACTUALIZACIONES
++CHECKING GAME FILES,LOD_CHECKING_GAME_FILES,,,COMPROBANDO ARCHIVOS DEL JUEGO
 +CHOOSE ADVENTURE,LOD_CHOOSE_ADVENTURE,,,ELIGE AVENTURA
 +CHOOSE SKILL LEVEL,LOD_CHOOSE_SKILL_LEVEL,,,ELIGE DIFICULTAD
 +CIRCLE PAD,LOD_CIRCLE_PAD,,,CIRCLE PAD
 +CLEAN FAILED,LOD_CLEAN_FAILED,,,NO SE PUDO BORRAR
 +CLEAN INCOMPLETE,LOD_CLEAN_INCOMPLETE,,,BORRADO INCOMPLETO
 +CLEANING DUMPS,LOD_CLEANING_DUMPS,,,BORRANDO CAPTURAS
++COMPILING GAME SCRIPTS,LOD_COMPILING_GAME_SCRIPTS,,,COMPILANDO SCRIPTS DEL JUEGO
 +CONNECTION FAILED,LOD_CONNECTION_FAILED,,,FALLÓ LA CONEXIÓN
 +CONNECTION FAILED - RETRY,LOD_CONNECTION_FAILED_RETRY,,,FALLÓ LA CONEXIÓN - REINTENTA
 +CONNECTION TIMED OUT,LOD_CONNECTION_TIMED_OUT,,,SE AGOTÓ EL TIEMPO
@@ -949,6 +1061,9 @@ index 0000000..cadb9e7
 +L R TAB   A CHANGE   B BACK,LOD_L_R_TAB_A_CHANGE_B_BACK,,,L R PESTAÑA   A CAMBIAR   B VOLVER
 +LANGUAGE,LOD_LANGUAGE,,,IDIOMA
 +LATEST,LOD_LATEST,,,ÚLTIMA
++LOADING FONTS,LOD_LOADING_FONTS,,,CARGANDO FUENTES
++LOADING TEXTURES,LOD_LOADING_TEXTURES,,,CARGANDO TEXTURAS
++LOOKING FOR GAME FILES,LOD_LOOKING_FOR_GAME_FILES,,,BUSCANDO ARCHIVOS DEL JUEGO
 +Leave Hyrule in darkness?,LOD_LEAVE_HYRULE_IN_DARKNESS,,,¿DEJAR HYRULE EN LA OSCURIDAD?
 +LEFT RIGHT CHOOSE   A OK   B BACK,LOD_LEFT_RIGHT_CHOOSE_A_OK_B_BACK,,,IZQ. DCHA. ELEGIR   A OK   B VOLVER
 +"Let Ganon's rule unfold?",LOD_LET_GANON_S_RULE_UNFOLD,,,¿DEJAR QUE GANON GOBIERNE?
@@ -983,6 +1098,7 @@ index 0000000..cadb9e7
 +PAUSE,LOD_PAUSE,,,PAUSA
 +PAUSED,LOD_PAUSED,,,PAUSA
 +PLEASE WAIT,LOD_PLEASE_WAIT,,,ESPERA
++PREPARING TRANSLATIONS,LOD_PREPARING_TRANSLATIONS,,,PREPARANDO TRADUCCIONES
 +PRESS START TO BEGIN,LOD_PRESS_START_TO_BEGIN,,,PULSA START PARA EMPEZAR
 +QUICK DUMP,LOD_QUICK_DUMP,,,CAPTURA RÁPIDA
 +QUICK DUMP COMPLETE,LOD_QUICK_DUMP_COMPLETE,,,CAPTURA RÁPIDA HECHA
@@ -1003,6 +1119,9 @@ index 0000000..cadb9e7
 +SOUND EFFECTS,LOD_SOUND_EFFECTS,,,EFECTOS
 +SPRINT AT FULL LIFE,LOD_SPRINT_AT_FULL_LIFE,,,CORRER (VIDA LLENA)
 +SPRINT WITH X,LOD_SPRINT_WITH_X,,,CORRER CON X
++STARTING THE RENDERER,LOD_STARTING_THE_RENDERER,,,INICIANDO EL RENDERIZADOR
++STARTING UP,LOD_STARTING_UP,,,INICIANDO
++STARTING VIDEO AND SOUND,LOD_STARTING_VIDEO_AND_SOUND,,,INICIANDO VÍDEO Y SONIDO
 +SYSTEM,LOD_SYSTEM,,,SISTEMA
 +TLS CERTIFICATE REJECTED,LOD_TLS_CERTIFICATE_REJECTED,,,CERTIFICADO RECHAZADO
 +TLS CONNECTION FAILED,LOD_TLS_CONNECTION_FAILED,,,FALLÓ LA CONEXIÓN SEGURA
@@ -1107,6 +1226,66 @@ index 0000000..cadb9e7
 +Demon,LOD_DEMON,,,DEMONIO
 +Lion,LOD_LION,,,LEÓN
 +Death Mountain,LOD_DEATH_MOUNTAIN,,,MONTAÑA DE LA MUERTE
++LEAVING THE AREA,LOD_LEAVING_THE_AREA,,,SALIENDO DE LA ZONA
++READING THE MAP,LOD_READING_THE_MAP,,,LEYENDO EL MAPA
++BUILDING THE MAP,LOD_BUILDING_THE_MAP,,,CONSTRUYENDO EL MAPA
++PLACING ENEMIES AND OBJECTS,LOD_PLACING_ENEMIES_AND_OBJECTS,,,COLOCANDO ENEMIGOS Y OBJETOS
++PREPARING THE GRAPHICS,LOD_PREPARING_THE_GRAPHICS,,,PREPARANDO LOS GRÁFICOS
++STARTING THE AREA,LOD_STARTING_THE_AREA,,,INICIANDO LA ZONA
++RESTORING THE SAVED GAME,LOD_RESTORING_THE_SAVED_GAME,,,RESTAURANDO LA PARTIDA
++MESSAGES,LOD_MESSAGES,,,MENSAJES
++TOP,LOD_TOP,,,ARRIBA
++BOTTOM,LOD_BOTTOM,,,ABAJO
++Picked up a potion!,LOD_PICKED_UP_A_POTION,,,¡HAS COGIDO UNA POCIÓN!
++Picked up some bombs.,LOD_PICKED_UP_SOME_BOMBS,,,HAS COGIDO BOMBAS.
++You got the blue candle!,LOD_YOU_GOT_THE_BLUE_CANDLE,,,¡HAS CONSEGUIDO LA VELA AZUL!
++You got the red candle!,LOD_YOU_GOT_THE_RED_CANDLE,,,¡HAS CONSEGUIDO LA VELA ROJA!
++Picked up a key!,LOD_PICKED_UP_A_KEY,,,¡HAS COGIDO UNA LLAVE!
++You got the Lion Key!,LOD_YOU_GOT_THE_LION_KEY,,,¡HAS CONSEGUIDO LA LLAVE DEL LEÓN!
++You picked up a clock!,LOD_YOU_PICKED_UP_A_CLOCK,,,¡HAS COGIDO UN RELOJ!
++You got the blue tunic!,LOD_YOU_GOT_THE_BLUE_TUNIC,,,¡HAS CONSEGUIDO LA TÚNICA AZUL!
++You got the red tunic!,LOD_YOU_GOT_THE_RED_TUNIC,,,¡HAS CONSEGUIDO LA TÚNICA ROJA!
++You can now carry more bombs!,LOD_YOU_CAN_NOW_CARRY_MORE_BOMBS,,,¡AHORA PUEDES LLEVAR MÁS BOMBAS!
++Picked up a small heart!,LOD_PICKED_UP_A_SMALL_HEART,,,¡HAS COGIDO UN CORAZÓN!
++Picked up a heart container!,LOD_PICKED_UP_A_HEART_CONTAINER,,,¡HAS COGIDO UN CONTENEDOR DE CORAZÓN!
++Picked up a rupee!,LOD_PICKED_UP_A_RUPEE,,,¡HAS COGIDO UNA RUPIA!
++Picked up 5 rupees!,LOD_PICKED_UP_5_RUPEES,,,¡HAS COGIDO 5 RUPIAS!
++Picked up 10 rupees!,LOD_PICKED_UP_10_RUPEES,,,¡HAS COGIDO 10 RUPIAS!
++Picked up 20 rupees!,LOD_PICKED_UP_20_RUPEES,,,¡HAS COGIDO 20 RUPIAS!
++Picked up 30 rupees!,LOD_PICKED_UP_30_RUPEES,,,¡HAS COGIDO 30 RUPIAS!
++Picked up 50 rupees!,LOD_PICKED_UP_50_RUPEES,,,¡HAS COGIDO 50 RUPIAS!
++Picked up 100 rupees!,LOD_PICKED_UP_100_RUPEES,,,¡HAS COGIDO 100 RUPIAS!
++You lost 10 rupees!,LOD_YOU_LOST_10_RUPEES,,,¡HAS PERDIDO 10 RUPIAS!
++You lost 20 rupees!,LOD_YOU_LOST_20_RUPEES,,,¡HAS PERDIDO 20 RUPIAS!
++You lost 40 rupees!,LOD_YOU_LOST_40_RUPEES,,,¡HAS PERDIDO 40 RUPIAS!
++You got a bow!,LOD_YOU_GOT_A_BOW,,,¡HAS CONSEGUIDO UN ARCO!
++FORCE 3D,LOD_FORCE_3D,,,FORZAR 3D
++A CHANGE   B BACK,LOD_A_CHANGE_B_BACK,,,A CAMBIAR   B VOLVER
++BUTTON CAMERA,LOD_BUTTON_CAMERA,,,CÁMARA CON BOTONES
++BUTTONS,LOD_BUTTONS,,,BOTONES
++CLASSIC,LOD_CLASSIC,,,CLÁSICO
++DEFAULTS,LOD_DEFAULTS,,,POR DEFECTO
++DPAD LEFT,LOD_DPAD_LEFT,,,CRUCETA IZQUIERDA
++DPAD RIGHT,LOD_DPAD_RIGHT,,,CRUCETA DERECHA
++INTERACT,LOD_INTERACT,,,INTERACTUAR
++LOOK DOWN,LOD_LOOK_DOWN,,,MIRAR ABAJO
++LOOK UP,LOD_LOOK_UP,,,MIRAR ARRIBA
++MOVE / SPRINT,LOD_MOVE_SPRINT,,,MOVER / CORRER
++NEXT ITEM,LOD_NEXT_ITEM,,,OBJETO SIGUIENTE
++NEXT WEAPON,LOD_NEXT_WEAPON,,,ARMA SIGUIENTE
++NONE,LOD_NONE,,,NADA
++PREVIOUS ITEM,LOD_PREVIOUS_ITEM,,,OBJETO ANTERIOR
++PREVIOUS WEAPON,LOD_PREVIOUS_WEAPON,,,ARMA ANTERIOR
++SCHEME,LOD_SCHEME,,,ESQUEMA
++SPRINT,LOD_SPRINT,,,CORRER
++TO INTERACT PRESS,LOD_TO_INTERACT_PRESS,,,PARA INTERACTUAR PULSA
++OK,LOD_OK,,,ACEPTAR
++TURN LEFT,LOD_TURN_LEFT,,,GIRAR A LA IZQ.
++TURN RIGHT,LOD_TURN_RIGHT,,,GIRAR A LA DCHA.
++BUTTON,LOD_BUTTON,,,BOTÓN
++LAST NOTES SAVED,LOD_LAST_NOTES_SAVED,,,ÚLTIMAS NOTAS GUARDADAS
++CONTINUE,LOD_CONTINUE,,,CONTINUAR
++GAME OVER,LOD_GAME_OVER,,,FIN DEL JUEGO
 diff --git a/actors/items/Fairy.zs b/actors/items/Fairy.zs
 index 1cced56..1fbbfdb 100644
 --- a/actors/items/Fairy.zs

@@ -10,7 +10,7 @@
 > conversion of the original *The Legend of Zelda* by DeTwelve Games. It has its own versions
 > and releases, and installs as its own app next to the original port.
 
-**[v0.2.0 is the latest stable release](https://github.com/tinaut1986/legend-of-doom-3ds/releases/tag/v0.2.0)**, for **New Nintendo 3DS, New 3DS XL and New 2DS XL**. Old Nintendo 3DS / 2DS support is in progress (see [docs/PLAN.md](docs/PLAN.md)) and is not in a release yet.
+**[v0.2.4 is the latest stable release](https://github.com/tinaut1986/legend-of-doom-3ds/releases/tag/v0.2.4)**, for **New Nintendo 3DS, New 3DS XL and New 2DS XL**. **[v0.3.0 (beta)](https://github.com/tinaut1986/legend-of-doom-3ds/releases/tag/v0.3.0)** also runs on the **Old Nintendo 3DS / 2DS** (see [docs/PLAN.md](docs/PLAN.md)).
 
 The port uses GZDoom 4.7.1 and Freedoom: Phase 2. No NES ROM or commercial Doom IWAD is required.
 
@@ -48,7 +48,7 @@ Audio on a real console requires its own DSP firmware at `sdmc:/3ds/dspfirm.cdc`
 
 - New menus drawn natively for the bottom screen: options change in place (button or touch) with no nested submenus, in English and Spanish.
 - NES-style bottom screen during play: items, map and hearts.
-- Circle Pad movement and configurable C-Stick / touch camera input.
+- Two remappable control schemes: C-Stick / touch camera, or a camera on the buttons for the Old 3DS / 2DS.
 - Save/load menus with previews and the native Nintendo 3DS keyboard.
 - Music and sound effects through OpenAL Soft/NDSP.
 - A draw distance option.
@@ -57,25 +57,30 @@ Audio on a real console requires its own DSP firmware at `sdmc:/3ds/dspfirm.cdc`
 
 ## Controls
 
-The in-game control reference is authoritative if it differs from this table.
+Two control schemes, chosen in OPTIONS -> CONTROL -> CONTROLS: **CLASSIC** (the default on the
+New 3DS family) and **BUTTON CAMERA** (the default on the Old 3DS / 2DS, which have no C-Stick).
+That screen shows the scheme on top and, under it, what every input does in it; each scheme keeps
+its own buttons, remappable right there (DEFAULTS restores them). In both, walking into a locked door or a push
+block uses it, as on the NES.
 
-| Nintendo 3DS input | Action |
-|---|---|
-| Circle Pad | Move / strafe |
-| C-Stick | Look |
-| Touch screen | Look when camera input is Touch or Both; select menu rows and items |
-| A | Use / interact; confirm in menus |
-| B | Back / cancel in menus |
-| X | Sprint at full health (optional) |
-| Y | Jump |
-| L / R | Alternate attack / attack |
-| ZL / ZR | Previous / next inventory item |
-| D-Pad left / right | Previous / next weapon |
-| D-Pad down | Use inventory item |
-| D-Pad up | Automap |
-| START / SELECT | Open the menu |
+| Nintendo 3DS input | CLASSIC | BUTTON CAMERA |
+|---|---|---|
+| Circle Pad | Move / strafe | Move / strafe; at its edge, sprint when SPRINT is BUTTON |
+| C-Stick, touch screen | Look (as CAMERA INPUT says) | Look as well (New 3DS) |
+| A | Use / interact | Turn right |
+| B | — | Look down |
+| X | Sprint when SPRINT is BUTTON | Look up |
+| Y | Jump | Turn left |
+| L / R | Alternate attack / attack | Alternate attack / attack |
+| ZL / ZR | Previous / next inventory item | — |
+| D-Pad left / right | Previous / next weapon | Previous / next weapon |
+| D-Pad down | Use inventory item | Automap |
+| D-Pad up | Automap | Use / interact |
+| START / SELECT | Open the menu | Open the menu |
 
-Controller options include C-Stick sensitivity, C-Stick/Touch/Both camera input, the full-health X sprint toggle and a control reference.
+In menus A confirms and B goes back, whatever the scheme. Controller options also include the
+camera sensitivity (it sets the buttons' turning speed too), C-Stick/Touch/Both camera input and
+SPRINT AT FULL LIFE: OFF, BUTTON or AUTO (the default: Link runs whenever his life is full).
 
 ## Updating
 

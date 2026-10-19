@@ -84,6 +84,11 @@ struct FThinkerCollection
 	void MarkRoots();
 	DThinker *FirstThinker(int statnum);
 	void Link(DThinker *thinker, int statnum);
+#ifdef __3DS__
+	// Calls visit for every thinker of every list except the settled static actors
+	// (OF_Settled3DS): P_Ticker's ClearInterpolation pass and RunThinkers' light and effect pass.
+	void ForEachUnsettled3DS(void (*visit)(DThinker *, void *), void *context);
+#endif
 
 private:
 	FThinkerList Thinkers[MAX_STATNUM + 2];

@@ -48,14 +48,23 @@ struct FNesFont
 };
 FNesFont NesFont;
 
-// Shapes the NES font does not have (its '<', '>' and '%' are other symbols; ':' and '/' are
-// absent).
+// Shapes the NES font does not have: its '<', '>' and '%' are other symbols, and the rest are
+// absent there, drawn as a dot (the release notes' "(...);" showed as dots, 2026-10-19).
 const struct { char Character; uint8_t Rows[8]; } NesExtraAscii[] = {
 	{ '<', { 0x0c, 0x18, 0x30, 0x60, 0x30, 0x18, 0x0c, 0x00 } },
 	{ '>', { 0x60, 0x30, 0x18, 0x0c, 0x18, 0x30, 0x60, 0x00 } },
 	{ '%', { 0xc6, 0xcc, 0x18, 0x30, 0x60, 0xcc, 0x8c, 0x00 } },
-	{ ':', { 0x00, 0x30, 0x30, 0x00, 0x00, 0x30, 0x30, 0x00 } }, // missing: drawn as a dot
-	{ '/', { 0x06, 0x0c, 0x18, 0x30, 0x60, 0xc0, 0x80, 0x00 } }, // missing too
+	{ ':', { 0x00, 0x30, 0x30, 0x00, 0x00, 0x30, 0x30, 0x00 } },
+	{ '/', { 0x06, 0x0c, 0x18, 0x30, 0x60, 0xc0, 0x80, 0x00 } },
+	{ '(', { 0x0c, 0x18, 0x30, 0x30, 0x30, 0x18, 0x0c, 0x00 } },
+	{ ')', { 0x60, 0x30, 0x18, 0x18, 0x18, 0x30, 0x60, 0x00 } },
+	{ ';', { 0x00, 0x30, 0x30, 0x00, 0x00, 0x30, 0x30, 0x60 } },
+	{ '+', { 0x00, 0x30, 0x30, 0xfc, 0x30, 0x30, 0x00, 0x00 } },
+	{ '*', { 0x00, 0x6c, 0x38, 0xfe, 0x38, 0x6c, 0x00, 0x00 } },
+	{ '#', { 0x6c, 0x6c, 0xfe, 0x6c, 0xfe, 0x6c, 0x6c, 0x00 } },
+	{ '[', { 0x3c, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3c, 0x00 } },
+	{ ']', { 0x3c, 0x0c, 0x0c, 0x0c, 0x0c, 0x0c, 0x3c, 0x00 } },
+	{ '_', { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0x00 } },
 };
 
 // Spanish capitals: a letter of the font with a mark above it, or a shape of their own.
@@ -309,13 +318,20 @@ int OptionTabIndex(FName menu)
 	return -1;
 }
 
+// Option menus opened from a tab, drawn here without the tabs: their title instead.
+bool OptionSubmenu(FName menu)
+{
+	return menu == FName("LegendButtonsMenu");
+}
+
 // A menu label: a $STRING of the table, or English text the port translates itself (Tr).
 const char *Localized(const FString &text)
 {
 	return text.IsNotEmpty() && text[0] == '$' ? GStrings.localize(text.GetChars()) : Tr(text.GetChars());
 }
 
-enum class ENativeRowKind : uint8_t { Header, Toggle, Choice, Slider, Submenu, Command };
+// Fixed: an input that cannot be remapped and what it does (CONTROLS), never selected.
+enum class ENativeRowKind : uint8_t { Header, Toggle, Choice, Slider, Submenu, Command, Fixed };
 
 struct FNativeRow
 {
@@ -462,8 +478,7 @@ bool NativeMenuSupported()
 	if (CurrentMenu == nullptr || menuactive == MENU_Off || DiagnosticProgressActive) return false;
 	// Before ListMenu: the save/load menus derive from it.
 	if (CurrentMenu->IsKindOf("LoadSaveMenu")) return true;
-	if (CurrentMenu->IsKindOf("MessageBoxMenu"))
-		return CurrentMenu->IntVar(FName("mMessageMode")) == 0;
+	if (CurrentMenu->IsKindOf("MessageBoxMenu")) return true;
 	if (CurrentMenu->IsKindOf("ListMenu"))
 	{
 		auto *descriptor = CurrentMenu->PointerVar<DListMenuDescriptor>(FName("mDesc"));
@@ -477,7 +492,8 @@ bool NativeMenuSupported()
 	if (CurrentMenu->GetClass()->TypeName == FName("LegendSplitOptionMenu"))
 	{
 		auto *descriptor = CurrentMenu->PointerVar<DOptionMenuDescriptor>(FName("mDesc"));
-		if (descriptor == nullptr || OptionTabIndex(descriptor->mMenuName) < 0) return false;
+		if (descriptor == nullptr || (OptionTabIndex(descriptor->mMenuName) < 0 &&
+			!OptionSubmenu(descriptor->mMenuName))) return false;
 		TArray<FNativeRow> rows;
 		return DescribeOptionMenu(descriptor, rows);
 	}
@@ -492,6 +508,7 @@ void DrawNativeListMenu(unsigned char *framebuffer, DListMenuDescriptor *descrip
 	FString title;
 	DescribeListMenu(descriptor, rows, title);
 	if (descriptor->mMenuName == FName("LegendPauseMenu")) title = Tr("PAUSED");
+	else if (descriptor->mMenuName == FName("LegendDeathMenu")) title = Tr("GAME OVER");
 
 	if (gamestate == GS_DEMOSCREEN) DrawMenuBottomScreen(framebuffer, 71u);
 
@@ -535,7 +552,7 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 	DescribeOptionMenu(descriptor, rows);
 	const int currentTab = OptionTabIndex(descriptor->mMenuName);
 
-	for (int tab = 0; tab < OptionTabCount; ++tab)
+	for (int tab = 0; currentTab >= 0 && tab < OptionTabCount; ++tab)
 	{
 		const bool active = tab == currentTab;
 		const int x = 8 + tab * 76;
@@ -544,29 +561,81 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 			Tr(OptionTabTitles[tab]), 1, active ? NesGold : NesGray);
 		AddNativeTouchZone(x, 0, x + 76, 28, ENativeTouch::Tab, tab);
 	}
+	if (currentTab < 0) NesCenteredText(framebuffer, 6, Localized(descriptor->mTitle), 1, NesRed);
 
-	// Nine rows fit; past that the list scrolls to keep the selection in view.
-	constexpr int FirstRowY = 36;
+	// A choice's value between arrows, right-aligned, and its touch zones.
+	auto drawChoice = [&](const FNativeRow &row, int y, int zoneLeft, int zoneTop, int zoneBottom) {
+		const int width = NesTextWidth(row.Value.GetChars(), 1);
+		const int leftArrow = 296 - width - 14;
+		NesText(framebuffer, 296 - width, y, row.Value.GetChars(), 1, NesWhite);
+		NesText(framebuffer, leftArrow, y, "<", 1, NesGray);
+		NesText(framebuffer, 298, y, ">", 1, NesGray);
+		AddNativeTouchZone(leftArrow - 12, zoneTop, leftArrow + 12, zoneBottom, ENativeTouch::Left, row.Item);
+		AddNativeTouchZone(290, zoneTop, 320, zoneBottom, ENativeTouch::Right, row.Item);
+		AddNativeTouchZone(zoneLeft, zoneTop, 312, zoneBottom, ENativeTouch::Right, row.Item);
+	};
+
+	// SCHEME AND BUTTONS (#22): the scheme is the parent, a panel on top; the buttons it sets hang
+	// below it, indented on a guide line. Changing the scheme changes the rows at once.
+	int parentRow = -1;
+	if (currentTab < 0)
+	{
+		for (unsigned i = 0; i < rows.Size(); ++i)
+		{
+			FBaseCVar *cvar = ItemCVar(descriptor->mItems[rows[i].Item]);
+			if (cvar != nullptr && strcmp(cvar->GetName(), "lod3ds_control_scheme") == 0)
+				parentRow = static_cast<int>(i);
+		}
+	}
+	if (parentRow >= 0)
+	{
+		const FNativeRow &parent = rows[parentRow];
+		const bool selected = parent.Item == descriptor->mSelectedItem;
+		NesBox(framebuffer, 8, 20, 304, 24, selected ? NesPanel : NesTabIdle, selected ? NesGold : NesBlue);
+		NesText(framebuffer, 16, 28, parent.Label.GetChars(), 1, NesGold);
+		drawChoice(parent, 28, 8, 20, 44);
+		rows.Delete(parentRow);
+		// Then what the inputs that cannot be remapped do, before the buttons.
+		static constexpr const char *FixedInputs[][2] = {
+			{ "CIRCLE PAD", "MOVE / STRAFE" }, { "C-STICK / TOUCH", "LOOK" },
+			{ "START", "PAUSE" }, { "SELECT", "MENU / OVERLAY" } };
+		for (unsigned i = 0; i < sizeof(FixedInputs) / sizeof(FixedInputs[0]); ++i)
+			rows.Insert(i, FNativeRow{ ENativeRowKind::Fixed, -1, Tr(FixedInputs[i][0]), Tr(FixedInputs[i][1]), 0.0f });
+	}
+	const int left = parentRow >= 0 ? 22 : 8;
+
+	// Nine rows fit (eight under the scheme); past that the list scrolls to keep the selection in view.
+	const int firstRowY = parentRow >= 0 ? 58 : 36;
 	constexpr int RowPitch = 20;
-	constexpr int VisibleRows = 9;
+	const int visibleRows = parentRow >= 0 ? 8 : 9;
 	int selectedRow = 0;
 	for (unsigned i = 0; i < rows.Size(); ++i)
 		if (rows[i].Item == descriptor->mSelectedItem) selectedRow = static_cast<int>(i);
-	const int firstRow = std::clamp(selectedRow - VisibleRows + 1, 0,
-		std::max(0, static_cast<int>(rows.Size()) - VisibleRows));
+	const int firstRow = std::clamp(selectedRow - visibleRows + 1, 0,
+		std::max(0, static_cast<int>(rows.Size()) - visibleRows));
+	const int lastRow = std::min<int>(rows.Size(), firstRow + visibleRows);
+	if (parentRow >= 0 && lastRow > firstRow)
+		OverlayRect(framebuffer, 14, 44, 1, firstRowY + (lastRow - 1 - firstRow) * RowPitch + 4 - 44, NesGray);
 
-	for (int i = firstRow; i < std::min<int>(rows.Size(), firstRow + VisibleRows); ++i)
+	for (int i = firstRow; i < lastRow; ++i)
 	{
 		const FNativeRow &row = rows[i];
-		const int y = FirstRowY + (i - firstRow) * RowPitch;
+		const int y = firstRowY + (i - firstRow) * RowPitch;
 		const bool selected = row.Item == descriptor->mSelectedItem;
 		if (row.Kind == ENativeRowKind::Header)
 		{
-			NesText(framebuffer, 16, y, row.Label.GetChars(), 1, NesGray);
+			NesText(framebuffer, left + 8, y, row.Label.GetChars(), 1, NesGray);
 			continue;
 		}
-		if (selected) NesBox(framebuffer, 8, y - 5, 304, 18, NesPanel, NesBlue);
-		NesText(framebuffer, 16, y, row.Label.GetChars(), 1, selected ? NesGold : NesWhite);
+		if (parentRow >= 0) OverlayRect(framebuffer, 14, y + 3, left - 14, 1, NesGray);
+		if (row.Kind == ENativeRowKind::Fixed)
+		{
+			NesText(framebuffer, left + 8, y, row.Label.GetChars(), 1, NesGray);
+			NesText(framebuffer, 304 - NesTextWidth(row.Value.GetChars(), 1), y, row.Value.GetChars(), 1, NesGray);
+			continue;
+		}
+		if (selected) NesBox(framebuffer, left, y - 5, 312 - left, 18, NesPanel, NesBlue);
+		NesText(framebuffer, left + 8, y, row.Label.GetChars(), 1, selected ? NesGold : NesWhite);
 		const int zoneTop = y - 5;
 		const int zoneBottom = y - 5 + RowPitch;
 		switch (row.Kind)
@@ -577,21 +646,12 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 			OverlayRect(framebuffer, 270, y - 2, 34, 12, on ? NesGreen : NesOff);
 			NesText(framebuffer, 270 + (34 - NesTextWidth(row.Value.GetChars(), 1)) / 2, y,
 				row.Value.GetChars(), 1, NesWhite);
-			AddNativeTouchZone(8, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
+			AddNativeTouchZone(left, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
 			break;
 		}
 		case ENativeRowKind::Choice:
-		{
-			const int width = NesTextWidth(row.Value.GetChars(), 1);
-			const int leftArrow = 296 - width - 14;
-			NesText(framebuffer, 296 - width, y, row.Value.GetChars(), 1, NesWhite);
-			NesText(framebuffer, leftArrow, y, "<", 1, NesGray);
-			NesText(framebuffer, 298, y, ">", 1, NesGray);
-			AddNativeTouchZone(leftArrow - 12, zoneTop, leftArrow + 12, zoneBottom, ENativeTouch::Left, row.Item);
-			AddNativeTouchZone(290, zoneTop, 320, zoneBottom, ENativeTouch::Right, row.Item);
-			AddNativeTouchZone(8, zoneTop, 312, zoneBottom, ENativeTouch::Right, row.Item);
+			drawChoice(row, y, left, zoneTop, zoneBottom);
 			break;
-		}
 		case ENativeRowKind::Slider:
 		{
 			// Ten cells in half steps: a volume step (0.05) is half a cell.
@@ -605,19 +665,19 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 				else if (halves == segment * 2 + 1) OverlayRect(framebuffer, x, y, 3, 8, NesRed);
 			}
 			AddNativeTouchZone(220, zoneTop, 308, zoneBottom, ENativeTouch::Slider, row.Item);
-			AddNativeTouchZone(8, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
+			AddNativeTouchZone(left, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
 			break;
 		}
 		case ENativeRowKind::Submenu:
 		case ENativeRowKind::Command:
 			NesText(framebuffer, 298, y, ">", 1, NesGray);
-			AddNativeTouchZone(8, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
+			AddNativeTouchZone(left, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
 			break;
 		default:
 			break;
 		}
 	}
-	NesHint(framebuffer, "L R TAB   A CHANGE   B BACK");
+	NesHint(framebuffer, currentTab < 0 ? "A CHANGE   B BACK" : "L R TAB   A CHANGE   B BACK");
 }
 
 // Splits `text` into lines of at most `columns` characters, at spaces where it can.
@@ -662,7 +722,7 @@ TArray<FString> NesWrap(const char *text, unsigned columns, unsigned maximumLine
 	return lines;
 }
 
-// A two-choice dialog in the middle of the touch screen.
+// A two-choice dialog in the middle of the touch screen; one centred button when `right` is null.
 void DrawNesDialog(unsigned char *framebuffer, const char *message, const char *left,
 	const char *right, int selected)
 {
@@ -677,11 +737,11 @@ void DrawNesDialog(unsigned char *framebuffer, const char *message, const char *
 		y += 12;
 	}
 	const char *labels[] = { left, right };
-	for (int choice = 0; choice < 2; ++choice)
+	for (int choice = 0; choice < (right != nullptr ? 2 : 1); ++choice)
 	{
-		const int x = choice == 0 ? 52 : 172;
+		const int x = right == nullptr ? 112 : choice == 0 ? 52 : 172;
 		const int top = boxTop + boxHeight - 38;
-		const bool active = choice == selected;
+		const bool active = right == nullptr || choice == selected;
 		NesBox(framebuffer, x, top, 96, 24, active ? NesPanel : NesTabIdle, active ? NesBlue : NesGray);
 		NesText(framebuffer, x + (96 - NesTextWidth(labels[choice], 1)) / 2, top + 8, labels[choice], 1,
 			active ? NesGold : NesWhite);
@@ -738,6 +798,13 @@ void DrawNativeMessageBox(unsigned char *framebuffer)
 {
 	FString message = CurrentMenu->StringVar(FName("NativeMessageText"));
 	message.ToUpper();
+	// Message mode 1 is a notice: any button closes it.
+	if (CurrentMenu->IntVar(FName("mMessageMode")) != 0)
+	{
+		DrawNesDialog(framebuffer, message.GetChars(), Tr("OK"), nullptr, 0);
+		NesHint(framebuffer, "A OK");
+		return;
+	}
 	DrawNesDialog(framebuffer, message.GetChars(), Tr("YES"), Tr("NO"),
 		CurrentMenu->IntVar(FName("messageSelection")));
 	NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
@@ -853,22 +920,27 @@ void DrawNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int hei
 
 void DrawNativeControlsMenu(unsigned char *framebuffer)
 {
-	// The same list as LegendControlsReferenceMenu's ZScript Drawer (the game patch).
-	static constexpr const char *Inputs[] = {
-		"CIRCLE PAD", "C-STICK / TOUCH", "A", "R", "L", "X", "Y",
-		"DPAD LEFT / RIGHT", "ZL / ZR", "DPAD DOWN", "DPAD UP", "START", "SELECT" };
-	static constexpr const char *Actions[] = {
-		"MOVE / STRAFE", "LOOK", "USE / INTERACT", "ATTACK", "ALT ATTACK",
-		"SPRINT AT FULL LIFE", "JUMP", "CHANGE WEAPON", "CHANGE ITEM", "USE ITEM", "MAP",
-		"PAUSE", "MENU / OVERLAY" };
-	NesCenteredText(framebuffer, 8, Tr("CONTROLS"), 2, NesRed);
-	for (int row = 0; row < 13; ++row)
+	// The active scheme and what its buttons do now, from the bindings (#22). The same list as
+	// LegendControlsReferenceMenu's ZScript Drawer (the game patch).
+	const bool camera = I_3DSButtonCameraScheme();
+	NesCenteredText(framebuffer, 6, Tr("CONTROLS"), 2, NesRed);
+	NesCenteredText(framebuffer, 26, Tr(camera ? "BUTTON CAMERA" : "CLASSIC"), 1, NesGold);
+	int y = 40;
+	auto row = [&](const char *input, const char *action) {
+		const char *shown = Tr(input);
+		NesText(framebuffer, 152 - NesTextWidth(shown, 1), y, shown, 1, NesGold);
+		NesText(framebuffer, 168, y, Tr(action), 1, NesWhite);
+		y += 11;
+	};
+	row("CIRCLE PAD", camera ? "MOVE / SPRINT AT EDGE" : "MOVE / STRAFE");
+	row("C-STICK / TOUCH", "LOOK");
+	for (int slot = 0; slot < I_3DSRemappableButtonCount(); ++slot)
 	{
-		const int y = 32 + row * 15;
-		const char *input = Tr(Inputs[row]);
-		NesText(framebuffer, 152 - NesTextWidth(input, 1), y, input, 1, NesGold);
-		NesText(framebuffer, 168, y, Tr(Actions[row]), 1, NesWhite);
+		const char *action = I_3DSRemappableButtonAction(slot);
+		if (std::strcmp(action, "NONE") != 0) row(I_3DSRemappableButtonLabel(slot), action);
 	}
+	row("START", "PAUSE");
+	row("SELECT", "MENU / OVERLAY");
 	NesHint(framebuffer, "B BACK");
 }
 
