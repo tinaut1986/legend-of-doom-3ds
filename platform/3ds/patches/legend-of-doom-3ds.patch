@@ -229,7 +229,7 @@ diff --git a/MENUDEF b/MENUDEF
 index c7c6d33..dffcba4 100644
 --- a/MENUDEF
 +++ b/MENUDEF
-@@ -1,50 +1,189 @@
+@@ -1,50 +1,198 @@
  DEFAULTLISTMENU
  {
  	// Font "ZeldFNT", "Untranslated"
@@ -380,19 +380,28 @@ index c7c6d33..dffcba4 100644
 +{
 +    Class "LegendSplitOptionMenu"
 +    Title "CONTROLLER"
-+    Option "SCHEME", "lod3ds_control_scheme", "LegendControlScheme"
-+    Submenu "BUTTONS", "LegendButtonsMenu"
++    Submenu "SCHEME AND BUTTONS", "LegendButtonsMenu"
 +    Slider "CAM SENSITIVITY", "lod3ds_cstick_sensitivity", 0.25, 2.0, 0.05, -1
 +    Option "CAMERA INPUT", "lod3ds_camera_mode", "LegendCameraInput"
-+    Option "SPRINT AT FULL LIFE", "lod3ds_sprint_x", "OnOff"
++    Option "SPRINT AT FULL LIFE", "lod3ds_sprint_mode", "LegendSprintMode"
 +    Submenu "CONTROLS", "LegendControlsMenu"
 +}
 +
-+// The active scheme's buttons (#22): each row's cvar is that button's action in it.
++OPTIONVALUE "LegendSprintMode"
++{
++    0, "OFF"
++    1, "BUTTON"
++    2, "AUTO"
++}
++
++// The scheme, then its buttons (#22): each button row's cvar is that button's action in the scheme
++// chosen above, so changing the scheme shows its buttons at once. The touch screen draws SCHEME
++// as the parent of the rows below it (native_menu_3ds.inc).
 +OPTIONMENU "LegendButtonsMenu"
 +{
 +    Class "LegendSplitOptionMenu"
-+    Title "BUTTONS"
++    Title "SCHEME AND BUTTONS"
++    Option "SCHEME", "lod3ds_control_scheme", "LegendControlScheme"
 +    Option "A", "lod3ds_button_a", "LegendButtonAction"
 +    Option "B", "lod3ds_button_b", "LegendButtonAction"
 +    Option "X", "lod3ds_button_x", "LegendButtonAction"
@@ -931,7 +940,7 @@ new file mode 100644
 index 0000000..cadb9e7
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,326 @@
+@@ -0,0 +1,328 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -1258,6 +1267,8 @@ index 0000000..cadb9e7
 +TO INTERACT PRESS,LOD_TO_INTERACT_PRESS,,,PARA INTERACTUAR PULSA
 +TURN LEFT,LOD_TURN_LEFT,,,GIRAR A LA IZQ.
 +TURN RIGHT,LOD_TURN_RIGHT,,,GIRAR A LA DCHA.
++BUTTON,LOD_BUTTON,,,BOTÓN
++SCHEME AND BUTTONS,LOD_SCHEME_AND_BUTTONS,,,ESQUEMA Y BOTONES
 diff --git a/actors/items/Fairy.zs b/actors/items/Fairy.zs
 index 1cced56..1fbbfdb 100644
 --- a/actors/items/Fairy.zs

@@ -57,19 +57,19 @@ Audio on a real console requires its own DSP firmware at `sdmc:/3ds/dspfirm.cdc`
 
 ## Controls
 
-Two control schemes, chosen in OPTIONS -> CONTROL -> SCHEME: **CLASSIC** (the default on the
-New 3DS family) and **BUTTON CAMERA** (the default on the Old 3DS / 2DS, which have no C-Stick).
-Each one keeps its own buttons, remappable in OPTIONS -> CONTROL -> BUTTONS (DEFAULTS restores
-them); CONTROLS shows what every button does now. In both, walking into a locked door or a push
+Two control schemes, chosen in OPTIONS -> CONTROL -> SCHEME AND BUTTONS: **CLASSIC** (the default
+on the New 3DS family) and **BUTTON CAMERA** (the default on the Old 3DS / 2DS, which have no
+C-Stick). Each one keeps its own buttons, remappable on that same screen under the scheme (DEFAULTS
+restores them); CONTROLS shows what every button does now. In both, walking into a locked door or a push
 block uses it, as on the NES.
 
 | Nintendo 3DS input | CLASSIC | BUTTON CAMERA |
 |---|---|---|
-| Circle Pad | Move / strafe | Move / strafe; sprint at its edge (full health) |
+| Circle Pad | Move / strafe | Move / strafe; at its edge, sprint when SPRINT is BUTTON |
 | C-Stick, touch screen | Look (as CAMERA INPUT says) | Look as well (New 3DS) |
 | A | Use / interact | Turn right |
 | B | — | Look down |
-| X | Sprint at full health | Look up |
+| X | Sprint when SPRINT is BUTTON | Look up |
 | Y | Jump | Turn left |
 | L / R | Alternate attack / attack | Alternate attack / attack |
 | ZL / ZR | Previous / next inventory item | — |
@@ -80,7 +80,7 @@ block uses it, as on the NES.
 
 In menus A confirms and B goes back, whatever the scheme. Controller options also include the
 camera sensitivity (it sets the buttons' turning speed too), C-Stick/Touch/Both camera input and
-the full-health sprint toggle.
+SPRINT AT FULL LIFE: OFF, BUTTON or AUTO (the default: Link runs whenever his life is full).
 
 ## Updating
 

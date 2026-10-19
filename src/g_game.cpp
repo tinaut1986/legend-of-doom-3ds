@@ -613,18 +613,20 @@ void G_BuildTiccmd (ticcmd_t *cmd)
 	// Read once here: BUTTON CAMERA sprints with the Circle Pad at its edge.
 	float padAxes[NUM_JOYAXIS];
 	I_GetAxes(padAxes);
-	if (I_3DSButtonCameraScheme())
+	const int sprintMode = I_3DSSprintMode();
+	if (sprintMode == 2) speedButton = true;
+	else if (sprintMode == 1 && I_3DSButtonCameraScheme())
 	{
 		const float push = padAxes[JOYAXIS_Forward] * padAxes[JOYAXIS_Forward] +
 			padAxes[JOYAXIS_Side] * padAxes[JOYAXIS_Side];
 		if (push >= 0.85f * 0.85f) speedButton = true;
 	}
-	// Sprint (X in CLASSIC) is a Zelda-style sprint: it is useful only when enabled and Link is at
-	// full health. Losing even a quarter-heart immediately returns to walking.
+	// A Zelda-style sprint (AUTO by default, or X in CLASSIC): only while Link is at full health.
+	// Losing even a quarter-heart immediately returns to walking.
 	AActor *sprintActor = players[consoleplayer].mo;
 	const bool fullHealth = sprintActor != nullptr && sprintActor->health > 0 &&
 		sprintActor->health >= sprintActor->GetMaxHealth(true);
-	if (!I_3DSSprintWithXEnabled() || !fullHealth) speedButton = false;
+	if (sprintMode == 0 || !fullHealth) speedButton = false;
 	#endif
 	speed = static_cast<int>(speedButton) ^ (int)cl_run;
 

@@ -105,8 +105,16 @@ class V026InterfaceContractTests(unittest.TestCase):
             self.assertIn(f'"lod3ds_button_{cvar}", "LegendButtonAction"', patch)
         self.assertIn('Command "DEFAULTS", "lod3ds_buttons_reset"', patch)
         self.assertIn('Option "SCHEME", "lod3ds_control_scheme", "LegendControlScheme"', patch)
-        self.assertIn('Submenu "BUTTONS", "LegendButtonsMenu"', patch)
+        self.assertIn('Submenu "SCHEME AND BUTTONS", "LegendButtonsMenu"', patch)
         self.assertIn('menu == FName("LegendButtonsMenu")', native)
+        # The scheme is the first row of the buttons screen, drawn as their parent.
+        buttons_menu = patch[patch.index('+OPTIONMENU "LegendButtonsMenu"'):]
+        self.assertLess(buttons_menu.index('"lod3ds_control_scheme"'), buttons_menu.index('"lod3ds_button_a"'))
+        self.assertIn('strcmp(cvar->GetName(), "lod3ds_control_scheme") == 0', native)
+        # Sprint: OFF / BUTTON / AUTO, AUTO by default.
+        self.assertIn("CUSTOM_CVAR(Int, lod3ds_sprint_mode, 2,", input_source)
+        self.assertIn('Option "SPRINT AT FULL LIFE", "lod3ds_sprint_mode", "LegendSprintMode"', patch)
+        self.assertIn("if (sprintMode == 2) speedButton = true;", game)
         # `action` is a ZScript keyword: a variable called so stops the game at start-up.
         self.assertNotRegex(patch, r"\n\+\s+(int|let|String|bool) action\b")
 
@@ -126,7 +134,7 @@ class V026InterfaceContractTests(unittest.TestCase):
         # Button turning with a ramp and CAM SENSITIVITY; sprint at the pad's edge.
         self.assertIn("I_3DSButtonLookStep(static_cast<int>(JoyYawUnitsPerTic)", game)
         self.assertIn("* I_3DSCStickSensitivity()", input_source)
-        self.assertIn("if (push >= 0.85f * 0.85f) speedButton = true;", game)
+        self.assertIn("if (push >= 0.85f * 0.85f) speedButton = true;", game)  # BUTTON in BUTTON CAMERA
 
         # Walk into a door or a push block to use it, once per contact.
         for script in ("UnlockAndOpenDoor", "RevealStairs", "RevealSecret", "RevealDoor",
