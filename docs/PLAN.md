@@ -38,6 +38,7 @@ release texts (workflow template, README) say the Old 3DS / 2DS run it; U6-U9 an
 | Branch | What | State |
 |---|---|---|
 | `feat/u9-update-changelog` | U9: UPDATE shows saved / bundled notes without a network answer | Built, **not installed**: owner's check pending |
+| `feat/u7-toasts-top-screen` | U7: toasts on the top screen, following MESSAGES | Built, **not installed**: owner's check pending |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 The worktree branches of the 2026-10-18/19 side sessions (`fix/cave-sky-square`,
@@ -276,7 +277,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* dying opens that menu after the death animation, each choice works, and B or
   "continue" does what the owner chooses as the default.
 
-- [ ] **U7** Every message for the player in one place: the top screen, where MESSAGES says.
+- [x] **U7** Every message for the player in one place: the top screen, where MESSAGES says.
   *Spec:* owner 2026-10-19: the toasts (AUTOSAVED, GAME SAVED, install and FTP notices...,
   `SetOverlayNotification` / `I_3DSToast` in `diagnostics_3ds.cpp`, today on the touch screen)
   go to the top screen with the game's own messages, in the place OPTIONS -> DISPLAY ->
@@ -284,6 +285,11 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   "messages for the player are bottom-screen toasts" in the same change.
   *Done when:* no message appears on the touch screen during play, the toasts follow MESSAGES,
   and they do not hide the game's own messages.
+  *Built (branch `feat/u7-toasts-top-screen`, awaiting the owner's check):* `ComposeTopToast` draws the toast
+  (same box, with the install / restart bar) on the top screen in menus and in a level, as a GPU image on the
+  hybrid presenters; it sits on the edge MESSAGES says and stacks beside the game's lines
+  (`C_3DSNotifyOccupied`). Not shown on the bare title screen (no menu, no level: no top composer there).
+  The install bar (FTP INSTALL ONLY) stays on the touch screen: it is a state bar, not a message.
 
 - [ ] **U8** The start-up progress bars on the touch screen.
   *Spec:* owner 2026-10-19: while the game starts, the touch screen is nearly empty and the bars

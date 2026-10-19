@@ -250,7 +250,7 @@ one fails after a deliberate change, update the test in the same commit.
 row in the game patch's `language.csv` (`platform/3ds/README.md`, "Menus and languages");
 the owner plays in Spanish. New menus are drawn in `native_menu_3ds.inc` with the NES font
 (x1, x2 only for the short list menus), not with the engine's fonts or the 5x7 overlay font,
-and messages for the player are bottom-screen toasts (`SetOverlayNotification`).
+and messages for the player are top-screen toasts (`SetOverlayNotification` / `I_3DSToast`, drawn by `ComposeTopToast` where OPTIONS -> DISPLAY -> MESSAGES puts the game's own messages), never on the touch screen.
 
 Diagnostics already in upstream (all builds): **L+R+A** quick capture, **L+R+X** full
 capture with memory, **L+R+Y** delete captures, into `sdmc:/3ds/Legend of Doom 3DS/dumps/`

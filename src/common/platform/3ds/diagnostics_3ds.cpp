@@ -67,6 +67,7 @@
 
 EXTERN_CVAR(Int, vid_maxfps)
 EXTERN_CVAR(Bool, vid_fps)
+EXTERN_CVAR(Bool, lod3ds_messages_bottom)
 EXTERN_CVAR(Float, lod3ds_render_scale)
 EXTERN_CVAR(Int, lod3ds_render_distance)
 EXTERN_CVAR(Bool, lod3ds_top_hud)
@@ -169,7 +170,7 @@ uint64_t OverlayLastDrawMilliseconds;
 uint64_t OverlayNotificationUntilMilliseconds;
 bool OverlayAudioReady;
 char OverlayNotification[48];
-// Changes whenever a toast appears or goes, so the static bottom presentations redraw for it.
+// Changes whenever a toast appears or goes, so the top screen redraws its image.
 uint32_t OverlayNotificationSerial;
 // A bar under the toast's text, in thousandths (an FTP install's progress), or -1 for none.
 int OverlayNotificationProgress = -1;
@@ -2651,8 +2652,8 @@ void ExpireOverlayNotification(uint64_t now)
 	}
 }
 
-// The toast: a bar near the bottom of the touch screen, drawn last over whatever
-// presentation is there (gameplay, menus, title, developer overlay).
+// The toast, a message for the player: shown on the top screen (ComposeTopToast), with the
+// game's own messages, where OPTIONS -> DISPLAY -> MESSAGES says.
 // The NES font and the interface's language, from native_menu_3ds.inc further down.
 void LoadNesFont();
 const char *Tr(const char *english);
@@ -2712,49 +2713,16 @@ void DrawInstallBar(unsigned char *framebuffer)
 		InstallBarY + 7, "X", 1, OverlayIvory);
 }
 
-// The toast's top row, above the install bar when it is there; the screen's height when there
-// is none. The GPU map stops above it (I_3DSOverlayFrame), or it would draw over the toast.
+// The lower edge the GPU map keeps to. Toasts are on the top screen (ComposeTopToast); the
+// install bar (DrawInstallBar) is the only thing left down here over the map.
 int BottomToastTop()
 {
-	if (OverlayNotification[0] == '\0') return static_cast<int>(BottomScreenHeight);
-	const int height = OverlayNotificationProgress >= 0 ? 33 : 21;
-	return (InstallBarVisible() ? InstallBarY - 4 : 231) - height;
+	return static_cast<int>(BottomScreenHeight);
 }
 
 void DrawBottomToast(unsigned char *framebuffer)
 {
 	DrawInstallBar(framebuffer);
-	if (OverlayNotification[0] == '\0') return;
-	LoadNesFont();
-	const char *text = Tr(OverlayNotification);
-	const bool bar = OverlayNotificationProgress >= 0;
-	const int width = std::min(304, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
-	const int height = bar ? 33 : 21;
-	const int x = (static_cast<int>(BottomScreenWidth) - width) / 2;
-	const int y = BottomToastTop();
-	OverlayRect(framebuffer, x, y, width, height, OverlayInk);
-	OverlayFrame(framebuffer, x, y, width, height, 1, OverlayBlue);
-	NesText(framebuffer, x + (width - NesTextWidth(text, 1)) / 2, y + 7, text, 1, OverlayIvory);
-	if (bar)
-	{
-		// The percentage sits beside the bar, not in the text above it: the text, in Spanish
-		// especially, has the whole width of the toast.
-		char percent[8] = {};
-		int percentWidth = 0;
-		if (OverlayNotificationPercent)
-		{
-			std::snprintf(percent, sizeof(percent), "%d%%",
-				std::min(OverlayNotificationProgress, 1000) / 10);
-			percentWidth = NesTextWidth("100%", 1) + 6;
-		}
-		const int barWidth = width - 24 - percentWidth;
-		OverlayRect(framebuffer, x + 12, y + 20, barWidth, 6, FOverlayColor{ 60, 60, 60 });
-		OverlayRect(framebuffer, x + 12, y + 20,
-			barWidth * std::min(OverlayNotificationProgress, 1000) / 1000, 6, OverlayRed);
-		if (percentWidth > 0)
-			NesText(framebuffer, x + width - 12 - NesTextWidth(percent, 1), y + 19, percent, 1,
-				OverlayIvory);
-	}
 }
 
 // The STATUS box's FTP button (debug builds), in bottom-screen pixels.
@@ -4073,6 +4041,94 @@ void ComposeNativeMenuFps(unsigned char *pixels, int pitchBytes, int width, int 
 	NativeTopText(pixels, pitchBytes, width, height, x + 4, 7, label, OverlayIvory);
 }
 
+// The toast on the top screen, in the NES font on an ink box with a blue frame. It sits where
+// OPTIONS -> DISPLAY -> MESSAGES puts the game's messages (the top edge or the bottom one) and
+// stacks beside them, never over them (C_3DSNotifyOccupied). In LCD pixels (400x240) it is an
+// image queued on the GPU; the CPU presenters draw the same box into the canvas.
+template<class FFill>
+void PaintToast(FFill &&fill, int toastWidth, int toastHeight, const char *text, bool bar)
+{
+	fill(0, 0, toastWidth, toastHeight, OverlayInk, 255u);
+	fill(0, 0, toastWidth, 1, OverlayBlue, 255u);
+	fill(0, toastHeight - 1, toastWidth, 1, OverlayBlue, 255u);
+	fill(0, 0, 1, toastHeight, OverlayBlue, 255u);
+	fill(toastWidth - 1, 0, 1, toastHeight, OverlayBlue, 255u);
+	NesDraw((toastWidth - NesTextWidth(text, 1)) / 2, 7, text, 1, [&](int px, int py, int size)
+	{
+		fill(px, py, size, size, OverlayIvory, 255u);
+	});
+	if (!bar) return;
+	// The percentage sits beside the bar, not in the text above it: the text, in Spanish
+	// especially, has the whole width of the toast.
+	char percent[8] = {};
+	int percentWidth = 0;
+	if (OverlayNotificationPercent)
+	{
+		std::snprintf(percent, sizeof(percent), "%d%%",
+			std::min(OverlayNotificationProgress, 1000) / 10);
+		percentWidth = NesTextWidth("100%", 1) + 6;
+	}
+	const int barWidth = toastWidth - 24 - percentWidth;
+	fill(12, 20, barWidth, 6, FOverlayColor{ 60, 60, 60 }, 255u);
+	fill(12, 20, barWidth * std::min(OverlayNotificationProgress, 1000) / 1000, 6, OverlayRed, 255u);
+	if (percentWidth > 0)
+		NesDraw(toastWidth - 12 - NesTextWidth(percent, 1), 19, percent, 1,
+			[&](int px, int py, int size) { fill(px, py, size, size, OverlayIvory, 255u); });
+}
+
+void ComposeTopToast(unsigned char *pixels, int pitchBytes, int width, int height,
+	bool gpuOverlays)
+{
+	ExpireOverlayNotification(osGetTime());
+	if (OverlayNotification[0] == '\0') return;
+	LoadNesFont();
+	if (!NesFont.Valid) return;
+	const char *text = Tr(OverlayNotification);
+	const bool bar = OverlayNotificationProgress >= 0;
+	constexpr int MaxWidth = 304, MaxHeight = 33;
+	const int toastWidth = std::min(MaxWidth, std::max(bar ? 200 : 0, NesTextWidth(text, 1) + 24));
+	const int toastHeight = bar ? MaxHeight : 21;
+	// What the game's own messages take of the screen's height, from the edge they hang on.
+	const int stack = gamestate == GS_LEVEL ?
+		static_cast<int>(C_3DSNotifyOccupied() * 240.0f + 0.5f) : 0;
+	const int x = (400 - toastWidth) / 2;
+	const int y = lod3ds_messages_bottom ? 236 - stack - toastHeight : (stack > 0 ? stack + 2 : 4);
+	if (gpuOverlays)
+	{
+		static F3DSGpuImage *image;
+		static uint32_t drawnSerial, drawnProgress = ~0u;
+		static uint32_t rgba[MaxWidth * MaxHeight];
+		if (image == nullptr) image = I_3DSGpuImageCreate(MaxWidth, MaxHeight);
+		if (image == nullptr) return;
+		const uint32_t progress = static_cast<uint32_t>(OverlayNotificationProgress / 10 + 1);
+		if (drawnSerial != OverlayNotificationSerial || drawnProgress != progress)
+		{
+			drawnSerial = OverlayNotificationSerial;
+			drawnProgress = progress;
+			std::memset(rgba, 0, sizeof(rgba));
+			PaintToast([&](int fx, int fy, int fw, int fh, FOverlayColor color, unsigned alpha)
+			{
+				for (int py = std::max(0, fy); py < std::min(MaxHeight, fy + fh); ++py)
+					for (int px = std::max(0, fx); px < std::min(MaxWidth, fx + fw); ++px)
+						rgba[py * MaxWidth + px] = GpuOverlayPixel(color, alpha);
+			}, toastWidth, toastHeight, text, bar);
+			I_3DSGpuImageUpload(image, rgba, MaxWidth);
+		}
+		I_3DSGpuOverlayImage(image, static_cast<float>(x), static_cast<float>(y),
+			MaxWidth, MaxHeight);
+		return;
+	}
+	if (pixels == nullptr) return;
+	// The canvas may be smaller than the LCD (the render scale); the box keeps its place by
+	// proportion and its text its pixel size.
+	const int canvasX = x * width / 400, canvasY = y * height / 240;
+	PaintToast([&](int fx, int fy, int fw, int fh, FOverlayColor color, unsigned alpha)
+	{
+		NativeTopRect(pixels, pitchBytes, width, height, canvasX + fx, canvasY + fy, fw, fh,
+			color, alpha);
+	}, toastWidth, toastHeight, text, bar);
+}
+
 #include "update/changelog_view.inc"
 
 void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int height,
@@ -4099,6 +4155,7 @@ void ComposeNativeMenuTop(unsigned char *pixels, int pitchBytes, int width, int 
 	}
 	if (gpuOverlays) QueueGpuFpsOverlay();
 	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+	ComposeTopToast(pixels, pitchBytes, width, height, gpuOverlays);
 }
 
 // Outside a level the developer overlay covers the menus too: it is how its STATUS box (the
@@ -4187,12 +4244,6 @@ void DrawBottomOverlay(bool force)
 {
 	const uint64_t now = osGetTime();
 	ExpireOverlayNotification(now);
-	static uint32_t drawnToast = 0;
-	if (drawnToast != OverlayNotificationSerial)
-	{
-		drawnToast = OverlayNotificationSerial;
-		force = true;
-	}
 	static uint64_t drawnInstallBar = 0;
 	const uint64_t installBar = InstallBarSignature();
 	if (drawnInstallBar != installBar)
@@ -5914,6 +5965,7 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 	if (!keepsWorld) DrawNativeMenuTop(pixels, pitchBytes, width, height);
 	if (gpuOverlays) QueueGpuFpsOverlay();
 	else ComposeNativeMenuFps(pixels, pitchBytes, width, height);
+	ComposeTopToast(pixels, pitchBytes, width, height, gpuOverlays);
 }
 
 bool I_3DSNativeMenuVisible()
@@ -6001,6 +6053,7 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 		// at 64 units a pixel stretched to the LCD is 51.2 units a pixel.
 		I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 0x000000ffu);
 		QueueGpuMap(E3DSGpuScreen::Top, 0, 0, 400, 240, 51.2);
+		ComposeTopToast(pixels, pitchBytes, width, height, true);
 		return;
 	}
 	if (automapactive)
@@ -6026,6 +6079,7 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 					mapPixels[sourceOffset + 1] });
 			}
 		}
+		ComposeTopToast(pixels, pitchBytes, width, height, false);
 		return;
 	}
 
@@ -6064,6 +6118,8 @@ void I_3DSComposeGameplayFrame(unsigned char *pixels, int pitchBytes,
 				}
 		}
 	}
+
+	ComposeTopToast(pixels, pitchBytes, width, height, gpuOverlays);
 
 	AActor *camera = players[consoleplayer].camera;
 	if (!crosshairon || camera == nullptr || camera->health <= 0 ||
@@ -6966,7 +7022,7 @@ void I_3DSServiceConsoleLink()
 		relaunchAt = osGetTime() + RelaunchDelayMilliseconds;
 		ConsoleLinkLog("new build installed: relaunching in 10 s");
 	}
-	// While an installer arrives, installs or waits to relaunch, a toast on the touch screen
+	// While an installer arrives, installs or waits to relaunch, a toast on the top screen
 	// says so, with a bar: the bytes received (of the size build_3ds.py announces with ALLO),
 	// then written to the system, then the countdown. An install over the running game never
 	// happens without a warning.

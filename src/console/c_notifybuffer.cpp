@@ -50,7 +50,15 @@ public:
 	void AddString(int printlevel, FString source) override;
 	void Clear() override;
 	void Draw() override;
-
+#ifdef __3DS__
+	int ShownLines() const
+	{
+		int shown = 0;
+		for (const FNotifyText &notify : Text)
+			if (notify.TimeOut != 0 && notify.TimeOut > notify.Ticker) ++shown;
+		return shown;
+	}
+#endif
 };
 
 static FNotifyBuffer NotifyStrings;
@@ -222,6 +230,20 @@ void FNotifyBuffer::Draw()
 		Top = TopGoal;
 	}
 }
+
+#ifdef __3DS__
+// What the messages on screen take of the height, from the edge they hang on (the toasts of
+// diagnostics_3ds.cpp stack beside them).
+float C_3DSNotifyOccupied()
+{
+	const int shown = NotifyStrings.ShownLines();
+	if (shown == 0 || twod == nullptr || twod->GetHeight() <= 0) return 0.f;
+	const int scale = active_con_scaletext(twod, generic_ui);
+	const int lineadv = NotifyFont()->GetHeight() + 4;
+	return std::min(1.f, float((shown * lineadv + (lod3ds_messages_bottom ? 6 : 4)) * scale) /
+		twod->GetHeight());
+}
+#endif
 
 void SetConsoleNotifyBuffer()
 {
