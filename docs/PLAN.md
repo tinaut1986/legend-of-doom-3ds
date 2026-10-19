@@ -61,6 +61,10 @@ on its own topic branch (new session), merges it, then a beta / stable of the li
 is left to debug on the 2DS. Throughout: the 2DS fully playable, noticeable changes first, equivalent
 effects that cost less are fine; #7 and #14 last.
 
+**Owner's wishes, 2026-10-19 (not started):** #28 (the map stops following after some underground
+stairs) and U6-U9 below (the menu after dying; every message on the top screen where MESSAGES says;
+the start-up bars on the touch screen; UPDATE always showing the changelog).
+
 **Start here:**
 0. The owner's interim task: whatever they ask for, on a topic branch cut from `release/v0.3.0`.
    Done: #22 (control schemes), #24 (the black square in the sky over a cave) and #25 (the GC never
@@ -292,6 +296,39 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* in Spanish the owner meets no English in a playthrough's text (dialogue,
   pickups, story, ending), the accents read well in the dialogue box and the pickup line,
   the texts fit on screen, and English is unchanged.
+
+- [ ] **U6** After dying, the menu opens by itself.
+  *Spec:* owner 2026-10-19: when Link dies, the game offers what to do next without a button
+  press: continue from the last save, load another, start a new game (the pause menu's choices
+  that make sense there), in the native menus' style. Today the game waits on the death screen.
+  *Done when:* dying opens that menu after the death animation, each choice works, and B or
+  "continue" does what the owner chooses as the default.
+
+- [ ] **U7** Every message for the player in one place: the top screen, where MESSAGES says.
+  *Spec:* owner 2026-10-19: the toasts (AUTOSAVED, GAME SAVED, install and FTP notices...,
+  `SetOverlayNotification` / `I_3DSToast` in `diagnostics_3ds.cpp`, today on the touch screen)
+  go to the top screen with the game's own messages, in the place OPTIONS -> DISPLAY ->
+  MESSAGES sets (TOP / BOTTOM of the top screen), in the same NES-font band. Update CLAUDE.md's
+  "messages for the player are bottom-screen toasts" in the same change.
+  *Done when:* no message appears on the touch screen during play, the toasts follow MESSAGES,
+  and they do not hide the game's own messages.
+
+- [ ] **U8** The start-up progress bars on the touch screen.
+  *Spec:* owner 2026-10-19: while the game starts, the touch screen is nearly empty and the bars
+  are on the top screen; see whether the loading screen's bars (`I_3DSLoadingScreenStart`,
+  `DrawLoadingProgressOverlay`) can be drawn on the bottom screen instead, the top keeping the
+  Triforce animation. Mind the start-up order (the bottom framebuffer must be set up by then).
+  *Done when:* the bars show on the touch screen from the first frame to the title, the top
+  screen keeps its animation, and start-up is no slower.
+
+- [ ] **U9** UPDATE always shows the changelog on the top screen.
+  *Spec:* owner 2026-10-19: today the notes appear only when an update is offered, so after
+  updating the player cannot read what changed. The UPDATE screen shows them on the top screen
+  every time (`DrawUpdateChangelogTop`, `src/common/platform/3ds/update/changelog_view.inc`), as
+  its CHANGELOG setting says: NEW = the installed version's notes (plus newer ones when an update
+  is there), ALL = every version. With no network, the last notes fetched, or a short message.
+  *Done when:* opening UPDATE with nothing to install shows the installed version's notes, the
+  CHANGELOG setting switches between them, and the offer screen is unchanged.
 
 ## Phase 2: GPU world renderer, 60 fps on New 3DS
 
