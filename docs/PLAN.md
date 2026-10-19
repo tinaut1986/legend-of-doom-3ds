@@ -48,7 +48,6 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
-| `fix/early-exit-sdl-quit` | the start-up message screens froze the console on exit (no `SDL_Quit`) | Pushed, built; waits for the owner's check (force the 64 MB screen, press A) |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -74,7 +73,8 @@ effects that cost less are fine; #7 and #14 last.
    left, R on the right (`fix/bottom-lr-boxes`).
    And #27 (kept open: the trigger is unknown): a New 3DS started in the 64 MB mode does not start
    the game; a start-up screen says to power the console off and on (`fix/new3ds-64mb-warning`, made
-   blocking by `fix/new3ds-64mb-blocking`, checked on the New 3DS 2026-10-19).
+   blocking by `fix/new3ds-64mb-blocking`, checked on the New 3DS 2026-10-19); A on that screen froze
+   the console until `fix/early-exit-sdl-quit` (SDL torn down before exiting; checked the same day).
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
