@@ -49,7 +49,6 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
-| `fix/nes-font-punctuation` | the NES font's missing `( ) ; + * # [ ] _` drawn (they showed as dots in the updater's notes) | Pushed, built; waits for the owner's check |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -61,6 +60,10 @@ the console; the measurements are in the decisions log):
 on its own topic branch (new session), merges it, then a beta / stable of the line, then back to what
 is left to debug on the 2DS. Throughout: the 2DS fully playable, noticeable changes first, equivalent
 effects that cost less are fine; #7 and #14 last.
+
+**Since v0.3.0 (beta, tagged 2026-10-19), in the line:** the NES font draws `( ) ; + * # [ ] _`
+(they showed as dots in the updater's notes; checked on the New 3DS), and the release texts say the
+Old 3DS / 2DS run it.
 
 **Owner's wishes, 2026-10-19 (not started):** #28 (the map stops following after some underground
 stairs) and U6-U9 below (the menu after dying; every message on the top screen where MESSAGES says;
