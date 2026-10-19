@@ -636,50 +636,6 @@ bool BlockingMessageScreen(const char *const english[9], const char *const caste
 	return true;
 }
 
-// An Old 3DS / 2DS cannot run the game yet (it runs out of memory loading the first map): say so
-// on the top screen instead of closing with no word. One CIA serves both families (the SMDH has
-// no New 3DS-only flag), so the check is at run time. Returns true when the screen was shown
-// and the game should exit. Debug builds can show it on a New 3DS: a force-old3ds.txt in the
-// data folder.
-bool UnsupportedConsoleScreen()
-{
-	bool isNew3DS = true;
-	APT_CheckNew3DS(&isNew3DS);
-#if LOD3DS_DEBUG_TOOLS
-	if (isNew3DS)
-	{
-		FILE *forced = std::fopen(LOD3DS_APP_DIR "/force-old3ds.txt", "rb");
-		if (forced != nullptr)
-		{
-			std::fclose(forced);
-			isNew3DS = false;
-		}
-	}
-#endif
-	if (isNew3DS) return false;
-#if LOD3DS_DEBUG_TOOLS
-	// For working on the Old 3DS / 2DS port itself: an allow-old3ds.txt in the data folder lets a
-	// debug build try to run (it may still run out of memory; see fatal.log).
-	if (FILE *allowed = std::fopen(LOD3DS_APP_DIR "/allow-old3ds.txt", "rb"))
-	{
-		std::fclose(allowed);
-		return false;
-	}
-#endif
-
-	static const char *const english[] = {
-		"THIS CONSOLE IS NOT SUPPORTED YET", "",
-		"THE OLD 3DS / 2DS VERSION IS STILL", "IN DEVELOPMENT. WE ARE TRYING",
-		"TO MAKE IT WORK.", "",
-		"FOR NOW IT NEEDS A NEW 3DS.", "", "PRESS A OR START TO EXIT" };
-	static const char *const castellano[] = {
-		"ESTA CONSOLA TODAVIA NO ES COMPATIBLE", "",
-		"LA VERSION PARA OLD 3DS / 2DS SIGUE", "EN DESARROLLO. ESTAMOS INTENTANDO",
-		"QUE FUNCIONE.", "",
-		"DE MOMENTO NECESITA UNA NEW 3DS.", "", "PULSA A O START PARA SALIR" };
-	return BlockingMessageScreen(english, castellano, "unsupported-console-screen");
-}
-
 // A New 3DS / New 2DS XL sometimes starts the game in the 64 MB mode instead of the 124 MB the
 // RSF asks for (#27); reopening it from HOME keeps 64 MB, only powering the console off and on
 // restores it, and the game would die loading a map. So it does not start: it says so and exits.
@@ -7161,7 +7117,9 @@ CCMD(lod3ds_audiocpu)
 }
 #endif
 
-bool I_3DSUnsupportedConsoleScreen()
+bool I_3DSStartupBlockingScreen()
 {
-	return UnsupportedConsoleScreen() || LowMemoryScreen();
+	// The Old 3DS / 2DS run the game since release/v0.2.5 (PLAN P4); only the New 3DS's 64 MB
+	// start is stopped.
+	return LowMemoryScreen();
 }

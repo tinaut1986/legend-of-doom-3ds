@@ -19,7 +19,9 @@ class HardwareStartupContractTests(unittest.TestCase):
         self.assertLess(screen.index("if (I_3DSIsOld3DS()) return false;"),
                         screen.index("osGetMemRegionSize(MEMREGION_APPLICATION)"))
         self.assertIn("constexpr u32 New3DSApplicationMemory = 124u * 1024u * 1024u;", source)
-        self.assertIn("return UnsupportedConsoleScreen() || LowMemoryScreen();", source)
+        # The Old 3DS / 2DS are no longer turned away at start-up.
+        self.assertNotIn("UnsupportedConsoleScreen", source)
+        self.assertNotIn("allow-old3ds.txt", source)
         self.assertNotIn("LowMemoryNotice", source)
 
     def test_early_animation_starts_only_after_sdl_owns_video(self):
