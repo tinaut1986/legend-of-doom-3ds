@@ -468,8 +468,7 @@ bool NativeMenuSupported()
 	if (CurrentMenu == nullptr || menuactive == MENU_Off || DiagnosticProgressActive) return false;
 	// Before ListMenu: the save/load menus derive from it.
 	if (CurrentMenu->IsKindOf("LoadSaveMenu")) return true;
-	if (CurrentMenu->IsKindOf("MessageBoxMenu"))
-		return CurrentMenu->IntVar(FName("mMessageMode")) == 0;
+	if (CurrentMenu->IsKindOf("MessageBoxMenu")) return true;
 	if (CurrentMenu->IsKindOf("ListMenu"))
 	{
 		auto *descriptor = CurrentMenu->PointerVar<DListMenuDescriptor>(FName("mDesc"));
@@ -676,7 +675,7 @@ TArray<FString> NesWrap(const char *text, unsigned columns, unsigned maximumLine
 	return lines;
 }
 
-// A two-choice dialog in the middle of the touch screen.
+// A two-choice dialog in the middle of the touch screen; one centred button when `right` is null.
 void DrawNesDialog(unsigned char *framebuffer, const char *message, const char *left,
 	const char *right, int selected)
 {
@@ -691,11 +690,11 @@ void DrawNesDialog(unsigned char *framebuffer, const char *message, const char *
 		y += 12;
 	}
 	const char *labels[] = { left, right };
-	for (int choice = 0; choice < 2; ++choice)
+	for (int choice = 0; choice < (right != nullptr ? 2 : 1); ++choice)
 	{
-		const int x = choice == 0 ? 52 : 172;
+		const int x = right == nullptr ? 112 : choice == 0 ? 52 : 172;
 		const int top = boxTop + boxHeight - 38;
-		const bool active = choice == selected;
+		const bool active = right == nullptr || choice == selected;
 		NesBox(framebuffer, x, top, 96, 24, active ? NesPanel : NesTabIdle, active ? NesBlue : NesGray);
 		NesText(framebuffer, x + (96 - NesTextWidth(labels[choice], 1)) / 2, top + 8, labels[choice], 1,
 			active ? NesGold : NesWhite);
@@ -752,6 +751,13 @@ void DrawNativeMessageBox(unsigned char *framebuffer)
 {
 	FString message = CurrentMenu->StringVar(FName("NativeMessageText"));
 	message.ToUpper();
+	// Message mode 1 is a notice: any button closes it.
+	if (CurrentMenu->IntVar(FName("mMessageMode")) != 0)
+	{
+		DrawNesDialog(framebuffer, message.GetChars(), Tr("OK"), nullptr, 0);
+		NesHint(framebuffer, "A OK");
+		return;
+	}
 	DrawNesDialog(framebuffer, message.GetChars(), Tr("YES"), Tr("NO"),
 		CurrentMenu->IntVar(FName("messageSelection")));
 	NesHint(framebuffer, "LEFT RIGHT CHOOSE   A OK   B BACK");
