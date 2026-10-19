@@ -163,8 +163,11 @@ into the release body between `<!-- lod-notes -->` markers; the console's update
 (`src/common/platform/3ds/update/`, a 42-column view) shows that block. The marker
 must stay identical in the workflow and the updater.
 
-A **stable** release lists everything since the previous *stable* tag, betas included; a
-**beta** lists only what is new since the previous tag.
+Every release lists only what is new since the previous tag, beta or stable: the updater
+shows the notes of every release (betas too, on both channels) between the installed version and
+the offered one. **Exception:** a player whose installed build predates that updater (up to
+`v0.3.1`'s own notes: players on `v0.2.4` / `v0.3.0`) still sees only the offered stable's block,
+so the first stable with this updater, `v0.3.1`, lists everything since `v0.2.4`.
 
 ### The channel is baked into the binary
 
