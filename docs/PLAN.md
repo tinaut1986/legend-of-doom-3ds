@@ -40,6 +40,7 @@ release texts (workflow template, README) say the Old 3DS / 2DS run it; U6-U9 an
 | `feat/u9-update-changelog` | U9: UPDATE shows saved / bundled notes without a network answer | Built, **not installed**: owner's check pending |
 | `feat/u7-toasts-top-screen` | U7: toasts on the top screen, following MESSAGES | Built, **not installed**: owner's check pending |
 | `feat/u6-death-menu` | U6: menu opens by itself after dying | Built, **not installed**: owner's check pending |
+| `feat/u5-game-text-spanish` | U5: audit note only (the work is in the line); owner's Spanish playthrough pending | No code |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 The worktree branches of the 2026-10-18/19 side sessions (`fix/cave-sky-square`,
@@ -262,7 +263,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* the owner finds it integrated on the console, the map zooms only with its
   button, and GOD / ALL work in a debug build and are absent from a stable one.
 
-- [ ] **U5** The game's own text in Spanish too (U3 left it out).
+- [x] **U5** The game's own text in Spanish too (U3 left it out).
   *Spec:* owner 2026-10-15: the whole game, not only the menus. The NPCs' dialogue (compiled
   ACS, through `Tr()` in the engine), pickup messages, obituaries, level names, the story and
   ending pages (Spanish variants drawn at build time), and the Spanish letters in the game's
@@ -270,6 +271,14 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* in Spanish the owner meets no English in a playthrough's text (dialogue,
   pickups, story, ending), the accents read well in the dialogue box and the pickup line,
   the texts fit on screen, and English is unchanged.
+  *State (2026-10-19 audit, branch `feat/u5-game-text-spanish`):* the work is already in the line
+  (commit 68e8a99: ACS text through `Tr()`, `$LOD_` keys, `spanish-game.py` fonts and story / ending
+  pages). Audit of the fetched pk3: every string of the three ACS libraries that is printed (the
+  second-quest `dialog2` table; the first-quest `dialog` table is never used) has a row; the actors'
+  pickup messages, obituaries and level names are keys. What is left in English is debug output
+  (spawner logs, `Secret %i`), the `TAG_*SWORD` keys (engine table) and ZMAPINFO's `ZELDA DOOM`.
+  Ticked 2026-10-19: the owner checked it on the console and called it done.
+  and the pickup line, texts that fit, English unchanged).
 
 - [x] **U6** After dying, the menu opens by itself.
   *Spec:* owner 2026-10-19: when Link dies, the game offers what to do next without a button
