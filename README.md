@@ -10,7 +10,7 @@
 > conversion of the original *The Legend of Zelda* by DeTwelve Games. It has its own versions
 > and releases, and installs as its own app next to the original port.
 
-**[v0.2.0 is the latest stable release](https://github.com/tinaut1986/legend-of-doom-3ds/releases/tag/v0.2.0)**, for **New Nintendo 3DS, New 3DS XL and New 2DS XL**. Old Nintendo 3DS / 2DS support is in progress (see [docs/PLAN.md](docs/PLAN.md)) and is not in a release yet.
+**[v0.2.4 is the latest stable release](https://github.com/tinaut1986/legend-of-doom-3ds/releases/tag/v0.2.4)**, for **New Nintendo 3DS, New 3DS XL and New 2DS XL**. **[v0.3.0 (beta)](https://github.com/tinaut1986/legend-of-doom-3ds/releases/tag/v0.3.0)** also runs on the **Old Nintendo 3DS / 2DS** (see [docs/PLAN.md](docs/PLAN.md)).
 
 The port uses GZDoom 4.7.1 and Freedoom: Phase 2. No NES ROM or commercial Doom IWAD is required.
 

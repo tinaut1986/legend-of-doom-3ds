@@ -160,7 +160,7 @@ jobs:
             echo "## Downloads"
             echo
             echo "- [legend-of-doom-3ds-v${V}.cia](${BASE}/legend-of-doom-3ds-v${V}.cia): install with FBI (or scan the QR code)."
-            echo "  New Nintendo 3DS family. Audio needs your console's DSP firmware at \`sdmc:/3ds/dspfirm.cdc\`."
+            echo "  Every Nintendo 3DS / 2DS model, New and Old. Audio needs your console's DSP firmware at \`sdmc:/3ds/dspfirm.cdc\`."
             echo "- Debug symbols and the build manifest, to read diagnostic dumps."
             echo
             echo "Installs as its own app, next to the original port; its files live in"
