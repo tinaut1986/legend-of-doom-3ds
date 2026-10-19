@@ -24,7 +24,8 @@ change (what goes where: the table in `CLAUDE.md`).
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.2.5` (renamed from `release/v0.2.4` right after its tag).
+**Release line:** `release/v0.3.0` (renamed from `release/v0.2.5` on 2026-10-19, the owner's minor bump for the
+beta: the Old 3DS / 2DS run the game, control schemes). After its tag it becomes `release/v0.3.1`.
 Published: **`v0.2.4`** stable (2026-10-15, built by the tag workflow), `v0.2.3` and `v0.2.2` betas,
 **`v0.2.1`** stable, **`v0.2.0`** stable (the first), `v0.1.0` beta. `main` holds `v0.2.4`.
 
@@ -61,7 +62,7 @@ is left to debug on the 2DS. Throughout: the 2DS fully playable, noticeable chan
 effects that cost less are fine; #7 and #14 last.
 
 **Start here:**
-0. The owner's interim task: whatever they ask for, on a topic branch cut from `release/v0.2.5`.
+0. The owner's interim task: whatever they ask for, on a topic branch cut from `release/v0.3.0`.
    Done: #22 (control schemes), #24 (the black square in the sky over a cave) and #25 (the GC never
    ran on the 2DS after a long play: stutters, music gaps) merged 2026-10-18 after the owner's check
    on the 2DS; the New 3DS (CLASSIC by default) still to be played before the release. #26 (the 2DS's
