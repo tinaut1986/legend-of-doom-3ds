@@ -321,7 +321,8 @@ const char *Localized(const FString &text)
 	return text.IsNotEmpty() && text[0] == '$' ? GStrings.localize(text.GetChars()) : Tr(text.GetChars());
 }
 
-enum class ENativeRowKind : uint8_t { Header, Toggle, Choice, Slider, Submenu, Command };
+// Fixed: an input that cannot be remapped and what it does (CONTROLS), never selected.
+enum class ENativeRowKind : uint8_t { Header, Toggle, Choice, Slider, Submenu, Command, Fixed };
 
 struct FNativeRow
 {
@@ -542,13 +543,6 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 	DescribeOptionMenu(descriptor, rows);
 	const int currentTab = OptionTabIndex(descriptor->mMenuName);
 
-	if (currentTab < 0)
-	{
-		// BUTTONS: the scheme it edits after the title (#22).
-		FString title = Localized(descriptor->mTitle);
-		title << ": " << Tr(I_3DSButtonCameraScheme() ? "BUTTON CAMERA" : "CLASSIC");
-		NesText(framebuffer, 16, 10, title.GetChars(), 1, NesGold);
-	}
 	for (int tab = 0; currentTab >= 0 && tab < OptionTabCount; ++tab)
 	{
 		const bool active = tab == currentTab;
@@ -558,29 +552,81 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 			Tr(OptionTabTitles[tab]), 1, active ? NesGold : NesGray);
 		AddNativeTouchZone(x, 0, x + 76, 28, ENativeTouch::Tab, tab);
 	}
+	if (currentTab < 0) NesCenteredText(framebuffer, 6, Localized(descriptor->mTitle), 1, NesRed);
 
-	// Nine rows fit; past that the list scrolls to keep the selection in view.
-	constexpr int FirstRowY = 36;
+	// A choice's value between arrows, right-aligned, and its touch zones.
+	auto drawChoice = [&](const FNativeRow &row, int y, int zoneLeft, int zoneTop, int zoneBottom) {
+		const int width = NesTextWidth(row.Value.GetChars(), 1);
+		const int leftArrow = 296 - width - 14;
+		NesText(framebuffer, 296 - width, y, row.Value.GetChars(), 1, NesWhite);
+		NesText(framebuffer, leftArrow, y, "<", 1, NesGray);
+		NesText(framebuffer, 298, y, ">", 1, NesGray);
+		AddNativeTouchZone(leftArrow - 12, zoneTop, leftArrow + 12, zoneBottom, ENativeTouch::Left, row.Item);
+		AddNativeTouchZone(290, zoneTop, 320, zoneBottom, ENativeTouch::Right, row.Item);
+		AddNativeTouchZone(zoneLeft, zoneTop, 312, zoneBottom, ENativeTouch::Right, row.Item);
+	};
+
+	// SCHEME AND BUTTONS (#22): the scheme is the parent, a panel on top; the buttons it sets hang
+	// below it, indented on a guide line. Changing the scheme changes the rows at once.
+	int parentRow = -1;
+	if (currentTab < 0)
+	{
+		for (unsigned i = 0; i < rows.Size(); ++i)
+		{
+			FBaseCVar *cvar = ItemCVar(descriptor->mItems[rows[i].Item]);
+			if (cvar != nullptr && strcmp(cvar->GetName(), "lod3ds_control_scheme") == 0)
+				parentRow = static_cast<int>(i);
+		}
+	}
+	if (parentRow >= 0)
+	{
+		const FNativeRow &parent = rows[parentRow];
+		const bool selected = parent.Item == descriptor->mSelectedItem;
+		NesBox(framebuffer, 8, 20, 304, 24, selected ? NesPanel : NesTabIdle, selected ? NesGold : NesBlue);
+		NesText(framebuffer, 16, 28, parent.Label.GetChars(), 1, NesGold);
+		drawChoice(parent, 28, 8, 20, 44);
+		rows.Delete(parentRow);
+		// Then what the inputs that cannot be remapped do, before the buttons.
+		static constexpr const char *FixedInputs[][2] = {
+			{ "CIRCLE PAD", "MOVE / STRAFE" }, { "C-STICK / TOUCH", "LOOK" },
+			{ "START", "PAUSE" }, { "SELECT", "MENU / OVERLAY" } };
+		for (unsigned i = 0; i < sizeof(FixedInputs) / sizeof(FixedInputs[0]); ++i)
+			rows.Insert(i, FNativeRow{ ENativeRowKind::Fixed, -1, Tr(FixedInputs[i][0]), Tr(FixedInputs[i][1]), 0.0f });
+	}
+	const int left = parentRow >= 0 ? 22 : 8;
+
+	// Nine rows fit (eight under the scheme); past that the list scrolls to keep the selection in view.
+	const int firstRowY = parentRow >= 0 ? 58 : 36;
 	constexpr int RowPitch = 20;
-	constexpr int VisibleRows = 9;
+	const int visibleRows = parentRow >= 0 ? 8 : 9;
 	int selectedRow = 0;
 	for (unsigned i = 0; i < rows.Size(); ++i)
 		if (rows[i].Item == descriptor->mSelectedItem) selectedRow = static_cast<int>(i);
-	const int firstRow = std::clamp(selectedRow - VisibleRows + 1, 0,
-		std::max(0, static_cast<int>(rows.Size()) - VisibleRows));
+	const int firstRow = std::clamp(selectedRow - visibleRows + 1, 0,
+		std::max(0, static_cast<int>(rows.Size()) - visibleRows));
+	const int lastRow = std::min<int>(rows.Size(), firstRow + visibleRows);
+	if (parentRow >= 0 && lastRow > firstRow)
+		OverlayRect(framebuffer, 14, 44, 1, firstRowY + (lastRow - 1 - firstRow) * RowPitch + 4 - 44, NesGray);
 
-	for (int i = firstRow; i < std::min<int>(rows.Size(), firstRow + VisibleRows); ++i)
+	for (int i = firstRow; i < lastRow; ++i)
 	{
 		const FNativeRow &row = rows[i];
-		const int y = FirstRowY + (i - firstRow) * RowPitch;
+		const int y = firstRowY + (i - firstRow) * RowPitch;
 		const bool selected = row.Item == descriptor->mSelectedItem;
 		if (row.Kind == ENativeRowKind::Header)
 		{
-			NesText(framebuffer, 16, y, row.Label.GetChars(), 1, NesGray);
+			NesText(framebuffer, left + 8, y, row.Label.GetChars(), 1, NesGray);
 			continue;
 		}
-		if (selected) NesBox(framebuffer, 8, y - 5, 304, 18, NesPanel, NesBlue);
-		NesText(framebuffer, 16, y, row.Label.GetChars(), 1, selected ? NesGold : NesWhite);
+		if (parentRow >= 0) OverlayRect(framebuffer, 14, y + 3, left - 14, 1, NesGray);
+		if (row.Kind == ENativeRowKind::Fixed)
+		{
+			NesText(framebuffer, left + 8, y, row.Label.GetChars(), 1, NesGray);
+			NesText(framebuffer, 304 - NesTextWidth(row.Value.GetChars(), 1), y, row.Value.GetChars(), 1, NesGray);
+			continue;
+		}
+		if (selected) NesBox(framebuffer, left, y - 5, 312 - left, 18, NesPanel, NesBlue);
+		NesText(framebuffer, left + 8, y, row.Label.GetChars(), 1, selected ? NesGold : NesWhite);
 		const int zoneTop = y - 5;
 		const int zoneBottom = y - 5 + RowPitch;
 		switch (row.Kind)
@@ -591,21 +637,12 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 			OverlayRect(framebuffer, 270, y - 2, 34, 12, on ? NesGreen : NesOff);
 			NesText(framebuffer, 270 + (34 - NesTextWidth(row.Value.GetChars(), 1)) / 2, y,
 				row.Value.GetChars(), 1, NesWhite);
-			AddNativeTouchZone(8, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
+			AddNativeTouchZone(left, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
 			break;
 		}
 		case ENativeRowKind::Choice:
-		{
-			const int width = NesTextWidth(row.Value.GetChars(), 1);
-			const int leftArrow = 296 - width - 14;
-			NesText(framebuffer, 296 - width, y, row.Value.GetChars(), 1, NesWhite);
-			NesText(framebuffer, leftArrow, y, "<", 1, NesGray);
-			NesText(framebuffer, 298, y, ">", 1, NesGray);
-			AddNativeTouchZone(leftArrow - 12, zoneTop, leftArrow + 12, zoneBottom, ENativeTouch::Left, row.Item);
-			AddNativeTouchZone(290, zoneTop, 320, zoneBottom, ENativeTouch::Right, row.Item);
-			AddNativeTouchZone(8, zoneTop, 312, zoneBottom, ENativeTouch::Right, row.Item);
+			drawChoice(row, y, left, zoneTop, zoneBottom);
 			break;
-		}
 		case ENativeRowKind::Slider:
 		{
 			// Ten cells in half steps: a volume step (0.05) is half a cell.
@@ -619,13 +656,13 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 				else if (halves == segment * 2 + 1) OverlayRect(framebuffer, x, y, 3, 8, NesRed);
 			}
 			AddNativeTouchZone(220, zoneTop, 308, zoneBottom, ENativeTouch::Slider, row.Item);
-			AddNativeTouchZone(8, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
+			AddNativeTouchZone(left, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
 			break;
 		}
 		case ENativeRowKind::Submenu:
 		case ENativeRowKind::Command:
 			NesText(framebuffer, 298, y, ">", 1, NesGray);
-			AddNativeTouchZone(8, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
+			AddNativeTouchZone(left, zoneTop, 312, zoneBottom, ENativeTouch::Activate, row.Item);
 			break;
 		default:
 			break;

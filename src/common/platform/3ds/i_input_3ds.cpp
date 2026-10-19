@@ -25,7 +25,12 @@ CUSTOM_CVAR(Int, lod3ds_camera_mode, 2, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
 	else if (self > 2) self = 2;
 }
 
-CVAR(Bool, lod3ds_sprint_x, true, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+// OPTIONS -> CONTROL -> SPRINT AT FULL LIFE: 0 OFF, 1 BUTTON (the button bound to it, or the Circle
+// Pad at its edge in BUTTON CAMERA), 2 AUTO (always, while Link is at full life).
+CUSTOM_CVAR(Int, lod3ds_sprint_mode, 2, CVAR_ARCHIVE | CVAR_GLOBALCONFIG)
+{
+	if (self < 0 || self > 2) self = 2;
+}
 
 // ---- Control schemes (#22) ------------------------------------------------------------------
 //
@@ -372,7 +377,7 @@ float I_3DSCStickSensitivity()
 	return std::clamp(static_cast<float>(lod3ds_cstick_sensitivity), 0.25f, 2.0f);
 }
 
-bool I_3DSSprintWithXEnabled()
+int I_3DSSprintMode()
 {
-	return lod3ds_sprint_x;
+	return lod3ds_sprint_mode;
 }
