@@ -7,6 +7,7 @@
 #include "gpu_world_3ds.h"
 #include "gpu_3ds.h"
 #include "i_input_3ds.h"
+#include "memory_3ds.h"
 #include "lod3ds_version.h"
 
 #include <3ds.h>
@@ -6862,8 +6863,41 @@ int I_3DSUpdateAction(int action)
     return int(status.state) | (Updater_Busy() ? 256 : 0);
 }
 
+// A New 3DS sometimes starts the game in the 64 MB mode instead of the 124 MB the RSF asks
+// for, and only a reboot brings it back; the game would then die loading a map. Say so once,
+// on the title menus, before the update offer. Debug builds can show it with a
+// force-low-memory.txt in the data folder.
+bool LowMemoryNotice()
+{
+	enum { Unchecked, Pending, Done };
+	static int stage = Unchecked;
+	if (stage == Unchecked)
+	{
+		bool lowMemory = !I_3DSIsOld3DS() &&
+			osGetMemRegionSize(MEMREGION_APPLICATION) < 124u * 1024u * 1024u;
+#if LOD3DS_DEBUG_TOOLS
+		if (FILE *forced = std::fopen(LOD3DS_APP_DIR "/force-low-memory.txt", "rb"))
+		{
+			std::fclose(forced);
+			lowMemory = true;
+		}
+#endif
+		stage = lowMemory ? Pending : Done;
+	}
+	if (stage == Done) return false;
+	// The title menus, with the string table and the menus up.
+	if ((gamestate != GS_DEMOSCREEN && gamestate != GS_TITLELEVEL) || menuactive != MENU_Off)
+		return true;
+	stage = Done;
+	I_3DSStartupLog("low-memory-notice");
+	M_StartMessage(Tr("THE CONSOLE GAVE THE GAME TOO LITTLE MEMORY. LOADING WILL FAIL. "
+		"TURN THE CONSOLE OFF AND ON BEFORE PLAYING."), 1);
+	return true;
+}
+
 void I_3DSServiceUpdater()
 {
+	if (LowMemoryNotice()) return;
     // Installed: start the new version as the game closes.
     if (Updater_ShouldClose() && !Updater_Busy())
     {

@@ -71,6 +71,8 @@ effects that cost less are fine; #7 and #14 last.
    one per line (`fix/notify-lines`), and one CONTROLS screen with the scheme as parent plus sprint
    OFF / BUTTON / AUTO, AUTO by default (`feat/controls-screen`), and the bottom screen's L box on the
    left, R on the right (`fix/bottom-lr-boxes`).
+   And `fix/new3ds-64mb-warning` (#27, kept open: the trigger is unknown): a New 3DS started in the
+   64 MB mode gets a notice on the title menus to power the console off and on.
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
