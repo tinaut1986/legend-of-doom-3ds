@@ -229,7 +229,7 @@ diff --git a/MENUDEF b/MENUDEF
 index c7c6d33..dffcba4 100644
 --- a/MENUDEF
 +++ b/MENUDEF
-@@ -1,50 +1,198 @@
+@@ -1,50 +1,211 @@
  DEFAULTLISTMENU
  {
  	// Font "ZeldFNT", "Untranslated"
@@ -287,6 +287,19 @@ index c7c6d33..dffcba4 100644
 +    TextItem "LOAD GAME", "l", "LoadGameMenu", 0
 +    TextItem "SAVE GAME", "s", "SaveGameMenu", 0
 +    TextItem "UPDATE", "u", "LegendUpdateMenu", 0
++    TextItem "QUIT GAME", "q", "QuitMenu", 0
++}
++
++// Opens by itself when Link has died (G_Ticker); "LegendContinue" is M_SetSpecialMenu's.
++LISTMENU "LegendDeathMenu"
++{
++    Position 125, 60
++    Font "NewSmallFont", "White"
++    Linespacing 16
++
++    TextItem "CONTINUE", "c", "LegendContinue"
++    TextItem "LOAD GAME", "l", "LoadGameMenu", 0
++    TextItem "NEW GAME", "n", "PlayerclassMenu"
 +    TextItem "QUIT GAME", "q", "QuitMenu", 0
 +}
 +
@@ -940,7 +953,7 @@ new file mode 100644
 index 0000000..cadb9e7
 --- /dev/null
 +++ b/language.csv
-@@ -0,0 +1,329 @@
+@@ -0,0 +1,331 @@
 +default,Identifier,Remarks,Filter,es esm esn esg esc esa esd esv eso esr ess esf esl esy esz esb ese esh esi esu
 +,,"The 3DS port's interface (PLAN U3): the English text is also the key, see Tr() in native_menu_3ds.inc",,
 +-LIFE-,LOD_LIFE,,,-VIDA-
@@ -1270,6 +1283,8 @@ index 0000000..cadb9e7
 +TURN LEFT,LOD_TURN_LEFT,,,GIRAR A LA IZQ.
 +TURN RIGHT,LOD_TURN_RIGHT,,,GIRAR A LA DCHA.
 +BUTTON,LOD_BUTTON,,,BOTÓN
++CONTINUE,LOD_CONTINUE,,,CONTINUAR
++GAME OVER,LOD_GAME_OVER,,,FIN DEL JUEGO
 diff --git a/actors/items/Fairy.zs b/actors/items/Fairy.zs
 index 1cced56..1fbbfdb 100644
 --- a/actors/items/Fairy.zs

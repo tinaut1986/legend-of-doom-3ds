@@ -91,6 +91,17 @@ FNewGameStartup NewGameStartupInfo;
 bool M_SetSpecialMenu(FName& menu, int param)
 {
 	// some menus need some special treatment
+#ifdef __3DS__
+	if (menu == FName("LegendContinue"))
+	{
+		// The death menu's CONTINUE (LegendDeathMenu in MENUDEF): what USE does on the death screen,
+		// the last save is loaded, or the level starts again when there is none.
+		player_t &dead = players[consoleplayer];
+		if (dead.playerstate == PST_DEAD) dead.playerstate = PST_REBORN;
+		M_ClearMenus();
+		return false;
+	}
+#endif
 	switch (menu.GetIndex())
 	{
 	case NAME_Mainmenu:

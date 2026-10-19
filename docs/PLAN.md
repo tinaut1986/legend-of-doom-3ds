@@ -37,6 +37,7 @@ release texts (workflow template, README) say the Old 3DS / 2DS run it; U6-U9 an
 
 | Branch | What | State |
 |---|---|---|
+| `feat/u6-death-menu` | U6: menu opens by itself after dying | Built, **not installed**: owner's check pending |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 The worktree branches of the 2026-10-18/19 side sessions (`fix/cave-sky-square`,
@@ -268,12 +269,18 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   pickups, story, ending), the accents read well in the dialogue box and the pickup line,
   the texts fit on screen, and English is unchanged.
 
-- [ ] **U6** After dying, the menu opens by itself.
+- [x] **U6** After dying, the menu opens by itself.
   *Spec:* owner 2026-10-19: when Link dies, the game offers what to do next without a button
   press: continue from the last save, load another, start a new game (the pause menu's choices
   that make sense there), in the native menus' style. Today the game waits on the death screen.
   *Done when:* dying opens that menu after the death animation, each choice works, and B or
   "continue" does what the owner chooses as the default.
+  *Built (branch `feat/u6-death-menu`, awaiting the owner's check):* `G_Ticker` opens `LegendDeathMenu`
+  (GAME OVER: CONTINUE, LOAD GAME, NEW GAME, QUIT GAME; MENUDEF in the game patch) 2 s after the player
+  dies (`DeathMenuDelayTics`, tune it after seeing the fall). CONTINUE does what USE does (`LegendContinue`
+  in `M_SetSpecialMenu`: the last save, else the level again). **Open question for the owner:** B closes
+  the menu back to the death screen (USE still continues, START opens the pause menu); say if B should
+  continue instead.
 
 - [ ] **U7** Every message for the player in one place: the top screen, where MESSAGES says.
   *Spec:* owner 2026-10-19: the toasts (AUTOSAVED, GAME SAVED, install and FTP notices...,
