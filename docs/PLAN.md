@@ -48,6 +48,7 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
+| `fix/new3ds-64mb-blocking` | #27: the 64 MB notice becomes a blocking start-up screen (exit only); never on the Old 3DS / 2DS | Pushed, built (`b5a8192c1354`); waits for the owner's check |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**

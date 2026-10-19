@@ -233,7 +233,8 @@ int main (int argc, char **argv)
 	// dump 00000101, where a pre-SDL CPU write targeted protected VRAM.
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) >= 0)
 	{
-		// An Old 3DS / 2DS gets a message instead of the memory failure that follows.
+		// An unsupported console, or a New 3DS in its 64 MB mode, gets a message instead of the
+		// memory failure that follows.
 		if (I_3DSUnsupportedConsoleScreen()) return 0;
 		I_3DSLoadingScreenStart();
 	}
