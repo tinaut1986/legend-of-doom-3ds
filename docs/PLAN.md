@@ -48,7 +48,6 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
-| `fix/bottom-lr-boxes` | the bottom screen's L box on the left, R on the right | Pushed, built; waits for the owner's check |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -70,7 +69,8 @@ effects that cost less are fine; #7 and #14 last.
    hearing it live by cvar; the build itself not yet played.
    Also merged 2026-10-19 after the owner's check on the New 3DS (`d7dd0a364fe6`): the game's messages
    one per line (`fix/notify-lines`), and one CONTROLS screen with the scheme as parent plus sprint
-   OFF / BUTTON / AUTO, AUTO by default (`feat/controls-screen`).
+   OFF / BUTTON / AUTO, AUTO by default (`feat/controls-screen`), and the bottom screen's L box on the
+   left, R on the right (`fix/bottom-lr-boxes`).
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
