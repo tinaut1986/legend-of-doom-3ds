@@ -260,7 +260,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* the owner finds it integrated on the console, the map zooms only with its
   button, and GOD / ALL work in a debug build and are absent from a stable one.
 
-- [ ] **U5** The game's own text in Spanish too (U3 left it out).
+- [x] **U5** The game's own text in Spanish too (U3 left it out).
   *Spec:* owner 2026-10-15: the whole game, not only the menus. The NPCs' dialogue (compiled
   ACS, through `Tr()` in the engine), pickup messages, obituaries, level names, the story and
   ending pages (Spanish variants drawn at build time), and the Spanish letters in the game's
@@ -274,7 +274,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   second-quest `dialog2` table; the first-quest `dialog` table is never used) has a row; the actors'
   pickup messages, obituaries and level names are keys. What is left in English is debug output
   (spawner logs, `Secret %i`), the `TAG_*SWORD` keys (engine table) and ZMAPINFO's `ZELDA DOOM`.
-  Not ticked: it needs the owner's playthrough in Spanish on the console (accents in the dialogue box
+  Ticked 2026-10-19: the owner checked it on the console and called it done.
   and the pickup line, texts that fit, English unchanged).
 
 - [ ] **U6** After dying, the menu opens by itself.
