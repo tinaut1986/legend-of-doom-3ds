@@ -5824,9 +5824,9 @@ void I_3DSPresentNativeMenu(unsigned char *pixels, int pitchBytes, int width, in
 		const unsigned brightness = NativeMenuCurrentBrightness();
 		if (brightness != 255u)
 			I_3DSGpuOverlayRect(0.0f, 0.0f, 400.0f, 240.0f, 255u - brightness);	// 0xRRGGBBAA: black
-		if (NativeSaveLoadMenuVisible())
+		if (NativeSaveLoadMenuVisible() || (CurrentMenu != nullptr && CurrentMenu->IsKindOf("LegendUpdateMenu")))
 		{
-			// The selected save's picture and text, drawn on a transparent layer and shown over
+			// The selected save's picture (or the update menu's changelog) and text, drawn on a transparent layer and shown over
 			// the dimmed world; uploaded to the GPU only when it changes.
 			static std::vector<unsigned char> layer;
 			static std::vector<uint32_t> rgba;
