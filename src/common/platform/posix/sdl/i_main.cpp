@@ -234,7 +234,13 @@ int main (int argc, char **argv)
 	if (SDL_InitSubSystem(SDL_INIT_VIDEO) >= 0)
 	{
 		// A New 3DS in its 64 MB mode gets a message instead of the memory failure that follows.
-		if (I_3DSStartupBlockingScreen()) return 0;
+		if (I_3DSStartupBlockingScreen())
+		{
+			// As the normal exit does: leaving with SDL's video (gfx) still up froze the console
+			// when A closed the message (2026-10-19).
+			SDL_Quit();
+			return 0;
+		}
 		I_3DSLoadingScreenStart();
 	}
 	I_3DSStartupLog("sdl-core-ready");
