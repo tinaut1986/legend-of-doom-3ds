@@ -48,6 +48,14 @@ class LanguageContractTests(unittest.TestCase):
         missing = sorted(text for text in literals if not spanish.get(key(text)))
         self.assertEqual(missing, [])
 
+    def test_nes_font_has_the_release_notes_punctuation(self):
+        # The NES font draws what it lacks as a dot: the release notes' "(...);" did (2026-10-19).
+        source = (ROOT / "src/common/platform/3ds/native_menu_3ds.inc").read_text(encoding="utf-8")
+        table = source[source.index("NesExtraAscii[] = {"):]
+        table = table[:table.index("};")]
+        for character in "():;/+*#[]_%<>":
+            self.assertIn("{ '%s'," % character, table, character)
+
     def test_keys_follow_tr(self):
         for row in language_rows()[1:]:
             if row and row[1]:
