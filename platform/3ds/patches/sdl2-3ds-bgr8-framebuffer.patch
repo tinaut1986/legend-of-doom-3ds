@@ -1,0 +1,24 @@
+diff --git a/src/video/n3ds/SDL_n3dsvideo.c b/src/video/n3ds/SDL_n3dsvideo.c
+index bb80f9c18..eaf111e47 100644
+--- a/src/video/n3ds/SDL_n3dsvideo.c
++++ b/src/video/n3ds/SDL_n3dsvideo.c
+@@ -56,8 +56,8 @@ static const struct
+     SDL_PixelFormatEnum pixfmt;
+     GSPGPU_FramebufferFormat gspfmt;
+ } format_map[] = {
++    { SDL_PIXELFORMAT_BGR24, GSP_BGR8_OES }, /* the default mode: first */
+     { SDL_PIXELFORMAT_RGBA8888, GSP_RGBA8_OES },
+-    { SDL_PIXELFORMAT_BGR24, GSP_BGR8_OES },
+     { SDL_PIXELFORMAT_RGB565, GSP_RGB565_OES },
+     { SDL_PIXELFORMAT_RGBA5551, GSP_RGB5_A1_OES },
+     { SDL_PIXELFORMAT_RGBA4444, GSP_RGBA4_OES }
+@@ -127,7 +127,8 @@ static int N3DS_VideoInit(_THIS)
+ {
+     SDL_VideoData *driverdata = (SDL_VideoData *)_this->driverdata;
+ 
+-    gfxInit(GSP_RGBA8_OES, GSP_RGBA8_OES, false);
++    /* 24-bit framebuffers: the HOME menu cannot capture 32-bit ones and shows black. */
++    gfxInit(GSP_BGR8_OES, GSP_BGR8_OES, false);
+     hidInit();
+ 
+     driverdata->top_display = AddN3DSDisplay(GFX_TOP);

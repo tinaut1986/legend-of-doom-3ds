@@ -34,9 +34,10 @@ class SaveDisplayTests(unittest.TestCase):
 #include <cstring>
 #include <vector>
 using u16 = uint16_t;
-constexpr int GFX_TOP=0, GFX_LEFT=0, GSP_RGBA8_OES=0;
+constexpr int GFX_TOP=0, GFX_LEFT=0, GSP_BGR8_OES=1;
 #define R_FAILED(x) ((x)<0)
-constexpr size_t bytes=400*240*4;
+constexpr size_t bytes=400*240*3;
+constexpr size_t TopFramebufferBytes=bytes;
 unsigned char buffers[2][bytes] = {};
 unsigned back=1;
 bool fenced=false, invalidated=false, badFormat=false;
@@ -47,7 +48,7 @@ void I_PolyWaitForPresent3DS() { fenced=true; }
 void gspWaitForVBlank() { assert(fenced); }
 int GSPGPU_ImportDisplayCaptureInfo(GSPGPU_CaptureInfo *c) {
     assert(fenced);
-    c->screencapture[0]={reinterpret_cast<uint32_t*>(buffers[0]), badFormat ? 1u : 0u, 960};
+    c->screencapture[0]={reinterpret_cast<uint32_t*>(buffers[0]), badFormat ? 0u : 1u, 720};
     return 0;
 }
 int GSPGPU_InvalidateDataCache(void *p, size_t n) {

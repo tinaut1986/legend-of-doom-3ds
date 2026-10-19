@@ -209,12 +209,13 @@ u32 TextureTransferFlags()
 		GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO);
 }
 
+// The screens' framebuffers are 24-bit (the SDL patch): HOME cannot capture 32-bit ones.
 u32 OutputTransferFlags()
 {
 	return GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(0) |
 		GX_TRANSFER_RAW_COPY(0) |
 		GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-		GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
+		GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB8) |
 		GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO);
 }
 
@@ -889,9 +890,16 @@ bool I_3DSGpuInit()
 	const uint8_t *framebuffer = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &framebufferWidth,
 		&framebufferHeight);
 	if (framebuffer != nullptr && framebufferWidth == BottomHeight &&
-		framebufferHeight == BottomWidth && gfxGetScreenFormat(GFX_BOTTOM) == GSP_RGBA8_OES)
+		framebufferHeight == BottomWidth && gfxGetScreenFormat(GFX_BOTTOM) == GSP_BGR8_OES)
 	{
-		std::memcpy(BottomStaging, framebuffer, bottomBytes);
+		// 24-bit (B, G, R) to the staging buffer's 32-bit (A, B, G, R).
+		for (size_t i = 0; i < bottomBytes / 4u; ++i)
+		{
+			BottomStaging[4 * i + 0] = 0xFF;
+			BottomStaging[4 * i + 1] = framebuffer[3 * i + 0];
+			BottomStaging[4 * i + 2] = framebuffer[3 * i + 1];
+			BottomStaging[4 * i + 3] = framebuffer[3 * i + 2];
+		}
 	}
 	else
 	{
@@ -1423,9 +1431,14 @@ void I_3DSGpuBottomChanged()
 	{
 		return;
 	}
-	const size_t bytes = static_cast<size_t>(BottomWidth) * BottomHeight * 4u;
-	std::memcpy(framebuffer, BottomStaging, bytes);
-	GSPGPU_FlushDataCache(framebuffer, bytes);
+	const size_t pixels = static_cast<size_t>(BottomWidth) * BottomHeight;
+	for (size_t i = 0; i < pixels; ++i)
+	{
+		framebuffer[3 * i + 0] = BottomStaging[4 * i + 1];
+		framebuffer[3 * i + 1] = BottomStaging[4 * i + 2];
+		framebuffer[3 * i + 2] = BottomStaging[4 * i + 3];
+	}
+	GSPGPU_FlushDataCache(framebuffer, pixels * 3u);
 	gfxScreenSwapBuffers(GFX_BOTTOM, false);
 	BottomRedraw = true;
 }

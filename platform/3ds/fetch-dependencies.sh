@@ -116,7 +116,9 @@ mkdir -p "${DEPS_ROOT}" "${DOWNLOADS}"
 
 checkout_pinned \
   "${LOD3DS_SDL2_URL}" "${LOD3DS_SDL2_REV}" \
-  "${DEPS_ROOT}/SDL2" "${ROOT}/platform/3ds/patches/sdl2-3ds-clean-exit.patch"
+  "${DEPS_ROOT}/SDL2" \
+  "${ROOT}/platform/3ds/patches/sdl2-3ds-clean-exit.patch" \
+  "${ROOT}/platform/3ds/patches/sdl2-3ds-bgr8-framebuffer.patch"
 checkout_pinned \
   "${LOD3DS_ZMUSIC_URL}" "${LOD3DS_ZMUSIC_REV}" \
   "${DEPS_ROOT}/ZMusic" \

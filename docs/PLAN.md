@@ -47,13 +47,13 @@ The worktree branches of the 2026-10-18/19 side sessions (`fix/cave-sky-square`,
 - The `v0.3.0` beta through the updater (Beta channel), and the `v0.2.4` stable (Release channel).
 - #27's trigger: why a New 3DS sometimes starts in 64 MB (the screen now stops it; reboot fixes it).
 
-**Priority** (2026-10-19, owner): the HOME menu's black screens (#7) is "the only important thing
-left"; the owner's wishes U6-U9 and #28 come after, written down only (2026-10-19: "documéntalas").
-Claude recommends checking the 2DS saves (#21 / #23) before a stable; the owner has not chosen yet.
+**Priority:** the HOME menu's black screens (#7) were "the only important thing left"; fixed 2026-10-19
+(owner-checked on the New 3DS; the 2DS has not tried it). Claude recommends checking the 2DS saves
+(#21 / #23) before a stable; the owner has not chosen yet.
 
 **Start here:**
-1. #7: the game's two screens are black behind the HOME menu (framebuffer format / swap state; check
-   the title, the menus and a level, New 3DS and 2DS).
+1. #7 is fixed on the New 3DS (`fix/home-black-screens`, merged); check HOME on the 2DS and the
+   `hardware-safe` profile (SDL presenter) too, then close the issue.
 2. Ask the owner about a 2DS save test: play long, then save by hand and at caves. #21 (the save's JSON
    could not grow) is probably fixed by #25 (the GC runs again); #23 (an object freed while saved) is
    not explained, and the GC now runs every ~1 MB, which could make a dangling pointer show sooner.
@@ -830,3 +830,11 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   the view is forgotten when a level loads (`I_3DSMapLoadBegin`). Weapon cycling (`weapprev` /
   `weapnext`) follows the bottom grid's weapon row, left to right (owner: the B items are not selectable
   and do nothing; the weapons are what cycles).
+- **2026-10-19** #7's cause: SDL's 3DS video driver starts `gfxInit(GSP_RGBA8_OES, ...)` and the HOME menu
+  cannot capture 32-bit framebuffers (the same as `../sm-3ds` #20). A patch (`sdl2-3ds-bgr8-framebuffer.patch`)
+  starts them as `GSP_BGR8_OES` and makes BGR24 SDL's default mode; `gpu_3ds.cpp` outputs `RGB8`; every
+  CPU writer of the top screen (`diagnostics_3ds.cpp`: Triforce, start-up bars, message screen, map-load
+  box, keyboard top) writes 3 bytes a pixel. The CPU-drawn bottom interface keeps its 32-bit buffer and is
+  converted on the way to the framebuffer (`gpu_3ds.cpp`, and `EndBottomFrame` when the GPU path is not
+  ready). sm-3ds also drained the GPU queue in an APT suspend hook for a console freeze on closing from
+  HOME; not seen here, not done.
