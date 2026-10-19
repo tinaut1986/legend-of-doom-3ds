@@ -190,8 +190,12 @@ int Update_ReleaseHistory(const char *data, size_t size, bool pre, char *out, si
   if (!root) return -1;
   int count = -1;
   if (json_is_array(root)) {
-    json_t *list[128]; size_t n = 0, i; json_t *o;
-    json_array_foreach(root, i, o) if (n < 128 && visible(o, pre)) list[n++] = o;
+    json_t *list[128]; size_t n = 0, i; json_t *o, *latest = NULL;
+    // The channel only decides the newest release offered; every release up to it counts,
+    // betas included, on both channels.
+    json_array_foreach(root, i, o) if (visible(o, pre) && (!latest || newer_release(o, latest))) latest = o;
+    json_array_foreach(root, i, o)
+      if (n < 128 && latest && visible(o, true) && !newer_release(o, latest)) list[n++] = o;
     sort_newest_first(list, n);
     if (n) write_notes(list, n, out, capacity);
     count = (int)n;

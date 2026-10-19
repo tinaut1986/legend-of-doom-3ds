@@ -105,8 +105,8 @@ int main(int argc,char **argv) {
   assert(strstr(out.notes,"## v0.3.1 BETA\n")&&strstr(out.notes,"notes of v0.3.0")&&strstr(out.notes,"## v0.2.2 BETA")&&strstr(out.notes,"## v0.2.1 BETA")&&!strstr(out.notes,"v0.1.0"));
   // The whole changelog: every release the channel sees, newest first.
   static char history[UPDATE_HISTORY_MAX];
-  assert(Update_ReleaseHistory(raw,strlen(raw),false,history,sizeof(history))==2);
-  assert(strstr(history,"## v0.3.0\n")<strstr(history,"## v0.2.0\n")&&!strstr(history,"BETA"));
+  assert(Update_ReleaseHistory(raw,strlen(raw),false,history,sizeof(history))==5);
+  assert(strstr(history,"## v0.3.0\n")<strstr(history,"## v0.2.2 BETA")&&strstr(history,"## v0.2.0\n")&&strstr(history,"## v0.1.0 BETA")&&!strstr(history,"v0.3.1"));
   assert(Update_ReleaseHistory(raw,strlen(raw),true,history,sizeof(history))==6);
   assert(strstr(history,"## v0.3.1 BETA")<strstr(history,"## v0.3.0\n")&&strstr(history,"## v0.3.0\n")<strstr(history,"## v0.2.2 BETA"));
   assert(strstr(history,"## v0.1.0 BETA")&&strstr(history,"notes of v0.1.0")&&!strstr(history,"commits"));
