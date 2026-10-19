@@ -37,10 +37,6 @@ release texts (workflow template, README) say the Old 3DS / 2DS run it; U6-U9 an
 
 | Branch | What | State |
 |---|---|---|
-| `feat/u9-update-changelog` | U9: UPDATE shows saved / bundled notes without a network answer | Built, **not installed**: owner's check pending |
-| `feat/u7-toasts-top-screen` | U7: toasts on the top screen, following MESSAGES | Built, **not installed**: owner's check pending |
-| `feat/u6-death-menu` | U6: menu opens by itself after dying | Built, **not installed**: owner's check pending |
-| `feat/u5-game-text-spanish` | U5: audit note only (the work is in the line); owner's Spanish playthrough pending | No code |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 The worktree branches of the 2026-10-18/19 side sessions (`fix/cave-sky-square`,
@@ -286,7 +282,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   that make sense there), in the native menus' style. Today the game waits on the death screen.
   *Done when:* dying opens that menu after the death animation, each choice works, and B or
   "continue" does what the owner chooses as the default.
-  *Built (branch `feat/u6-death-menu`, awaiting the owner's check):* `G_Ticker` opens `LegendDeathMenu`
+  *Built and checked by the owner on the console (2026-10-19), merged:* `G_Ticker` opens `LegendDeathMenu`
   (GAME OVER: CONTINUE, LOAD GAME, NEW GAME, QUIT GAME; MENUDEF in the game patch) 2 s after the player
   dies (`DeathMenuDelayTics`, tune it after seeing the fall). CONTINUE does what USE does (`LegendContinue`
   in `M_SetSpecialMenu`: the last save, else the level again). **Open question for the owner:** B closes
@@ -301,7 +297,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   "messages for the player are bottom-screen toasts" in the same change.
   *Done when:* no message appears on the touch screen during play, the toasts follow MESSAGES,
   and they do not hide the game's own messages.
-  *Built (branch `feat/u7-toasts-top-screen`, awaiting the owner's check):* `ComposeTopToast` draws the toast
+  *Built and checked by the owner on the console (2026-10-19), merged:* `ComposeTopToast` draws the toast
   (same box, with the install / restart bar) on the top screen in menus and in a level, as a GPU image on the
   hybrid presenters; it sits on the edge MESSAGES says and stacks beside the game's lines
   (`C_3DSNotifyOccupied`). Not shown on the bare title screen (no menu, no level: no top composer there).
@@ -321,7 +317,7 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   every time (`DrawUpdateChangelogTop`, `src/common/platform/3ds/update/changelog_view.inc`), as
   its CHANGELOG setting says: NEW = the installed version's notes (plus newer ones when an update
   is there), ALL = every version. With no network, the last notes fetched, or a short message.
-  *Built (branch `feat/u9-update-changelog`, awaiting the owner's check):* the menu already checked on
+  *Built and checked by the owner on the console (2026-10-19), merged:* the menu already checked on
   opening, but without an answer it showed a fixed "Initial release". Now it shows the last notes saved
   on the SD (`update-notes-new|all.txt`, written on every answer), else the installed version's
   `docs/release-notes` file that `build.sh` bundles in the romfs.
