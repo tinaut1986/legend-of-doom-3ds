@@ -48,7 +48,6 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
-| `fix/new3ds-64mb-blocking` | #27: the 64 MB notice becomes a blocking start-up screen (exit only); never on the Old 3DS / 2DS | Pushed, built (`b5a8192c1354`); waits for the owner's check |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -72,8 +71,9 @@ effects that cost less are fine; #7 and #14 last.
    one per line (`fix/notify-lines`), and one CONTROLS screen with the scheme as parent plus sprint
    OFF / BUTTON / AUTO, AUTO by default (`feat/controls-screen`), and the bottom screen's L box on the
    left, R on the right (`fix/bottom-lr-boxes`).
-   And `fix/new3ds-64mb-warning` (#27, kept open: the trigger is unknown): a New 3DS started in the
-   64 MB mode gets a notice on the title menus to power the console off and on.
+   And #27 (kept open: the trigger is unknown): a New 3DS started in the 64 MB mode does not start
+   the game; a start-up screen says to power the console off and on (`fix/new3ds-64mb-warning`, made
+   blocking by `fix/new3ds-64mb-blocking`, checked on the New 3DS 2026-10-19).
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
