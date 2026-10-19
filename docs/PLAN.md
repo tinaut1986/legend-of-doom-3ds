@@ -38,7 +38,7 @@ release texts (workflow template, README) say the Old 3DS / 2DS run it; U6-U9 an
 
 | Branch | What | State |
 |---|---|---|
-| `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
+| (none open) | | `fix/horizon-fog-fade` (#14) was deleted 2026-10-20: it did not remove the pop of the tall mountains |
 
 The worktree branches of the 2026-10-18/19 side sessions (`fix/cave-sky-square`,
 `fix/new3ds-64mb-warning`, `claude/*`) are merged or spent; their worktrees can be cleaned up.
