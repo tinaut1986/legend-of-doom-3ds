@@ -10,9 +10,12 @@ struct F3DSDiagnosticButtonResult
 // intentionally independent from GZDoom's logfile so a crash or hang during
 // early engine/video initialization still leaves a precise last-known stage.
 void I_3DSStartupLog(const char *stage);
-// A message for the player, as a toast on the touch screen in the game's own style (English text:
-// it goes through Tr()). The engine's own messages print in its generic font over the top screen.
+// A message for the player, as a toast on the top screen in the game's own style (English text:
+// it goes through Tr()), where OPTIONS -> DISPLAY -> MESSAGES puts the game's messages.
 void I_3DSToast(const char *english);
+// What the game's own messages (c_notifybuffer.cpp) take of the top screen's height, 0..1, from
+// the edge they hang on; the toast stacks beside them.
+float C_3DSNotifyOccupied();
 // The same for the C side (ftp_server_3ds.c): `line` is logged as the stage. Main thread only.
 extern "C" void I_3DSStartupLogLine(const char *line);
 void I_3DSWriteFatalLog(const char *message);
