@@ -16,9 +16,10 @@ class HardwareStartupContractTests(unittest.TestCase):
         source = (ROOT / "src/common/platform/3ds/diagnostics_3ds.cpp").read_text(encoding="utf-8")
         screen = source[source.index("bool LowMemoryScreen()"):]
         screen = screen[:screen.index("\n}\n")]
-        self.assertLess(screen.index("if (I_3DSIsOld3DS()) return false;"),
-                        screen.index("osGetMemRegionSize(MEMREGION_APPLICATION)"))
+        # Each model against its own mode: 124 MB New 3DS, 80 MB Old 3DS / 2DS (it runs in 80).
+        self.assertIn("I_3DSIsOld3DS() ? Old3DSApplicationMemory : New3DSApplicationMemory", screen)
         self.assertIn("constexpr u32 New3DSApplicationMemory = 124u * 1024u * 1024u;", source)
+        self.assertIn("constexpr u32 Old3DSApplicationMemory = 80u * 1024u * 1024u;", source)
         # The Old 3DS / 2DS are no longer turned away at start-up.
         self.assertNotIn("UnsupportedConsoleScreen", source)
         self.assertNotIn("allow-old3ds.txt", source)
