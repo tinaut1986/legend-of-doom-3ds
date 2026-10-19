@@ -321,7 +321,8 @@ const char *Localized(const FString &text)
 	return text.IsNotEmpty() && text[0] == '$' ? GStrings.localize(text.GetChars()) : Tr(text.GetChars());
 }
 
-enum class ENativeRowKind : uint8_t { Header, Toggle, Choice, Slider, Submenu, Command };
+// Fixed: an input that cannot be remapped and what it does (CONTROLS), never selected.
+enum class ENativeRowKind : uint8_t { Header, Toggle, Choice, Slider, Submenu, Command, Fixed };
 
 struct FNativeRow
 {
@@ -585,6 +586,12 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 		NesText(framebuffer, 16, 28, parent.Label.GetChars(), 1, NesGold);
 		drawChoice(parent, 28, 8, 20, 44);
 		rows.Delete(parentRow);
+		// Then what the inputs that cannot be remapped do, before the buttons.
+		static constexpr const char *FixedInputs[][2] = {
+			{ "CIRCLE PAD", "MOVE / STRAFE" }, { "C-STICK / TOUCH", "LOOK" },
+			{ "START", "PAUSE" }, { "SELECT", "MENU / OVERLAY" } };
+		for (unsigned i = 0; i < sizeof(FixedInputs) / sizeof(FixedInputs[0]); ++i)
+			rows.Insert(i, FNativeRow{ ENativeRowKind::Fixed, -1, Tr(FixedInputs[i][0]), Tr(FixedInputs[i][1]), 0.0f });
 	}
 	const int left = parentRow >= 0 ? 22 : 8;
 
@@ -612,6 +619,12 @@ void DrawNativeOptionMenu(unsigned char *framebuffer, DOptionMenuDescriptor *des
 			continue;
 		}
 		if (parentRow >= 0) OverlayRect(framebuffer, 14, y + 3, left - 14, 1, NesGray);
+		if (row.Kind == ENativeRowKind::Fixed)
+		{
+			NesText(framebuffer, left + 8, y, row.Label.GetChars(), 1, NesGray);
+			NesText(framebuffer, 304 - NesTextWidth(row.Value.GetChars(), 1), y, row.Value.GetChars(), 1, NesGray);
+			continue;
+		}
 		if (selected) NesBox(framebuffer, left, y - 5, 312 - left, 18, NesPanel, NesBlue);
 		NesText(framebuffer, left + 8, y, row.Label.GetChars(), 1, selected ? NesGold : NesWhite);
 		const int zoneTop = y - 5;

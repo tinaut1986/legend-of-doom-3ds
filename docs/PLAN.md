@@ -49,7 +49,7 @@ the console; the measurements are in the decisions log):
 | Branch | What | State |
 |---|---|---|
 | `fix/notify-lines` | the game's messages one per line (in Spanish they piled onto one), at most `con_notifylines` | Pushed, in test build `1bc49cc13cda` with the next one; waits for the owner's check |
-| `feat/controls-screen` | SCHEME AND BUTTONS on one screen (the scheme as parent); sprint OFF / BUTTON / AUTO, AUTO by default | Pushed, in test build `1bc49cc13cda`; waits for the owner's check |
+| `feat/controls-screen` | one CONTROLS screen: the scheme as parent, the fixed inputs and the remappable buttons; sprint OFF / BUTTON / AUTO, AUTO by default | Pushed; the owner checked `1bc49cc13cda` and asked to fold the old CONTROLS reference into it; that change waits for the check |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**

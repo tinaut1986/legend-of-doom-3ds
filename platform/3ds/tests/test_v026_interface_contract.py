@@ -105,7 +105,10 @@ class V026InterfaceContractTests(unittest.TestCase):
             self.assertIn(f'"lod3ds_button_{cvar}", "LegendButtonAction"', patch)
         self.assertIn('Command "DEFAULTS", "lod3ds_buttons_reset"', patch)
         self.assertIn('Option "SCHEME", "lod3ds_control_scheme", "LegendControlScheme"', patch)
-        self.assertIn('Submenu "SCHEME AND BUTTONS", "LegendButtonsMenu"', patch)
+        # One CONTROLS screen: the scheme, the fixed inputs and the remappable buttons together.
+        self.assertIn('Submenu "CONTROLS", "LegendButtonsMenu"', patch)
+        self.assertNotIn('Submenu "CONTROLS", "LegendControlsMenu"', patch)
+        self.assertIn('{ "CIRCLE PAD", "MOVE / STRAFE" }', native)
         self.assertIn('menu == FName("LegendButtonsMenu")', native)
         # The scheme is the first row of the buttons screen, drawn as their parent.
         buttons_menu = patch[patch.index('+OPTIONMENU "LegendButtonsMenu"'):]

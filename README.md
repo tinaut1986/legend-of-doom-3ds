@@ -57,10 +57,10 @@ Audio on a real console requires its own DSP firmware at `sdmc:/3ds/dspfirm.cdc`
 
 ## Controls
 
-Two control schemes, chosen in OPTIONS -> CONTROL -> SCHEME AND BUTTONS: **CLASSIC** (the default
-on the New 3DS family) and **BUTTON CAMERA** (the default on the Old 3DS / 2DS, which have no
-C-Stick). Each one keeps its own buttons, remappable on that same screen under the scheme (DEFAULTS
-restores them); CONTROLS shows what every button does now. In both, walking into a locked door or a push
+Two control schemes, chosen in OPTIONS -> CONTROL -> CONTROLS: **CLASSIC** (the default on the
+New 3DS family) and **BUTTON CAMERA** (the default on the Old 3DS / 2DS, which have no C-Stick).
+That screen shows the scheme on top and, under it, what every input does in it; each scheme keeps
+its own buttons, remappable right there (DEFAULTS restores them). In both, walking into a locked door or a push
 block uses it, as on the NES.
 
 | Nintendo 3DS input | CLASSIC | BUTTON CAMERA |
