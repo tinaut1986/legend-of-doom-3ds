@@ -49,6 +49,7 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
+| `fix/nes-font-punctuation` | the NES font's missing `( ) ; + * # [ ] _` drawn (they showed as dots in the updater's notes) | Pushed, built; waits for the owner's check |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
