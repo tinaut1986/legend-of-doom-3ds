@@ -508,6 +508,7 @@ void DrawNativeListMenu(unsigned char *framebuffer, DListMenuDescriptor *descrip
 	FString title;
 	DescribeListMenu(descriptor, rows, title);
 	if (descriptor->mMenuName == FName("LegendPauseMenu")) title = Tr("PAUSED");
+	else if (descriptor->mMenuName == FName("LegendDeathMenu")) title = Tr("GAME OVER");
 
 	if (gamestate == GS_DEMOSCREEN) DrawMenuBottomScreen(framebuffer, 71u);
 

@@ -1184,6 +1184,23 @@ void G_Ticker ()
 	int i;
 	gamestate_t	oldgamestate;
 
+#ifdef __3DS__
+	{
+		// After Link dies, the death menu (LegendDeathMenu) opens by itself once the fall has
+		// settled, with no button press. It is counted only while no menu is open: closed with B,
+		// it does not open again (USE still continues, START opens the pause menu).
+		constexpr int DeathMenuDelayTics = 2 * TICRATE;
+		static int deadTics = 0;
+		if (gamestate == GS_LEVEL && playeringame[consoleplayer] && !multiplayer && !demoplayback &&
+			players[consoleplayer].playerstate == PST_DEAD)
+		{
+			if (menuactive == MENU_Off && ++deadTics == DeathMenuDelayTics)
+				AddCommandString("openmenu LegendDeathMenu");
+		}
+		else deadTics = 0;
+	}
+#endif
+
 	// do player reborns if needed
 	for (i = 0; i < MAXPLAYERS; i++)
 	{
