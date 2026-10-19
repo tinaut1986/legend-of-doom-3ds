@@ -19,31 +19,19 @@ change (what goes where: the table in `CLAUDE.md`).
   (2026-10-12): almost everything runs on the CPU, it is not known to reach 60 fps
   even on the New 3DS, there is no stereo 3D, and the Old 3DS does not run it.
 
-## Status (2026-10-18, evening)
+## Status (2026-10-19)
 
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.3.0` (renamed from `release/v0.2.5` on 2026-10-19, the owner's minor bump for the
-beta: the Old 3DS / 2DS run the game, control schemes). After its tag it becomes `release/v0.3.1`.
-Published: **`v0.2.4`** stable (2026-10-15, built by the tag workflow), `v0.2.3` and `v0.2.2` betas,
-**`v0.2.1`** stable, **`v0.2.0`** stable (the first), `v0.1.0` beta. `main` holds `v0.2.4`.
+**Release line:** `release/v0.3.1` (renamed from `release/v0.3.0` right after its tag).
+Published: **`v0.3.0`** beta (2026-10-19, the tag workflow; the first with the Old 3DS / 2DS, control
+schemes, the 2DS memory / music / speed work; its release body was edited afterwards: the sprint line
+without `( ) ;`, the downloads line "every Nintendo 3DS / 2DS model"), **`v0.2.4`** stable (`main`),
+`v0.2.3` and `v0.2.2` betas, **`v0.2.1`** and **`v0.2.0`** stables, `v0.1.0` beta.
 
-**In the line since v0.2.4, not yet published** (all merged 2026-10-17/18, each checked by the owner on
-the console; the measurements are in the decisions log):
-- 2DS memory: P4.1 bring-up, P4.5 census, P4.6 large-block arena, the first P4.7 / P4.8 cuts, P4.9 slim
-  IWAD, the first P4.10 cut (`MAXWIDTH`), the music stored in the pk3; #17, #19, #20.
-- Music on the Old 3DS (#16, closed): IMA ADPCM at 22 kHz, core 1 left at 30%.
-- Interface: the clock / Wi-Fi / battery row, the loading screen's bars, the map-change loading box,
-  the game's messages in its NES font (OPTIONS -> DISPLAY -> MESSAGES: BOTTOM / TOP), the 23 English
-  pickup messages in Spanish, the GPU map-change fade (#18, still open), the overlay's GPU/CPU lines.
-- Speed on the 2DS: the touch screen map every third tic and through a grid; settled static actors
-  out of the two per-tic passes; the particle textures built once; the walk's sprite set, early
-  sprite rejection and no visible planes under the GPU world. The owner's heavy MAP01 spot went from
-  27-28 fps to ~44.7 (34 with forced 3D before the walk cuts).
-- MAP01's black caves drawn black on the GPU (the sky showed through two spots of one cave).
-- Debug: FORCE 3D, `lod3ds_sections`, `lod3ds_mapprofile`, `lod3ds_musicstats`, `lod3ds_audiocpu`,
-  `lod3ds_maploadshot`, `lod3ds_visible`, `lod3ds_sectorsubs`, `lod3ds_tracesub`, `lod3ds_tracesolid`.
+**In the line since v0.3.0:** the NES font draws `( ) ; + * # [ ] _` (checked on the New 3DS); the
+release texts (workflow template, README) say the Old 3DS / 2DS run it; U6-U9 and #28 written down.
 
 **Branches:**
 
@@ -51,65 +39,44 @@ the console; the measurements are in the decisions log):
 |---|---|---|
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
+The worktree branches of the 2026-10-18/19 side sessions (`fix/cave-sky-square`,
+`fix/new3ds-64mb-warning`, `claude/*`) are merged or spent; their worktrees can be cleaned up.
+
 **Waiting for the owner's check:**
-- The v0.2.4 stable via the updater (Release channel, from v0.2.1), still unchecked.
-- The New 3DS has not run anything merged after `742ad9ba845f` (the music as ADPCM, the slim IWAD,
-  the messages, the loading box, the speed cuts, the caves): play it there before the release.
+- The `v0.3.0` beta through the updater (Beta channel), and the `v0.2.4` stable (Release channel).
+- #27's trigger: why a New 3DS sometimes starts in 64 MB (the screen now stops it; reboot fixes it).
 
-**Priority** (2026-10-18, owner): pause the 2DS speed work here. Next the owner slips in another task
-on its own topic branch (new session), merges it, then a beta / stable of the line, then back to what
-is left to debug on the 2DS. Throughout: the 2DS fully playable, noticeable changes first, equivalent
-effects that cost less are fine; #7 and #14 last.
-
-**Since v0.3.0 (beta, tagged 2026-10-19), in the line:** the NES font draws `( ) ; + * # [ ] _`
-(they showed as dots in the updater's notes; checked on the New 3DS), and the release texts say the
-Old 3DS / 2DS run it.
-
-**Owner's wishes, 2026-10-19 (not started):** #28 (the map stops following after some underground
-stairs) and U6-U9 below (the menu after dying; every message on the top screen where MESSAGES says;
-the start-up bars on the touch screen; UPDATE always showing the changelog).
+**Priority** (2026-10-19, owner): the HOME menu's black screens (#7) is "the only important thing
+left"; the owner's wishes U6-U9 and #28 come after, written down only (2026-10-19: "documéntalas").
+Claude recommends checking the 2DS saves (#21 / #23) before a stable; the owner has not chosen yet.
 
 **Start here:**
-0. The owner's interim task: whatever they ask for, on a topic branch cut from `release/v0.3.0`.
-   Done: #22 (control schemes), #24 (the black square in the sky over a cave) and #25 (the GC never
-   ran on the 2DS after a long play: stutters, music gaps) merged 2026-10-18 after the owner's check
-   on the 2DS; the New 3DS (CLASSIC by default) still to be played before the release. #26 (the 2DS's
-   fried sound and gaps: mixer at 22050 Hz on the Old 3DS) merged 2026-10-19 on the owner's word after
-   hearing it live by cvar; the build itself not yet played.
-   Also merged 2026-10-19 after the owner's check on the New 3DS (`d7dd0a364fe6`): the game's messages
-   one per line (`fix/notify-lines`), and one CONTROLS screen with the scheme as parent plus sprint
-   OFF / BUTTON / AUTO, AUTO by default (`feat/controls-screen`), and the bottom screen's L box on the
-   left, R on the right (`fix/bottom-lr-boxes`).
-   And #27 (kept open: the trigger is unknown): a New 3DS started in the 64 MB mode does not start
-   the game; a start-up screen says to power the console off and on (`fix/new3ds-64mb-warning`, made
-   blocking by `fix/new3ds-64mb-blocking`, checked on the New 3DS 2026-10-19); A on that screen froze
-   the console until `fix/early-exit-sdl-quit` (SDL torn down before exiting; checked the same day).
-   `fix/old3ds-unblock`: the Old 3DS / 2DS are no longer turned away at start-up in any build (they
-   needed `allow-old3ds.txt` in a debug build), and the memory-mode screen checks each model against
-   its own mode (124 MB New, 80 MB Old); checked on the 2DS without the file the same day.
-1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
-   it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
-   (CLAUDE.md, "Releases" and "After tagging").
-2. Back to the 2DS: the two save crashes, #21 (out of memory growing the save's JSON after a long
-   play) and #23 (an object with no class in `WriteObjects`); then the heavy MAP01 spot's remaining
-   frame: logic ~9 ms a tic, the walk's walls ~2.5 ms, the GPU capture's geometry ~3 ms
-   (`lod3ds_sections` splits them). P4.2 (30 fps minimum) needs the P0.3 spots measured with 3D.
-3. P4.10's rest and P4.11 (thinner compiled ZScript); the census leftovers in
-   `docs/measurements/memory-census-2026-10-17.md`.
-4. Later: #18 (the GPU fade like the old wipe), the New 3DS's 55 fps in stereo at some open-map spots,
-   #14, #7.
+1. #7: the game's two screens are black behind the HOME menu (framebuffer format / swap state; check
+   the title, the menus and a level, New 3DS and 2DS).
+2. Ask the owner about a 2DS save test: play long, then save by hand and at caves. #21 (the save's JSON
+   could not grow) is probably fixed by #25 (the GC runs again); #23 (an object freed while saved) is
+   not explained, and the GC now runs every ~1 MB, which could make a dangling pointer show sooner.
+3. #28: the map stops following the player on the first dungeon's (MAP02) only underground stairs.
+4. U6-U9 (the menu after dying; every message on the top screen where MESSAGES says; the start-up bars
+   on the touch screen; UPDATE always showing the changelog).
+5. Back to the 2DS's speed: the heavy MAP01 spot's remaining frame (logic ~9 ms a tic, the walk's walls
+   ~2.5 ms, the GPU capture's geometry ~3 ms; `lod3ds_sections`), P4.2 with 3D, P4.10's rest, P4.11,
+   the census leftovers (`docs/measurements/memory-census-2026-10-17.md`).
+6. Later: #18 (the GPU fade like the old wipe), the New 3DS's 55 fps in stereo at some open-map spots,
+   #14.
+A stable `v0.3.x` needs the owner's word; the notes then list everything since `v0.2.4`.
 
-**On the owner's consoles now (2026-10-18):**
-- **New 3DS**, `192.168.1.133` on 2026-10-18 (it has been at `.141`): the owner installed
-  `742ad9ba845f` (`0.2.5-dev.16.40+d609f5f`, the line as merged) with FBI from `/cias/`; FTP, the
-  install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
-  autosaves. DISTANCE HIGH.
-- **2DS**, `192.168.1.139`: installed `92c16b35a0f6` (debug, the same code as `release/v0.2.5` at
-  `82bc7d0`), by SITE INSTALL. The data folder has `census-on-load.txt` (`allow-old3ds.txt` removed 2026-10-19, no longer needed) (audio
-  on), the census reports and the owner's saves (save0..2, auto0..3; first dungeon done). Claude's test
-  saves were removed; Luma's `crash_dump_00000000` and `00000019` are from the Minish Cap port and
-  were left. Installing over the running game near its memory limit can close it: then upload over
-  ftpd.
+**On the owner's consoles now (2026-10-19):**
+- **New 3DS**, `192.168.1.133`: `f21ade3fa72f` (debug, `0.3.1-dev.173.1+ce69597`: the line + the NES
+  font fix, now merged), by SITE INSTALL; 124 MB since a reboot on 2026-10-19. FTP on, the
+  install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01), `test2`, autosaves; the owner was
+  in MAP02. DISTANCE HIGH. Scheme CLASSIC.
+- **2DS**, `192.168.1.139`: `c4e30fc42a1b` (debug, `fix/old3ds-unblock` before its merge: the line at
+  `f1f68bd`), by SITE INSTALL. `allow-old3ds.txt` removed (no longer needed); `census-on-load.txt`,
+  the census reports and the owner's saves (save0..2, auto0..3; first dungeon done). Its ini has
+  `snd_samplerate 22050` (set live on 2026-10-19; the code now forces it on the Old 3DS). Scheme
+  BUTTON CAMERA. Luma's `crash_dump_00000000` and `00000019` are from the Minish Cap port. Installing
+  over the running game near its memory limit can close it: then upload over ftpd.
 
 Tasks ticked [x] have been checked on the console by the owner; do not re-propose them.
 
@@ -810,3 +777,26 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   decoder's share of the core from 56% to 13%, and the owner heard it better; the New 3DS keeps
   `snd_samplerate`. Left as is: the music's fixed 3x gain (picks at -3 to -7 dB with it), a candidate
   if some clipping remains.
+- **2026-10-19** Version: the owner chose a minor bump for the beta, `v0.3.0` (not `v0.2.5`): the first
+  release where the Old 3DS / 2DS run the game, plus the control schemes. Every build turned the Old
+  3DS / 2DS away at start-up unless a debug build found `allow-old3ds.txt` (how the owner played): the
+  screen is gone ("the Old 3DS must never show it again, it works now").
+- **2026-10-19** #27 (a console in a smaller memory mode than its RSF asks for): a title-menu notice
+  could be accepted and the game then died loading a map, so it became a blocking top-screen message
+  before anything loads, A / START exits. Each model against its own mode: 124 MB New 3DS family, 80 MB
+  Old 3DS / 2DS (which runs in exactly 80: `osGetMemRegionSize` = 83886080). A New 3DS in 80 MB is
+  stopped too: part of the memory savings only switch on for the Old 3DS. Exiting `main` before
+  `SDL_Quit()` froze the console (the old unsupported-console screen did it too). A debug
+  `force-low-memory.txt` shows it once and removes itself: the screen comes before the game's FTP
+  server. A SITE INSTALL relaunch came back at 124 MB once, so the relaunch alone is not the trigger.
+- **2026-10-19** Messages: GZDoom appends a message without a final newline to the previous one, and
+  the port's translation dropped the newline, so in Spanish nearly every pickup message (the rupees')
+  piled onto one line; each message now ends its line, and `con_notifylines` (4) drops the oldest.
+- **2026-10-19** Controls after the owner's play: one CONTROLS screen (the scheme as a parent panel, the
+  fixed inputs, the remappable buttons) instead of SCHEME AND BUTTONS beside a separate reference;
+  SPRINT AT FULL LIFE is OFF / BUTTON / AUTO, AUTO by default; the bottom screen's L box on the left.
+  The walk-into lines (the six scripts) are every front-use line the maps have, so the interaction hint
+  never shows with today's maps; a ZScript variable called `action` (a keyword) stopped the game at
+  start-up (a test guards it).
+- **2026-10-19** The NES font (SMALLFNT) has a dot for `# $ ( ) * + ; @ [ \ ] ^ _` and other symbols for
+  `< > %`; `NesExtraAscii` draws `( ) ; + * # [ ] _ : / < > %`.
