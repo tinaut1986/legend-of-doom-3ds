@@ -2151,6 +2151,33 @@ bool BottomSelectItem(unsigned index)
 	return true;
 }
 
+// The weapon L / R-style cycling (weapprev / weapnext) selects next: the owned weapons of the
+// grid's first row in the order the grid shows them, left to right, wrapping; the engine's own
+// order is its slot order. Null when the current weapon is not in the grid (the engine's order
+// then applies).
+AActor *AdjacentWeapon(player_t &player, int direction)
+{
+	constexpr unsigned WeaponCells = 8;	// BottomLayout::Columns: the equippable row
+	AActor *owner = player.mo;
+	if (owner == nullptr) return nullptr;
+	AActor *current = player.PendingWeapon != nullptr && player.PendingWeapon != WP_NOCHANGE ?
+		player.PendingWeapon : player.ReadyWeapon;
+	const auto &items = BottomItems();
+	AActor *cells[WeaponCells] = {};
+	int count = 0, found = -1;
+	for (unsigned index = 0; index < WeaponCells && index < items.size(); ++index)
+	{
+		const FBottomItem &item = items[index];
+		if (!BottomHasAnyInventory(owner, item.Inventory1, item.Inventory2, item.Inventory3)) continue;
+		AActor *weapon = BottomFindInventory(owner, item.Ready1, item.Ready2, item.Ready3);
+		if (weapon == nullptr) continue;
+		if (weapon == current) found = count;
+		cells[count++] = weapon;
+	}
+	if (found < 0 || count < 2) return nullptr;
+	return cells[(found + direction + count) % count];
+}
+
 // The gameplay bottom screen, laid out like the NES Zelda's pause screen (owner, 2026-10-13):
 // on black, INVENTORY with the B item's box and every item in one frame; below, the map with
 // its own zoom button, the rupee, key and bomb counters and -LIFE- with the hearts. No tabs;
@@ -6827,6 +6854,11 @@ void I_3DSSetAudioReady(bool ready)
 void I_3DSSetMenuStoryPage(bool story)
 {
 	MenuStoryPage = story;
+}
+
+AActor *I_3DSAdjacentWeapon(player_t &player, int direction)
+{
+	return AdjacentWeapon(player, direction);
 }
 
 namespace { bool QuitWithoutSaving = false; }

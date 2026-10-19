@@ -360,8 +360,25 @@ CCMD (turn180)
 	sendturn180 = true;
 }
 
+#ifdef __3DS__
+// weapprev / weapnext walk the owned weapons in the order the bottom screen's grid shows them.
+static bool CycleGridWeapon(int direction)
+{
+	player_t &player = players[consoleplayer];
+	AActor *next = I_3DSAdjacentWeapon(player, direction);
+	if (next == nullptr || (paused || pauseext) || player.playerstate != PST_LIVE) return false;
+	player.PendingWeapon = next;
+	SendItemUse = next;
+	if (next != player.ReadyWeapon) S_Sound(CHAN_AUTO, 0, "misc/weaponchange", 1.0, ATTN_NONE);
+	return true;
+}
+#endif
+
 CCMD (weapnext)
 {
+#ifdef __3DS__
+	if (CycleGridWeapon(1)) return;
+#endif
 	auto mo = players[consoleplayer].mo;
 	if (mo)
 	{
@@ -389,6 +406,9 @@ CCMD (weapnext)
 
 CCMD (weapprev)
 {
+#ifdef __3DS__
+	if (CycleGridWeapon(-1)) return;
+#endif
 	auto mo = players[consoleplayer].mo;
 	if (mo)
 	{

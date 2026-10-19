@@ -165,3 +165,9 @@ void I_3DSServiceSettingsSave();
 // up in language.csv; missing keys return the English (Tr() in native_menu_3ds.inc). The game's
 // ACS messages go through it too.
 const char *I_3DSTranslate(const char *english);
+
+// weapprev / weapnext: the next owned weapon in the bottom screen's grid order (direction +1
+// right, -1 left), or null when the engine's order should be used.
+class AActor;
+struct player_t;
+AActor *I_3DSAdjacentWeapon(player_t &player, int direction);
