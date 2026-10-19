@@ -11,6 +11,17 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class HardwareStartupContractTests(unittest.TestCase):
+    def test_new_3ds_in_the_64_mb_mode_does_not_start(self):
+        # #27: a blocking screen before anything loads; never on the Old 3DS / 2DS (80 MB mode).
+        source = (ROOT / "src/common/platform/3ds/diagnostics_3ds.cpp").read_text(encoding="utf-8")
+        screen = source[source.index("bool LowMemoryScreen()"):]
+        screen = screen[:screen.index("\n}\n")]
+        self.assertLess(screen.index("if (I_3DSIsOld3DS()) return false;"),
+                        screen.index("osGetMemRegionSize(MEMREGION_APPLICATION)"))
+        self.assertIn("constexpr u32 New3DSApplicationMemory = 124u * 1024u * 1024u;", source)
+        self.assertIn("return UnsupportedConsoleScreen() || LowMemoryScreen();", source)
+        self.assertNotIn("LowMemoryNotice", source)
+
     def test_early_animation_starts_only_after_sdl_owns_video(self):
         source = (ROOT / "src/common/platform/posix/sdl/i_main.cpp").read_text(
             encoding="utf-8"
