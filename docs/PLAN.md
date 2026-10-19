@@ -48,6 +48,7 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
+| `fix/old3ds-mixer-22k` | #26: the Old 3DS / 2DS mix at 22050 Hz (fried sound, gaps) | Pushed, built (`367ee1989d7e`); the owner heard 22050 better live (cvar); **not merged**, the build itself not yet played |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -64,8 +65,8 @@ effects that cost less are fine; #7 and #14 last.
 0. The owner's interim task: whatever they ask for, on a topic branch cut from `release/v0.2.5`.
    Done: #22 (control schemes), #24 (the black square in the sky over a cave) and #25 (the GC never
    ran on the 2DS after a long play: stutters, music gaps) merged 2026-10-18 after the owner's check
-   on the 2DS; the New 3DS (CLASSIC by default) still to be played before the release. Open: the
-   audio sounds "fried" at times on the 2DS (likely older; clipping or the ADPCM's noise, untested).
+   on the 2DS; the New 3DS (CLASSIC by default) still to be played before the release. The 2DS's
+   fried sound and gaps (#26) are on `fix/old3ds-mixer-22k`.
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
@@ -751,3 +752,8 @@ dungeon, a boss, `hardware-safe`, the Old 3DS.
   again and the `Sheeld` the shield spawns every Ready tic piled up (7391, 8.6 MB). The 3DS caps the
   threshold at the estimate + 1 MB. Diagnosed live with `lod3ds_memcensus` and by peeking `GC::Threshold`
   / `Estimate` (`nm` on the ELF; `lod-link.py peek` takes the address); `gc full` freed 10 MB at once.
+- **2026-10-19** #26: on the Old 3DS the NDSP mixer and the music decoder share core 1 (30% for the app);
+  at 32000 Hz the mixer fell behind when many sounds played. 22050 Hz (the music's rate) cut the
+  decoder's share of the core from 56% to 13%, and the owner heard it better; the New 3DS keeps
+  `snd_samplerate`. Left as is: the music's fixed 3x gain (picks at -3 to -7 dB with it), a candidate
+  if some clipping remains.
