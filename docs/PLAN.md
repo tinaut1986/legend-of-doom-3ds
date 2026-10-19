@@ -48,7 +48,6 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
-| `fix/old3ds-unblock` | the Old 3DS / 2DS no longer turned away at start-up in every build (only debug builds with `allow-old3ds.txt` ran there); the memory-mode screen checks each model against its own mode (124 MB New, 80 MB Old) | Pushed, built; waits for the owner's check on the 2DS without `allow-old3ds.txt` |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -76,6 +75,9 @@ effects that cost less are fine; #7 and #14 last.
    the game; a start-up screen says to power the console off and on (`fix/new3ds-64mb-warning`, made
    blocking by `fix/new3ds-64mb-blocking`, checked on the New 3DS 2026-10-19); A on that screen froze
    the console until `fix/early-exit-sdl-quit` (SDL torn down before exiting; checked the same day).
+   `fix/old3ds-unblock`: the Old 3DS / 2DS are no longer turned away at start-up in any build (they
+   needed `allow-old3ds.txt` in a debug build), and the memory-mode screen checks each model against
+   its own mode (124 MB New, 80 MB Old); checked on the 2DS without the file the same day.
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
@@ -94,7 +96,7 @@ effects that cost less are fine; #7 and #14 last.
   install-only marker `dev-ftp.txt`, saves `save0` "test" (MAP01, the spot Claude loads), `test2` and
   autosaves. DISTANCE HIGH.
 - **2DS**, `192.168.1.139`: installed `92c16b35a0f6` (debug, the same code as `release/v0.2.5` at
-  `82bc7d0`), by SITE INSTALL. The data folder has `allow-old3ds.txt` and `census-on-load.txt` (audio
+  `82bc7d0`), by SITE INSTALL. The data folder has `census-on-load.txt` (`allow-old3ds.txt` removed 2026-10-19, no longer needed) (audio
   on), the census reports and the owner's saves (save0..2, auto0..3; first dungeon done). Claude's test
   saves were removed; Luma's `crash_dump_00000000` and `00000019` are from the Minish Cap port and
   were left. Installing over the running game near its memory limit can close it: then upload over
