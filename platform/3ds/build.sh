@@ -457,8 +457,21 @@ THREEDSX="${DIST}/${ARTIFACT_STEM}.3dsx"
   "tinaut1986 / Esteban PDN / DeTwelve Games" \
   "${ROOT}/platform/3ds/assets/icon-48.png" "${SMDH}"
 python3 "${ROOT}/platform/3ds/tools/cia-memory.py" smdh "${SMDH}"
+# The notes the UPDATE screen shows before (or without) a network answer: the installed
+# version's docs/release-notes file, else the newest one there is, over the tracked fallback.
+bundle_update_changelog() {
+  local romfs_dir="$1" base="${VERSION%%-*}" notes=""
+  if [[ -f "${ROOT}/docs/release-notes/v${base}.md" ]]; then
+    notes="${ROOT}/docs/release-notes/v${base}.md"
+  else
+    notes="$(ls "${ROOT}"/docs/release-notes/v*.md 2>/dev/null | sort -V | tail -n 1)"
+  fi
+  [[ -n "${notes}" ]] || return 0
+  { printf '## %s\n' "$(basename "${notes}" .md)"; cat "${notes}"; } > "${romfs_dir}/update-changelog.txt"
+}
 mkdir -p "${PACKAGE_TMP}/update-romfs"
 cmake -E copy_directory "${ROOT}/platform/3ds/romfs" "${PACKAGE_TMP}/update-romfs"
+bundle_update_changelog "${PACKAGE_TMP}/update-romfs"
 "${THREEDSXTOOL}" "${GAME_BUILD}/gzdoom.elf" "${THREEDSX}" --smdh="${SMDH}" --romfs="${PACKAGE_TMP}/update-romfs"
 
 MOD_PK3="${BUILD_ROOT}/LegendOfDoom.pk3"
@@ -734,6 +747,7 @@ if [[ "${LOD3DS_SKIP_CIA:-0}" != "1" && -n "${MAKEROM_PATH}" && -n "${BANNERTOOL
   CIA_ROMFS_DATA="${CIA_ROMFS}/data"
   mkdir -p "${CIA_ROMFS_DATA}"
   cmake -E copy_directory "${ROOT}/platform/3ds/romfs" "${CIA_ROMFS}"
+  bundle_update_changelog "${CIA_ROMFS}"
   # Embed matching game data for self-contained CIA installation.
   cmake -E copy "${GAME_BUILD}/gzdoom.pk3" "${CIA_ROMFS_DATA}/gzdoom.pk3"
   cmake -E copy "${GAME_BUILD}/game_support.pk3" "${CIA_ROMFS_DATA}/game_support.pk3"
