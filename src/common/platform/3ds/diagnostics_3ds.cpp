@@ -1525,7 +1525,10 @@ FBottomMapView BottomMapView()
 				nearAnchor = within(anchorX[i], anchorY[i]);
 			const bool outdoors = camera->Sector != nullptr &&
 				camera->Sector->GetTexture(sector_t::ceiling) == skyflatnum;
-			if (outdoors || nearAnchor || within(centerX, centerY))
+			// The dungeons (every map but MAP01, the overworld) are followed everywhere: their
+			// underground stairs lead to areas far from the room, and the map is that of the dungeon.
+			const bool dungeon = trackedMapName.Compare("MAP01") != 0;
+			if (dungeon || outdoors || nearAnchor || within(centerX, centerY))
 			{
 				centerX = camera->X();
 				centerY = camera->Y();
