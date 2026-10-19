@@ -448,6 +448,11 @@ constexpr FLoadingGlyph LoadingFont[] = {
 	{ '?', { 14, 17, 1, 2, 4, 0, 4 } },
 };
 
+// The screens' framebuffers are 24-bit (B, G, R): the HOME menu cannot capture 32-bit ones and
+// shows black. The CPU-drawn bottom interface keeps its 32-bit buffer (gpu_3ds.h) and is
+// converted when it reaches the framebuffer.
+constexpr size_t TopFramebufferBytes = 400u * 240u * 3u;
+
 void LoadingPutPixel(unsigned char *framebuffer, int x, int y,
 	unsigned char red, unsigned char green, unsigned char blue)
 {
@@ -512,12 +517,11 @@ void TriforcePutPixel(unsigned char *framebuffer, int x, int y, uint16_t color)
 	const unsigned red5 = (color >> 11) & 31u;
 	const unsigned green6 = (color >> 5) & 63u;
 	const unsigned blue5 = color & 31u;
-	const size_t offset = 4u * (static_cast<size_t>(x) * 240u +
+	const size_t offset = 3u * (static_cast<size_t>(x) * 240u +
 		(239u - static_cast<unsigned>(y)));
-	framebuffer[offset + 0] = 255;
-	framebuffer[offset + 1] = static_cast<unsigned char>(blue5 * 255u / 31u);
-	framebuffer[offset + 2] = static_cast<unsigned char>(green6 * 255u / 63u);
-	framebuffer[offset + 3] = static_cast<unsigned char>(red5 * 255u / 31u);
+	framebuffer[offset + 0] = static_cast<unsigned char>(blue5 * 255u / 31u);
+	framebuffer[offset + 1] = static_cast<unsigned char>(green6 * 255u / 63u);
+	framebuffer[offset + 2] = static_cast<unsigned char>(red5 * 255u / 31u);
 }
 
 void LoadingTopRect(unsigned char *framebuffer, int x, int y, int width, int height,
@@ -527,12 +531,11 @@ void LoadingTopRect(unsigned char *framebuffer, int x, int y, int width, int hei
 	{
 		for (int py = std::max(0, y); py < std::min(240, y + height); ++py)
 		{
-			const size_t offset = 4u * (static_cast<size_t>(px) * 240u +
+			const size_t offset = 3u * (static_cast<size_t>(px) * 240u +
 				(239u - static_cast<unsigned>(py)));
-			framebuffer[offset + 0] = 255;
-			framebuffer[offset + 1] = blue;
-			framebuffer[offset + 2] = green;
-			framebuffer[offset + 3] = red;
+			framebuffer[offset + 0] = blue;
+			framebuffer[offset + 1] = green;
+			framebuffer[offset + 2] = red;
 		}
 	}
 }
@@ -547,7 +550,7 @@ bool DrawTriforceAnimationFrame(unsigned frame)
 	{
 		return false;
 	}
-	std::memset(framebuffer, 0, 400u * 240u * 4u);
+	std::memset(framebuffer, 0, TopFramebufferBytes);
 	frame %= TriforceAnimationFrames;
 	size_t cursor = TriforceAnimationOffsets[frame];
 	const size_t end = TriforceAnimationOffsets[frame + 1];
@@ -568,7 +571,7 @@ bool DrawTriforceAnimationFrame(unsigned frame)
 		}
 	}
 	DrawLoadingProgressOverlay(framebuffer);
-	I_3DSCleanDataCache(framebuffer, 400u * 240u * 4u);
+	I_3DSCleanDataCache(framebuffer, TopFramebufferBytes);
 	gfxScreenSwapBuffers(GFX_TOP, false);
 	return true;
 }
@@ -594,11 +597,10 @@ bool BlockingMessageScreen(const char *const english[9], const char *const caste
 	auto put = [&](int x, int y, unsigned char red, unsigned char green, unsigned char blue)
 	{
 		if (x < 0 || x >= 400 || y < 0 || y >= 240) return;
-		const size_t offset = 4u * (static_cast<size_t>(x) * 240u + (239u - static_cast<unsigned>(y)));
-		framebuffer[offset + 0] = 255;
-		framebuffer[offset + 1] = blue;
-		framebuffer[offset + 2] = green;
-		framebuffer[offset + 3] = red;
+		const size_t offset = 3u * (static_cast<size_t>(x) * 240u + (239u - static_cast<unsigned>(y)));
+		framebuffer[offset + 0] = blue;
+		framebuffer[offset + 1] = green;
+		framebuffer[offset + 2] = red;
 	};
 	auto text = [&](int x, int y, const char *line, int scale, unsigned char red,
 		unsigned char green, unsigned char blue)
@@ -615,7 +617,7 @@ bool BlockingMessageScreen(const char *const english[9], const char *const caste
 								put(x + column * scale + dx, y + row * scale + dy, red, green, blue);
 		}
 	};
-	std::memset(framebuffer, 0, 400u * 240u * 4u);
+	std::memset(framebuffer, 0, TopFramebufferBytes);
 	for (int x = 0; x < 400; ++x) { put(x, 40, 217, 74, 25); put(x, 41, 217, 74, 25); }
 	const char *title = "LEGEND OF DOOM 3DS";
 	text((400 - LoadingTextWidth(title, 2)) / 2, 16, title, 2, 245, 151, 49);
@@ -626,7 +628,7 @@ bool BlockingMessageScreen(const char *const english[9], const char *const caste
 		text((400 - LoadingTextWidth(lines[i], 1)) / 2, last ? y + 14 : y, lines[i], 1,
 			last ? 132 : 242, last ? 183 : 236, last ? 232 : 213);
 	}
-	I_3DSCleanDataCache(framebuffer, 400u * 240u * 4u);
+	I_3DSCleanDataCache(framebuffer, TopFramebufferBytes);
 	gfxScreenSwapBuffers(GFX_TOP, false);
 	I_3DSStartupLog(stage);
 
@@ -3288,9 +3290,8 @@ char MapLoadMessages[MapLoadPhaseCount][48];
 // Halves the colour of every pixel: the picture stays, but reads as paused.
 void DimTopFramebuffer(unsigned char *framebuffer)
 {
-	auto *pixels = reinterpret_cast<uint32_t *>(framebuffer);
-	for (size_t i = 0; i < 400u * 240u; ++i)
-		pixels[i] = ((pixels[i] >> 1) & 0x7F7F7F00u) | (pixels[i] & 0xFFu);
+	for (size_t i = 0; i < TopFramebufferBytes; ++i)
+		framebuffer[i] >>= 1;
 }
 
 void DrawMapLoadBox(unsigned char *framebuffer)
@@ -3351,9 +3352,9 @@ bool DrawMapLoadFrame(bool first)
 	GSPGPU_CaptureInfo capture{};
 	if (R_FAILED(GSPGPU_ImportDisplayCaptureInfo(&capture))) return false;
 	const auto &top = capture.screencapture[0];
-	if (top.framebuf0_vaddr == nullptr || (top.format & 7u) != GSP_RGBA8_OES ||
-		top.framebuf_widthbytesize != 240u * 4u) return false;
-	constexpr size_t Bytes = 400u * 240u * 4u;
+	if (top.framebuf0_vaddr == nullptr || (top.format & 7u) != GSP_BGR8_OES ||
+		top.framebuf_widthbytesize != 240u * 3u) return false;
+	constexpr size_t Bytes = TopFramebufferBytes;
 	const bool stereo = gfxIs3D();
 	for (int eye = 0; eye < (stereo ? 2 : 1); ++eye)
 	{
@@ -4272,7 +4273,11 @@ unsigned char *BeginBottomFrame()
 	{
 		return nullptr;
 	}
-	return framebuffer;
+	// The framebuffer is 24-bit: the interface is drawn in a 32-bit buffer of its own and
+	// converted by EndBottomFrame.
+	static std::vector<unsigned char> cpuBuffer;
+	cpuBuffer.resize(BottomScreenWidth * BottomScreenHeight * 4u);
+	return cpuBuffer.data();
 }
 
 void EndBottomFrame(unsigned char *framebuffer)
@@ -4282,7 +4287,24 @@ void EndBottomFrame(unsigned char *framebuffer)
 		I_3DSGpuBottomChanged();
 		return;
 	}
-	I_3DSCleanDataCache(framebuffer, BottomScreenWidth * BottomScreenHeight * 4u);
+	u16 physicalWidth = 0;
+	u16 physicalHeight = 0;
+	unsigned char *screen = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT,
+		&physicalWidth, &physicalHeight);
+	if (screen == nullptr || physicalWidth != BottomScreenHeight ||
+		physicalHeight != BottomScreenWidth)
+	{
+		return;
+	}
+	// 32-bit (A, B, G, R) to 24-bit (B, G, R).
+	const size_t pixels = static_cast<size_t>(BottomScreenWidth) * BottomScreenHeight;
+	for (size_t i = 0; i < pixels; ++i)
+	{
+		screen[3 * i + 0] = framebuffer[4 * i + 1];
+		screen[3 * i + 1] = framebuffer[4 * i + 2];
+		screen[3 * i + 2] = framebuffer[4 * i + 3];
+	}
+	I_3DSCleanDataCache(screen, pixels * 3u);
 	gfxScreenSwapBuffers(GFX_BOTTOM, false);
 }
 
@@ -6489,15 +6511,14 @@ void I_3DSMapLoadFrameShown()
 
 void I_3DSPrepareNativeKeyboardTop()
 {
-	constexpr size_t TopFramebufferBytes = 400u * 240u * 4u;
 	I_PolyWaitForPresent3DS();
 	gspWaitForVBlank();
 
 	GSPGPU_CaptureInfo capture{};
 	if (R_FAILED(GSPGPU_ImportDisplayCaptureInfo(&capture))) return;
 	const auto &top = capture.screencapture[0];
-	if (top.framebuf0_vaddr == nullptr || (top.format & 7u) != GSP_RGBA8_OES ||
-		top.framebuf_widthbytesize != 240u * 4u) return;
+	if (top.framebuf0_vaddr == nullptr || (top.format & 7u) != GSP_BGR8_OES ||
+		top.framebuf_widthbytesize != 240u * 3u) return;
 
 	// Read the displayed GPU result before APT captures it for the keyboard.
 	if (R_FAILED(GSPGPU_InvalidateDataCache(top.framebuf0_vaddr, TopFramebufferBytes))) return;

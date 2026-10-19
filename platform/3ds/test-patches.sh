@@ -42,7 +42,8 @@ verify_patch_stack() {
 require_program git
 
 verify_patch_stack sdl2 "${LOD3DS_SDL2_URL}" "${LOD3DS_SDL2_REV}" \
-  "${ROOT}/platform/3ds/patches/sdl2-3ds-clean-exit.patch"
+  "${ROOT}/platform/3ds/patches/sdl2-3ds-clean-exit.patch" \
+  "${ROOT}/platform/3ds/patches/sdl2-3ds-bgr8-framebuffer.patch"
 verify_patch_stack zmusic "${LOD3DS_ZMUSIC_URL}" "${LOD3DS_ZMUSIC_REV}" \
   "${ROOT}/platform/3ds/patches/zmusic-3ds.patch" \
   "${ROOT}/platform/3ds/patches/zmusic-minimp3.patch" \
