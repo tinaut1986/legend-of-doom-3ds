@@ -21,6 +21,10 @@ class HardwareStartupContractTests(unittest.TestCase):
         self.assertIn("constexpr u32 New3DSApplicationMemory = 124u * 1024u * 1024u;", source)
         self.assertIn("return UnsupportedConsoleScreen() || LowMemoryScreen();", source)
         self.assertNotIn("LowMemoryNotice", source)
+        # The early exit tears SDL down like the normal one; without it the console froze.
+        main = (ROOT / "src/common/platform/posix/sdl/i_main.cpp").read_text(encoding="utf-8")
+        early = main[main.index("Screen())\n\t\t{"):]
+        self.assertLess(early.index("SDL_Quit();"), early.index("return 0;"))
 
     def test_early_animation_starts_only_after_sdl_owns_video(self):
         source = (ROOT / "src/common/platform/posix/sdl/i_main.cpp").read_text(

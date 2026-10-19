@@ -235,7 +235,13 @@ int main (int argc, char **argv)
 	{
 		// An unsupported console, or a New 3DS in its 64 MB mode, gets a message instead of the
 		// memory failure that follows.
-		if (I_3DSUnsupportedConsoleScreen()) return 0;
+		if (I_3DSUnsupportedConsoleScreen())
+		{
+			// As the normal exit does: leaving with SDL's video (gfx) still up froze the console
+			// when A closed the message (2026-10-19).
+			SDL_Quit();
+			return 0;
+		}
 		I_3DSLoadingScreenStart();
 	}
 	I_3DSStartupLog("sdl-core-ready");
