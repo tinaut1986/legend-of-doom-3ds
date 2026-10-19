@@ -48,8 +48,6 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
-| `fix/notify-lines` | the game's messages one per line (in Spanish they piled onto one), at most `con_notifylines` | Pushed, in test build `1bc49cc13cda` with the next one; waits for the owner's check |
-| `feat/controls-screen` | one CONTROLS screen: the scheme as parent, the fixed inputs and the remappable buttons; sprint OFF / BUTTON / AUTO, AUTO by default | Pushed; the owner checked `1bc49cc13cda` and asked to fold the old CONTROLS reference into it; that change waits for the check |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
@@ -69,6 +67,9 @@ effects that cost less are fine; #7 and #14 last.
    on the 2DS; the New 3DS (CLASSIC by default) still to be played before the release. #26 (the 2DS's
    fried sound and gaps: mixer at 22050 Hz on the Old 3DS) merged 2026-10-19 on the owner's word after
    hearing it live by cvar; the build itself not yet played.
+   Also merged 2026-10-19 after the owner's check on the New 3DS (`d7dd0a364fe6`): the game's messages
+   one per line (`fix/notify-lines`), and one CONTROLS screen with the scheme as parent plus sprint
+   OFF / BUTTON / AUTO, AUTO by default (`feat/controls-screen`).
 1. Release: write `docs/release-notes/<tag>.md` (everything above since v0.2.4, for the player), show
    it, merge it, then tag (beta or stable as the owner says) and rename the release branch at once
    (CLAUDE.md, "Releases" and "After tagging").
