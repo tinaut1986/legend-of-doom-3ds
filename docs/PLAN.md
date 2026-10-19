@@ -37,6 +37,7 @@ release texts (workflow template, README) say the Old 3DS / 2DS run it; U6-U9 an
 
 | Branch | What | State |
 |---|---|---|
+| `feat/u9-update-changelog` | U9: UPDATE shows saved / bundled notes without a network answer | Built, **not installed**: owner's check pending |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 The worktree branches of the 2026-10-18/19 side sessions (`fix/cave-sky-square`,
@@ -292,12 +293,16 @@ GPU. The first P1.3 recordings (Baseline below) say where the menu frames go.
   *Done when:* the bars show on the touch screen from the first frame to the title, the top
   screen keeps its animation, and start-up is no slower.
 
-- [ ] **U9** UPDATE always shows the changelog on the top screen.
+- [x] **U9** UPDATE always shows the changelog on the top screen.
   *Spec:* owner 2026-10-19: today the notes appear only when an update is offered, so after
   updating the player cannot read what changed. The UPDATE screen shows them on the top screen
   every time (`DrawUpdateChangelogTop`, `src/common/platform/3ds/update/changelog_view.inc`), as
   its CHANGELOG setting says: NEW = the installed version's notes (plus newer ones when an update
   is there), ALL = every version. With no network, the last notes fetched, or a short message.
+  *Built (branch `feat/u9-update-changelog`, awaiting the owner's check):* the menu already checked on
+  opening, but without an answer it showed a fixed "Initial release". Now it shows the last notes saved
+  on the SD (`update-notes-new|all.txt`, written on every answer), else the installed version's
+  `docs/release-notes` file that `build.sh` bundles in the romfs.
   *Done when:* opening UPDATE with nothing to install shows the installed version's notes, the
   CHANGELOG setting switches between them, and the offer screen is unchanged.
 

@@ -42,12 +42,43 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
     // what is new since the installed one.
     const bool all = CurrentMenu->IntVar(FName("NativeUpdateAll")) != 0 &&
         CurrentMenu->IntVar(FName("NativeUpdateConfirm")) != 2;
-    static char notes[UPDATE_HISTORY_MAX];
+    static char notes[UPDATE_HISTORY_MAX], saved[UPDATE_HISTORY_MAX];
     notes[0] = 0;
     if (all) Updater_GetHistory(notes, sizeof(notes));
     else Updater_GetNotes(notes, sizeof(notes));
     const bool onlineNotes = notes[0] != 0;
-    const char *body = onlineNotes ? notes : bundled;
+    // The notes of the last answer are kept on the SD card (one file per CHANGELOG setting), so
+    // the screen has them with no network, or while the check runs; the bundled ones (the
+    // installed version's, put in the romfs at build time) come last.
+    const char *savedPath = all ? LOD3DS_APP_DIR "/update-notes-all.txt"
+                                : LOD3DS_APP_DIR "/update-notes-new.txt";
+    static const char *loadedPath = nullptr;
+    static char writtenPath[96] = {};
+    if (onlineNotes)
+    {
+        // Written once per different text.
+        if (std::strcmp(writtenPath, savedPath) || std::strcmp(saved, notes))
+        {
+            std::snprintf(saved, sizeof(saved), "%s", notes);
+            std::snprintf(writtenPath, sizeof(writtenPath), "%s", savedPath);
+            if (FILE *file = std::fopen(savedPath, "wb"))
+            {
+                std::fwrite(notes, 1, std::strlen(notes), file);
+                std::fclose(file);
+            }
+        }
+    }
+    else if (loadedPath != savedPath)
+    {
+        loadedPath = savedPath;
+        saved[0] = 0;
+        if (FILE *file = std::fopen(savedPath, "rb"))
+        {
+            saved[std::fread(saved, 1, sizeof(saved)-1, file)] = 0;
+            std::fclose(file);
+        }
+    }
+    const char *body = onlineNotes ? notes : saved[0] ? saved : bundled;
     if (!count || std::strcmp(body, cached) || cachedWidth != width)
     {
         std::snprintf(cached, sizeof(cached), "%s", body);
@@ -96,8 +127,9 @@ bool DrawUpdateChangelogTop(unsigned char *pixels, int pitch, int width, int hei
     centered(10, Tr("CHANGELOG"), NesRed);
     UpdateStatus status;
     Updater_GetStatus(&status);
-    const char *version = all && onlineNotes ? Tr("ALL VERSIONS")
-        : onlineNotes && status.version[0] ? status.version : LOD3DS_PORT_VERSION_LABEL;
+    const char *version = all && body != bundled ? Tr("ALL VERSIONS")
+        : onlineNotes && status.version[0] ? status.version
+        : body == saved ? Tr("LAST NOTES SAVED") : LOD3DS_PORT_VERSION_LABEL;
     centered(29, version, OverlayIvory);
     for (unsigned i = first + page*rows; i < count && i < first+(page+1)*rows; ++i)
         NesTopText(pixels, pitch, width, height, 16,
