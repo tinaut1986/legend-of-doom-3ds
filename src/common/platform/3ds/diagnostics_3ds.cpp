@@ -1446,6 +1446,9 @@ struct FBottomMapView
 	AActor *Camera = nullptr;
 };
 
+// Set when a level is loaded (I_3DSMapLoadBegin): BottomMapView forgets where it was centred.
+bool BottomMapViewReset = false;
+
 FBottomMapView BottomMapView()
 {
 	FBottomMapView view;
@@ -1456,19 +1459,24 @@ FBottomMapView BottomMapView()
 	static bool playerDetached;
 	static double centerX;
 	static double centerY;
-	// Where the map was centred before the player's last jump (stairs teleport them far away):
-	// stairs back from an underground area that fell within reach of the centre lead to the old
-	// centre, not to the underground one (#28).
-	static double previousCenterX, previousCenterY;
-	static bool hasPreviousCenter, hasCameraPosition;
+	// The centres the map had before the player's last jumps (stairs teleport them far away): the
+	// way back from an underground area leads to one of them, not to the underground centre the
+	// map moved to when the area was within reach of the room's (#28).
+	constexpr int AnchorCount = 6;
+	static double anchorX[AnchorCount], anchorY[AnchorCount];
+	static int anchors;
+	static bool hasCameraPosition;
 	static double cameraX, cameraY;
-	if (trackedLevel != primaryLevel || trackedMapName.Compare(primaryLevel->MapName) != 0)
+	if (trackedLevel != primaryLevel || trackedMapName.Compare(primaryLevel->MapName) != 0 ||
+		BottomMapViewReset)
 	{
+		// A new map, or a level (re)loaded: a game loaded in the same map starts afresh too.
+		BottomMapViewReset = false;
 		trackedLevel = primaryLevel;
 		trackedMapName = primaryLevel->MapName;
 		hasExteriorCenter = false;
 		playerDetached = false;
-		hasPreviousCenter = false;
+		anchors = 0;
 		hasCameraPosition = false;
 	}
 	AActor *camera = players[consoleplayer].camera;
@@ -1482,9 +1490,18 @@ FBottomMapView BottomMapView()
 			const double jumpY = camera->Y() - cameraY;
 			if (jumpX * jumpX + jumpY * jumpY > JumpDistance * JumpDistance)
 			{
-				previousCenterX = centerX;
-				previousCenterY = centerY;
-				hasPreviousCenter = true;
+				// Remember the centre being left, the oldest forgotten.
+				if (anchors == AnchorCount)
+				{
+					for (int i = 1; i < AnchorCount; ++i)
+					{
+						anchorX[i - 1] = anchorX[i];
+						anchorY[i - 1] = anchorY[i];
+					}
+					--anchors;
+				}
+				anchorX[anchors] = centerX;
+				anchorY[anchors++] = centerY;
 			}
 		}
 		cameraX = camera->X();
@@ -1498,16 +1515,17 @@ FBottomMapView BottomMapView()
 		}
 		else
 		{
-			const double deltaX = camera->X() - centerX;
-			const double deltaY = camera->Y() - centerY;
-			const double distanceSquared = deltaX * deltaX + deltaY * deltaY;
-			const double previousX = camera->X() - previousCenterX;
-			const double previousY = camera->Y() - previousCenterY;
-			const bool nearPrevious = hasPreviousCenter &&
-				previousX * previousX + previousY * previousY <= FollowRange * FollowRange;
+			auto within = [&](double x, double y)
+			{
+				const double dx = camera->X() - x, dy = camera->Y() - y;
+				return dx * dx + dy * dy <= FollowRange * FollowRange;
+			};
+			bool nearAnchor = false;
+			for (int i = 0; i < anchors && !nearAnchor; ++i)
+				nearAnchor = within(anchorX[i], anchorY[i]);
 			const bool outdoors = camera->Sector != nullptr &&
 				camera->Sector->GetTexture(sector_t::ceiling) == skyflatnum;
-			if (outdoors || nearPrevious || distanceSquared <= FollowRange * FollowRange)
+			if (outdoors || nearAnchor || within(centerX, centerY))
 			{
 				centerX = camera->X();
 				centerY = camera->Y();
@@ -6388,6 +6406,7 @@ void I_3DSLoadingScreenFinish()
 
 void I_3DSMapLoadBegin(const char *mapName, const char *levelName, bool restoring)
 {
+	BottomMapViewReset = true;
 	if (MapLoadDepth++ > 0)
 	{
 		MapLoadRestoring |= restoring;
