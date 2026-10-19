@@ -48,6 +48,7 @@ the console; the measurements are in the decisions log):
 
 | Branch | What | State |
 |---|---|---|
+| `fix/early-exit-sdl-quit` | the start-up message screens froze the console on exit (no `SDL_Quit`) | Pushed, built; waits for the owner's check (force the 64 MB screen, press A) |
 | `fix/horizon-fog-fade` | the sky fades to MAP01's fog colour at the horizon (#14) | Parked, pushed, **not merged**: does not remove the pop of the tall mountains |
 
 **Waiting for the owner's check:**
