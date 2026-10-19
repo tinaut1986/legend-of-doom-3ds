@@ -24,8 +24,9 @@ change (what goes where: the table in `CLAUDE.md`).
 Only what no other place records. Bugs: the open GitHub issues. Tasks: the unticked
 boxes below. History: `git log` and the decisions log.
 
-**Release line:** `release/v0.3.1` (renamed from `release/v0.3.0` right after its tag).
-Published: **`v0.3.0`** beta (2026-10-19, the tag workflow; the first with the Old 3DS / 2DS, control
+**Release line:** `release/v0.3.2` (renamed from `release/v0.3.1` right after its tag).
+Published: **`v0.3.1`** stable (2026-10-19, on `main`: U5-U7, U9, #28, the weapon order, the updater's notes with
+the betas on the way), **`v0.3.0`** beta (2026-10-19, the tag workflow; the first with the Old 3DS / 2DS, control
 schemes, the 2DS memory / music / speed work; its release body was edited afterwards: the sprint line
 without `( ) ;`, the downloads line "every Nintendo 3DS / 2DS model"), **`v0.2.4`** stable (`main`),
 `v0.2.3` and `v0.2.2` betas, **`v0.2.1`** and **`v0.2.0`** stables, `v0.1.0` beta.
@@ -56,7 +57,8 @@ Claude recommends checking the 2DS saves (#21 / #23) before a stable; the owner 
 2. Ask the owner about a 2DS save test: play long, then save by hand and at caves. #21 (the save's JSON
    could not grow) is probably fixed by #25 (the GC runs again); #23 (an object freed while saved) is
    not explained, and the GC now runs every ~1 MB, which could make a dangling pointer show sooner.
-3. U8: the start-up progress bars on the touch screen.
+3. U8: the start-up progress bars on the touch screen. (#14 closed by the owner: the draw distance; the
+   2DS saves, #21 / #23, have not failed again in the owner's tests.)
 4. (Done 2026-10-19, owner-checked: U5, U6, U7, U9, #28, and weapprev / weapnext following the bottom grid's order.)
 5. Back to the 2DS's speed: the heavy MAP01 spot's remaining frame (logic ~9 ms a tic, the walk's walls
    ~2.5 ms, the GPU capture's geometry ~3 ms; `lod3ds_sections`), P4.2 with 3D, P4.10's rest, P4.11,
